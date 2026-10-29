@@ -1,0 +1,6 @@
+id,name,primary_position,grupo_demarcacion,country,birth_date,shirt_number,height,weight,preferred_foot
+sample_val_01,Salma Paralluelo Updated,LW,Delantera,Spain,2003-11-13,7,174,62,Left
+,Missing ID Player,AMF,Centrocampista,France,2001-05-10,10,165,58,Right
+sample_bad_01,,CMF,Centrocampista,Germany,1999-08-20,6,170,60,Right
+sample_val_04,Lauren Hemp,LW,Delantera,England,2000-08-07,11,163,56,Left
+

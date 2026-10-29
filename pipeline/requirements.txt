@@ -1,0 +1,9 @@
+# Dependencias del pipeline de datos (Python 3.11)
+requests>=2.31
+pandas>=2.2
+numpy>=2.0
+pyarrow>=15
+scikit-learn==1.8.0   # misma versión con la que se entrenaron modelos/modelo_xg.pkl y modelo_xa.pkl
+supabase>=2.4
+rapidfuzz>=3.6
+python-dotenv>=1.0

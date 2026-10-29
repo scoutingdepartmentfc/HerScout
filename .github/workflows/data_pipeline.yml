@@ -1,0 +1,89 @@
+name: Weekly Data Pipeline (Opta + FotMob + Soccerdonna)
+
+on:
+  schedule:
+    # Todos los martes a las 03:00 UTC (05:00 en Europe/Madrid)
+    - cron: '0 3 * * 2'
+  workflow_dispatch:
+    inputs:
+      competition_id:
+        description: 'ID de competición específico (opcional, en blanco = todas las elegidas en /admin)'
+        required: false
+        default: ''
+      max_matches:
+        description: 'Máximo de partidos NUEVOS por liga (en blanco = todos los pendientes)'
+        required: false
+        default: ''
+      extra_args:
+        description: 'Flags extra: --rebuild, --skip-photos, --only-photos, --refresh-photos'
+        required: false
+        default: ''
+      catalogo:
+        description: 'Actualizar antes el catálogo Opta del panel /admin (tarda bastante)'
+        type: boolean
+        required: false
+        default: false
+
+concurrency:
+  group: data-pipeline
+  cancel-in-progress: false
+
+jobs:
+  data-pipeline:
+    runs-on: ubuntu-latest
+    # La primera carga (ligas + fotos) tarda bastante; las semanales, minutos.
+    # Si se corta, la siguiente ejecución continúa donde lo dejó (caché por lotes).
+    timeout-minutes: 330
+
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      SDAPI_OUTLET_KEY: ${{ secrets.SDAPI_OUTLET_KEY }}
+
+    steps:
+      - name: Checkout del repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: pipeline/requirements.txt
+
+      - name: Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r pipeline/requirements.txt -c pipeline/constraints.txt
+
+      - name: Tests del motor
+        run: python -m unittest discover -s tests/pipeline -t tests/pipeline
+
+      - name: Catálogo Opta (ligas y temporadas disponibles en /admin)
+        if: github.event.inputs.catalogo == 'true'
+        run: python -m pipeline.catalogo
+
+      # 1. Plantillas Opta → jugadoras (matchName, dorsal, nacimiento, lugar...), partidos y estadísticas.
+      # 2. Fotos FotMob confirmando matchName + dorsal de la temporada actual + fecha de nacimiento.
+      - name: Opta + fotos FotMob
+        env:
+          COMP_ID: ${{ github.event.inputs.competition_id }}
+          MAX_MATCHES: ${{ github.event.inputs.max_matches }}
+          EXTRA_ARGS: ${{ github.event.inputs.extra_args }}
+        run: |
+          ARGS=""
+          [ -n "$COMP_ID" ] && ARGS="$ARGS --comp-id $COMP_ID"
+          [ -n "$MAX_MATCHES" ] && ARGS="$ARGS --max-matches $MAX_MATCHES"
+          python -m pipeline.ingest $ARGS $EXTRA_ARGS
+
+      # 3. Soccerdonna: perfil, valor de mercado, traspasos, lesiones y selección, confirmando fecha y lugar de
+      # nacimiento, dorsal y club. Las nuevas siempre; las demás cada 30 días. Si falla no tumba la descarga.
+      - name: Enriquecer jugadoras con Soccerdonna
+        if: success() && !contains(github.event.inputs.extra_args, '--only-photos')
+        continue-on-error: true
+        env:
+          COMP_ID: ${{ github.event.inputs.competition_id }}
+        run: |
+          ARGS="--refresh-days 30"
+          [ -n "$COMP_ID" ] && ARGS="$ARGS --comp-id $COMP_ID"
+          python -m pipeline.soccerdonna $ARGS

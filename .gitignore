@@ -1,0 +1,14 @@
+node_modules
+.next
+out
+.env
+.env.local
+.env.*.local
+.DS_Store
+connector/__pycache__
+
+# Pipeline de datos (Python)
+.venv/
+__pycache__/
+*.pyc
+.cache/

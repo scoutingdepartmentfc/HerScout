@@ -1,0 +1,5 @@
+id,name,primary_position,grupo_demarcacion,country,birth_date,shirt_number,height,weight,preferred_foot
+sample_val_01,Salma Paralluelo,LW,Delantera,Spain,2003-11-13,7,174,62,Left
+sample_val_02,Alexia Putellas,CMF,Centrocampista,Spain,1994-02-04,11,173,67,Left
+sample_val_03,Khadija Shaw,CF,Delantera,Jamaica,1997-01-31,21,180,75,Right
+

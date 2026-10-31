@@ -298,3 +298,58 @@ class TestFotMobMatching(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestFMFisico(unittest.TestCase):
+    """Lectura de exportaciones de Football Manager (atributos físicos)."""
+
+    def _fichero(self, nombre, contenido):
+        import tempfile
+        from pathlib import Path
+        d = Path(tempfile.mkdtemp())
+        p = d / nombre
+        p.write_text(contenido, encoding='utf-8')
+        return p
+
+    def test_html_ingles_con_nat_ambiguo(self):
+        from pipeline.fm_fisico import leer_exportacion
+        html = """<html><body><table>
+        <tr><th>Inf</th><th>Name</th><th>Nat</th><th>Club</th><th>DoB</th>
+            <th>Acc</th><th>Agi</th><th>Bal</th><th>Jum</th><th>Nat</th><th>Pac</th><th>Sta</th><th>Str</th></tr>
+        <tr><td></td><td>Aitana Bonmatí</td><td>ESP</td><td>Barcelona</td><td>18/1/1998 (28 years old)</td>
+            <td>16</td><td>17</td><td>15</td><td>5</td><td>14</td><td>16</td><td>16</td><td>12-14</td></tr>
+        <tr><td></td><td>Sin Datos</td><td>ESP</td><td>X</td><td></td>
+            <td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td></tr>
+        </table></body></html>"""
+        filas = leer_exportacion(self._fichero('fm.html', html))
+        self.assertEqual(len(filas), 1)
+        f = filas[0]
+        self.assertEqual(f['fm_name'], 'Aitana Bonmatí')
+        self.assertEqual(f['fm_birth_date'], '1998-01-18')
+        self.assertEqual(f['natural_fitness'], 14.0)
+        self.assertEqual(f['jumping_reach'], 5.0)
+        self.assertEqual(f['strength'], 13.0)
+
+    def test_texto_espanol(self):
+        from pipeline.fm_fisico import leer_exportacion
+        txt = ("| Nombre        | Club     | Edad | Ace | Agi | Equ | Alc | For | Vel | Res | Fue |\n"
+               "| ------------- | -------- | ---- | --- | --- | --- | --- | --- | --- | --- | --- |\n"
+               "| Salma Paralluelo | Barcelona | 22 | 19 | 15 | 14 | 12 | 15 | 19 | 15 | 13 |\n")
+        filas = leer_exportacion(self._fichero('fm.txt', txt))
+        self.assertEqual(len(filas), 1)
+        self.assertEqual(filas[0]['fm_age'], 22)
+        self.assertEqual(filas[0]['pace'], 19.0)
+        self.assertEqual(filas[0]['natural_fitness'], 15.0)
+
+    def test_emparejar_por_fecha(self):
+        from pipeline.fm_fisico import emparejar
+        j = {'id': 'p1', 'name': 'Aitana Bonmatí Conca', 'first_name': 'Aitana', 'last_name': 'Bonmatí Conca',
+             'birth_date': '1998-01-18', 'fm_team_name': 'FC Barcelona'}
+        otra = {'id': 'p2', 'name': 'Alexia Putellas', 'first_name': 'Alexia', 'last_name': 'Putellas',
+                'birth_date': '1994-02-04', 'fm_team_name': 'FC Barcelona'}
+        fila = {'fm_name': 'Aitana Bonmatí', 'fm_club': 'Barcelona', 'fm_birth_date': '1998-01-18', 'fm_age': None}
+        jug, score, metodo = emparejar(fila, [j, otra], {'1998-01-18': [j], '1994-02-04': [otra]})
+        self.assertEqual(jug['id'], 'p1')
+        self.assertEqual(metodo, 'fecha+nombre')
+        fila2 = {'fm_name': 'Laia Desconocida', 'fm_club': 'Barcelona', 'fm_birth_date': '2001-01-01', 'fm_age': None}
+        self.assertIsNone(emparejar(fila2, [j, otra], {})[0])

@@ -10,7 +10,18 @@ las que haya y, si no queda ninguna, queda "sin datos" (no puntúa ni a favor ni
 
 from typing import Dict, List, Tuple
 
-JERARQUIA: List[Tuple[str, str, List[Tuple[str, str, List[str]]]]] = [
+Jerarquia = List[Tuple[str, str, List[Tuple[str, str, List[str]]]]]
+
+DISPONIBILIDAD = ('disponibilidad', 'Disponibilidad', [
+    ('participacion', 'Participación', [
+        'disp_partidos', 'comp_minutos', 'disp_minutos_equipo_pct', 'comp_titular_pct']),
+    ('fiabilidad', 'Fiabilidad', [
+        'comp_regularidad', 'comp_regularidad_min90', 'comp_capitan', 'comp_disciplina_malus',
+        'comp_polivalencia_demarcacion', 'of_polivalencia', 'of_regular_polivalencia']),
+    ])
+
+# Jugadoras de campo
+JERARQUIA: Jerarquia = [
     ('ataque', 'Ataque', [
         ('finalizacion', 'Finalización', [
             'of_goles_p90', 'of_goles_dentro_area_p90', 'of_goles_fuera_area_p90', 'of_xG_p90', 'of_tiros_p90',
@@ -38,10 +49,6 @@ JERARQUIA: List[Tuple[str, str, List[Tuple[str, str, List[str]]]]] = [
             'of_jugadas_indiv_gol_p90', 'of_jugadas_indiv_tiro_p90']),
     ]),
     ('defensa', 'Defensa', [
-        ('porteria', 'Portería', [
-            'def_paradas_p90', 'def_goles_encajados_p90', 'def_paradas_pct', 'def_paradas_area_p90',
-            'def_paradas_fuera_area_p90', 'def_paradas_ocasiones_claras_p90', 'def_despejes_punos_p90',
-            'def_salidas_libero_p90', 'def_porteria_cero_pct']),
         ('recuperacion', 'Recuperación', [
             'def_recuperaciones_p90', 'def_recup_propio_p90', 'def_recup_rival_p90', 'def_recup_z4_p90',
             'def_recup_area_prop_p90', 'def_intercepciones_p90', 'def_intercep_propio_p90', 'def_intercep_rival_p90',
@@ -66,14 +73,35 @@ JERARQUIA: List[Tuple[str, str, List[Tuple[str, str, List[str]]]]] = [
             'of_saque_banda_z4_pct', 'of_saque_banda_largo_max']),
         ('remate', 'Remate', ['abp_remates_corner_p90', 'abp_remates_faltas_p90']),
     ]),
-    ('disponibilidad', 'Disponibilidad', [
-        ('participacion', 'Participación', [
-            'disp_partidos', 'comp_minutos', 'disp_minutos_equipo_pct', 'comp_titular_pct']),
-        ('fiabilidad', 'Fiabilidad', [
-            'comp_regularidad', 'comp_regularidad_min90', 'comp_capitan', 'comp_disciplina_malus',
-            'comp_polivalencia_demarcacion', 'of_polivalencia', 'of_regular_polivalencia']),
-    ]),
+    DISPONIBILIDAD,
 ]
+
+# Porteras: métricas propias. Mismos ids de categoría (columnas nota_*) pero con su contenido:
+# defensa = Portería, construccion = Distribución. Sin ataque ni balón parado (no puntúan).
+JERARQUIA_PORTEROS: Jerarquia = [
+    ('defensa', 'Portería', [
+        ('paradas', 'Paradas', [
+            'def_paradas_p90', 'def_paradas_pct', 'def_paradas_area_p90', 'def_paradas_fuera_area_p90',
+            'def_paradas_ocasiones_claras_p90', 'def_goles_encajados_p90', 'def_porteria_cero_pct',
+            'def_penaltis_parados_pct', 'def_errores_p90']),
+        ('dominio_area', 'Dominio del área', [
+            'def_blocajes_p90', 'def_blocajes_pct', 'def_centros_no_blocados_p90', 'def_despejes_punos_p90',
+            'def_salidas_libero_p90', 'def_salidas_libero_pct']),
+    ]),
+    ('construccion', 'Distribución', [
+        ('juego_pie', 'Juego con el pie', [
+            'of_pases_buenos_p90', 'of_pases_pct', 'of_pases_largos_p90', 'of_pases_largos_pct',
+            'of_saques_puerta_pct', 'of_envios_largos_p90', 'of_envios_largos_pct', 'of_progresivos_p90',
+            'of_participacion_pct']),
+        ('juego_mano', 'Juego con la mano', ['of_saques_mano_p90', 'of_saques_mano_pct']),
+    ]),
+    DISPONIBILIDAD,
+]
+
+
+def jerarquia_de(grupo: str) -> Jerarquia:
+    return JERARQUIA_PORTEROS if grupo == 'Porteros' else JERARQUIA
+
 
 # Peso de cada categoría en la nota global. Disponibilidad pesa siempre lo mismo (premia jugar mucho);
 # el resto se reparte según lo que se le pide a cada grupo de demarcación.
@@ -85,14 +113,14 @@ PESOS_GRUPO: Dict[str, Dict[str, float]] = {
     'Medios':      {'ataque': 0.15, 'construccion': 0.45, 'defensa': 0.30, 'balon_parado': 0.10},
     'Laterales':   {'ataque': 0.20, 'construccion': 0.30, 'defensa': 0.40, 'balon_parado': 0.10},
     'Centrales':   {'ataque': 0.05, 'construccion': 0.30, 'defensa': 0.55, 'balon_parado': 0.10},
-    'Porteros':    {'ataque': 0.00, 'construccion': 0.50, 'defensa': 0.40, 'balon_parado': 0.10},
+    'Porteros':    {'ataque': 0.00, 'construccion': 0.30, 'defensa': 0.70, 'balon_parado': 0.00},
 }
 
 # Métricas en las que menos es mejor
-MALUS = {'comp_disciplina_malus', 'def_goles_encajados_p90'}
+MALUS = {'comp_disciplina_malus', 'def_goles_encajados_p90', 'def_errores_p90', 'def_centros_no_blocados_p90'}
 # Métricas de volumen o contexto que NO se corrigen por minutos (ya miden cuánto juega o son de temporada)
 SIN_CORRECCION = {'disp_partidos', 'comp_minutos', 'disp_minutos_equipo_pct', 'comp_titular_pct',
                   'comp_capitan', 'comp_regularidad', 'comp_polivalencia_demarcacion', 'of_saque_banda_largo_max'}
 
 CATEGORIAS = [c for c, _, _ in JERARQUIA]
-METRICA_SUB = {m: (c, s) for c, _, subs in JERARQUIA for s, _, ms in subs for m in ms}
+METRICA_SUB = {m: (c, s) for jer in (JERARQUIA, JERARQUIA_PORTEROS) for c, _, subs in jer for s, _, ms in subs for m in ms}

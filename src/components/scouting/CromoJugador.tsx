@@ -79,25 +79,10 @@ export const CromoJugador: React.FC<CromoPlayerProps> = ({
     subs: ["CM", "RW"],
   };
 
-  // Convert secondary positions to valid 2-3 letter abbreviations
-  const rawSubs =
-    j.demarcacionesSecundarias && j.demarcacionesSecundarias.length > 0
-      ? j.demarcacionesSecundarias
-      : demInfo.subs;
-
-  const secondaryPositions = rawSubs
+  const secondaryPositions: string[] = (j.demarcacionesSecundarias || [])
     .map(toShortCode)
-    .filter((code) => code && code !== demInfo.code)
+    .filter((code) => Boolean(code) && code !== demInfo.code)
     .slice(0, 2);
-
-  // If we still need secondary positions, pull from default subs
-  if (secondaryPositions.length < 2) {
-    demInfo.subs.forEach((sub) => {
-      if (secondaryPositions.length < 2 && sub !== demInfo.code && !secondaryPositions.includes(sub)) {
-        secondaryPositions.push(sub);
-      }
-    });
-  }
 
   const rawScore = j.score_general ? Number(j.score_general) : 7.5;
   const ovr = Math.min(99, Math.max(50, Math.round(48 + rawScore * 4.6)));
@@ -221,26 +206,29 @@ export const CromoJugador: React.FC<CromoPlayerProps> = ({
       }}
     >
       {/* Secondary Positions Tab (EA FC Style Gold Badge) */}
-      <div
-        className="absolute top-[82px] -right-2.5 z-30 flex flex-col items-center justify-center px-2 py-1.5 min-w-[36px] shadow-xl transition-transform duration-200 hover:scale-105"
-        style={{
-          background:
-            "linear-gradient(135deg, #fef08a 0%, #facc15 35%, #eab308 70%, #ca8a04 100%)",
-          clipPath:
-            "polygon(0% 0%, 82% 0%, 100% 18%, 100% 82%, 82% 100%, 0% 100%)",
-          borderRight: "1px solid rgba(254, 240, 138, 0.9)",
-          boxShadow:
-            "0 4px 12px rgba(202, 138, 4, 0.45), 0 2px 4px rgba(0, 0, 0, 0.3)",
-        }}
-      >
-        <span className="font-black text-[11px] leading-tight text-gray-900 drop-shadow-[0_1px_1px_rgba(255,255,255,0.6)]">
-          {secondaryPositions[0] || "CAM"}
-        </span>
-        <div className="w-4/5 h-[1.5px] bg-amber-700/30 my-0.5 rounded-full" />
-        <span className="font-black text-[11px] leading-tight text-gray-900 drop-shadow-[0_1px_1px_rgba(255,255,255,0.6)]">
-          {secondaryPositions[1] || "RW"}
-        </span>
-      </div>
+      {secondaryPositions.length > 0 && (
+        <div
+          className="absolute top-[82px] -right-2.5 z-30 flex flex-col items-center justify-center px-2 py-1.5 min-w-[36px] shadow-xl transition-transform duration-200 hover:scale-105"
+          style={{
+            background:
+              "linear-gradient(135deg, #fef08a 0%, #facc15 35%, #eab308 70%, #ca8a04 100%)",
+            clipPath:
+              "polygon(0% 0%, 82% 0%, 100% 18%, 100% 82%, 82% 100%, 0% 100%)",
+            borderRight: "1px solid rgba(254, 240, 138, 0.9)",
+            boxShadow:
+              "0 4px 12px rgba(202, 138, 4, 0.45), 0 2px 4px rgba(0, 0, 0, 0.3)",
+          }}
+        >
+          {secondaryPositions.map((pos, idx) => (
+            <React.Fragment key={pos}>
+              {idx > 0 && <div className="w-4/5 h-[1.5px] bg-amber-700/30 my-0.5 rounded-full" />}
+              <span className="font-black text-[11px] leading-tight text-gray-900 drop-shadow-[0_1px_1px_rgba(255,255,255,0.6)]">
+                {pos}
+              </span>
+            </React.Fragment>
+          ))}
+        </div>
+      )}
 
       {/* Main Card Shape */}
       <div

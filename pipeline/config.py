@@ -34,6 +34,11 @@ MIN_MINUTOS_TEMPORADA = 90
 # Corrección por minutos de las notas 0-100: cada métrica p90 se acerca a la media de su grupo de demarcación
 # como si la jugadora tuviera K minutos más jugados a ritmo medio. Más K = más castigo a quien juega poco.
 K_MINUTOS_CONFIANZA = int(os.environ.get("SCOUTING_K_MINUTOS", "900"))
+# Escala de las notas 0-100 (subcategoría, categoría y global): relativas a la media de su grupo en la liga.
+# La jugadora media saca NOTA_MEDIA_LIGA y cada desviación típica suma/resta NOTA_DESVIACION puntos.
+# Con 62/14: ~28% >= 70 (verde), ~53% entre 50 y 70 (naranja), ~19% < 50 (rojo).
+NOTA_MEDIA_LIGA = 62.0
+NOTA_DESVIACION = 14.0
 # Grupos de demarcación con menos jugadoras que esto se comparan con toda la liga
 MIN_JUGADORAS_GRUPO = 5
 

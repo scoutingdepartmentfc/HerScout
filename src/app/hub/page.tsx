@@ -10,6 +10,7 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@
 import { LoadingState, EmptyState, ErrorState } from "@/components/ui/StatusStates";
 import { Modal } from "@/components/ui/Modal";
 import { Input, Select } from "@/components/ui/Input";
+import { notaClases } from "@/lib/notaColor";
 import {
   TrendingUp,
   FileSpreadsheet,
@@ -206,10 +207,10 @@ export default function HubPage() {
                         <TableCell className="font-mono text-xs">{p.minutes} mins</TableCell>
                         <TableCell>
                           <div className="flex items-center gap-1.5">
-                            <span className="font-bold text-emerald-400">{p.rating}</span>
+                            <span className={`font-bold ${notaClases(parseFloat(p.rating) * 10).text}`}>{p.rating}</span>
                             <div className="w-12 h-1.5 bg-navy-800 rounded-full overflow-hidden">
                               <div
-                                className="h-full bg-emerald-400 rounded-full"
+                                className={`h-full rounded-full ${notaClases(parseFloat(p.rating) * 10).bar}`}
                                 style={{ width: `${Math.min(100, (parseFloat(p.rating) / 10) * 100)}%` }}
                               />
                             </div>

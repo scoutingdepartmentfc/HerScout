@@ -1,5 +1,6 @@
 // Categories, sub-categories and metrics. Same ids and keys as pipeline/categorias.py (single source of truth).
-// Notes 0-100 are computed by the pipeline (percentile within the position group, corrected by minutes)
+// Notes 0-100 are computed by the pipeline relative to the league average of the position group
+// (average player ≈ 62; percentile corrected by minutes, then standardised)
 // and arrive in radar_data.metricas as `_cat_<id>` and `_sub_<id>`: [note0_100, note0_10].
 // Every metric arrives as `<key>`: [value (per 90 or %), note0_10].
 
@@ -27,6 +28,39 @@ export type Metricas = Record<string, [number, number]>;
 
 const m = (key: string, name: string, isPct = false): MetricDef => ({ key, name, isPct });
 
+const AVAILABILITY: CategoryDef = {
+    id: "disponibilidad",
+    name: "Availability",
+    color: "#06b6d4",
+    noteKey: "nota_disponibilidad",
+    subcategories: [
+      {
+        id: "participacion",
+        name: "Participation",
+        metrics: [
+          m("disp_partidos", "Matches played"),
+          m("comp_minutos", "Minutes played"),
+          m("disp_minutos_equipo_pct", "% of team minutes played", true),
+          m("comp_titular_pct", "Starts %", true),
+        ],
+      },
+      {
+        id: "fiabilidad",
+        name: "Reliability",
+        metrics: [
+          m("comp_regularidad", "Overall consistency"),
+          m("comp_regularidad_min90", "Consistency per 90"),
+          m("comp_capitan", "Captaincy"),
+          m("comp_disciplina_malus", "Discipline (cards/fouls malus)"),
+          m("comp_polivalencia_demarcacion", "Positional versatility"),
+          m("of_polivalencia", "Versatility"),
+          m("of_regular_polivalencia", "Consistency across positions"),
+        ],
+      },
+    ],
+  };
+
+// Outfield players
 export const METRICS_HIERARCHY: CategoryDef[] = [
   {
     id: "ataque",
@@ -138,21 +172,6 @@ export const METRICS_HIERARCHY: CategoryDef[] = [
     noteKey: "nota_defensa",
     subcategories: [
       {
-        id: "porteria",
-        name: "Goalkeeping",
-        metrics: [
-          m("def_paradas_p90", "Total saves"),
-          m("def_goles_encajados_p90", "Goals conceded"),
-          m("def_paradas_pct", "Save percentage %", true),
-          m("def_paradas_area_p90", "Saves inside the box"),
-          m("def_paradas_fuera_area_p90", "Saves outside the box"),
-          m("def_paradas_ocasiones_claras_p90", "Saves from big chances"),
-          m("def_despejes_punos_p90", "Punches"),
-          m("def_salidas_libero_p90", "Sweeper keeper actions"),
-          m("def_porteria_cero_pct", "Clean sheets %", true),
-        ],
-      },
-      {
         id: "recuperacion",
         name: "Recoveries",
         metrics: [
@@ -245,38 +264,91 @@ export const METRICS_HIERARCHY: CategoryDef[] = [
       },
     ],
   },
+  AVAILABILITY,
+];
+
+// Goalkeepers: their own metrics (pipeline JERARQUIA_PORTEROS). Same category ids / nota_* columns:
+// defensa = Goalkeeping, construccion = Distribution. No attack or set pieces.
+export const GOALKEEPER_HIERARCHY: CategoryDef[] = [
   {
-    id: "disponibilidad",
-    name: "Availability",
-    color: "#06b6d4",
-    noteKey: "nota_disponibilidad",
+    id: "defensa",
+    name: "Goalkeeping",
+    color: "#f59e0b",
+    noteKey: "nota_defensa",
     subcategories: [
       {
-        id: "participacion",
-        name: "Participation",
+        id: "paradas",
+        name: "Shot Stopping",
         metrics: [
-          m("disp_partidos", "Matches played"),
-          m("comp_minutos", "Minutes played"),
-          m("disp_minutos_equipo_pct", "% of team minutes played", true),
-          m("comp_titular_pct", "Starts %", true),
+          m("def_paradas_p90", "Total saves"),
+          m("def_paradas_pct", "Save percentage %", true),
+          m("def_paradas_area_p90", "Saves inside the box"),
+          m("def_paradas_fuera_area_p90", "Saves outside the box"),
+          m("def_paradas_ocasiones_claras_p90", "Saves from big chances"),
+          m("def_goles_encajados_p90", "Goals conceded"),
+          m("def_porteria_cero_pct", "Clean sheets %", true),
+          m("def_penaltis_parados_pct", "Penalties saved %", true),
+          m("def_errores_p90", "Errors leading to shot/goal"),
         ],
       },
       {
-        id: "fiabilidad",
-        name: "Reliability",
+        id: "dominio_area",
+        name: "Box Control",
         metrics: [
-          m("comp_regularidad", "Overall consistency"),
-          m("comp_regularidad_min90", "Consistency per 90"),
-          m("comp_capitan", "Captaincy"),
-          m("comp_disciplina_malus", "Discipline (cards/fouls malus)"),
-          m("comp_polivalencia_demarcacion", "Positional versatility"),
-          m("of_polivalencia", "Versatility"),
-          m("of_regular_polivalencia", "Consistency across positions"),
+          m("def_blocajes_p90", "High claims"),
+          m("def_blocajes_pct", "High claim success %", true),
+          m("def_centros_no_blocados_p90", "Crosses not claimed"),
+          m("def_despejes_punos_p90", "Punches"),
+          m("def_salidas_libero_p90", "Sweeper keeper actions"),
+          m("def_salidas_libero_pct", "Sweeper keeper success %", true),
         ],
       },
     ],
   },
+  {
+    id: "construccion",
+    name: "Distribution",
+    color: "#3b82f6",
+    noteKey: "nota_construccion",
+    subcategories: [
+      {
+        id: "juego_pie",
+        name: "Distribution with Feet",
+        metrics: [
+          m("of_pases_buenos_p90", "Accurate passes"),
+          m("of_pases_pct", "Pass accuracy %", true),
+          m("of_pases_largos_p90", "Long passes"),
+          m("of_pases_largos_pct", "Long pass accuracy %", true),
+          m("of_saques_puerta_pct", "Goal kick accuracy %", true),
+          m("of_envios_largos_p90", "Accurate launches"),
+          m("of_envios_largos_pct", "Launch accuracy %", true),
+          m("of_progresivos_p90", "Progressive passes"),
+          m("of_participacion_pct", "Involvement in play %", true),
+        ],
+      },
+      {
+        id: "juego_mano",
+        name: "Distribution with Hands",
+        metrics: [
+          m("of_saques_mano_p90", "Accurate throws"),
+          m("of_saques_mano_pct", "Throw accuracy %", true),
+        ],
+      },
+    ],
+  },
+  AVAILABILITY,
 ];
+
+export function isGoalkeeper(grupo?: string | null, position?: string | null): boolean {
+  if (grupo) return grupo === "Porteros";
+  const p = (position || "").toLowerCase();
+  return p.includes("porter") || p.includes("goalkeeper") || p === "gk";
+}
+
+/** Hierarchy that applies to a player, by pipeline position group (grupo_demarcacion) */
+export function hierarchyFor(grupo?: string | null, position?: string | null): CategoryDef[] {
+  return isGoalkeeper(grupo, position) ? GOALKEEPER_HIERARCHY : METRICS_HIERARCHY;
+}
 
 /** Sub-category note 0-100 (null = no data: its metrics do not exist in this season, e.g. no eventing) */
 export function subcategoryNote(sub: SubcategoryDef, metricas: Metricas): number | null {

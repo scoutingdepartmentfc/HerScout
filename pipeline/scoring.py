@@ -16,13 +16,16 @@ todas las métricas para todos los jugadores, comparadas con la media de su liga
 """
 
 import json
+from statistics import NormalDist
 from typing import Dict, List, Tuple
 
 import numpy as np
 import pandas as pd
 
-from .categorias import CATEGORIAS, JERARQUIA, MALUS, METRICA_SUB, PESO_DISPONIBILIDAD, PESOS_GRUPO, SIN_CORRECCION
-from .config import K_MINUTOS_CONFIANZA, MIN_JUGADORAS_GRUPO, MIN_MINUTOS_TEMPORADA
+from .categorias import (CATEGORIAS, JERARQUIA, JERARQUIA_PORTEROS, MALUS, METRICA_SUB, PESO_DISPONIBILIDAD,
+                         PESOS_GRUPO, SIN_CORRECCION)
+from .config import (K_MINUTOS_CONFIANZA, MIN_JUGADORAS_GRUPO, MIN_MINUTOS_TEMPORADA, NOTA_DESVIACION,
+                     NOTA_MEDIA_LIGA)
 
 PESOS = {'score_ofensivo': 0.4, 'score_defensivo': 0.4, 'score_comportamiento': 0.1, 'score_abp': 0.1}
 NOTA_COLS = ['nota_global'] + [f'nota_{c}' for c in CATEGORIAS]
@@ -31,7 +34,7 @@ SCORE_COLS = ['score_general', 'score_ofensivo', 'score_defensivo', 'score_compo
 # Agregación: suma (no promediar) / media simple / resto media ponderada por minutos
 SUM_METRICS = {'comp_importancia', 'comp_minutos', 'comp_capitan'}
 MEAN_METRICS = {'comp_titular_pct', 'comp_regularidad_min90', 'comp_polivalencia_demarcacion', 'def_porteria_cero_pct'}
-MALUS_METRICS = {'comp_disciplina_malus', 'def_goles_encajados_p90'}
+MALUS_METRICS = set(MALUS)
 
 # Columnas nativas de player_match_stats que se agregan a p90 en player_season_stats
 CONTEO_COLS = ['goals', 'assists', 'xg', 'xa', 'xca', 'passes_completed', 'passes_total', 'progressive_passes',
@@ -210,6 +213,27 @@ def _percentil_0_100(serie: pd.Series, invert: bool = False) -> pd.Series:
     return ((r - 1) / (len(validos) - 1) * 100).reindex(serie.index)
 
 
+def _relativa_liga(serie: pd.Series, grupos: pd.Series) -> pd.Series:
+    """Nota 0-100 relativa a la media del grupo en la liga: NOTA_MEDIA_LIGA + NOTA_DESVIACION * z,
+    recortada a [1, 99]. Grupos de menos de 3 jugadoras (o sin varianza) quedan en la media. NaN sigue NaN."""
+    def escalar(g: pd.Series) -> pd.Series:
+        v = g.dropna()
+        if len(v) < 3 or v.std(ddof=0) < 1e-9:
+            return g.where(g.isna(), NOTA_MEDIA_LIGA)
+        return (NOTA_MEDIA_LIGA + NOTA_DESVIACION * (g - v.mean()) / v.std(ddof=0)).clip(1, 99)
+    return serie.groupby(grupos, group_keys=False).apply(escalar).reindex(serie.index)
+
+
+_INV_NORMAL = np.vectorize(NormalDist().inv_cdf)
+
+
+def _percentil_a_nota(pct: pd.DataFrame) -> pd.DataFrame:
+    """Percentil 0-100 de una métrica → misma escala que las notas (la jugadora mediana = NOTA_MEDIA_LIGA)."""
+    p = (pct / 100).clip(0.01, 0.99)
+    z = pd.DataFrame(_INV_NORMAL(p.fillna(0.5).to_numpy(dtype=float)), index=pct.index, columns=pct.columns)
+    return (NOTA_MEDIA_LIGA + NOTA_DESVIACION * z).clip(1, 99).where(pct.notna())
+
+
 def puntuar_categorias(df_temp: pd.DataFrame) -> pd.DataFrame:
     """
     Notas 0-100 por métrica, subcategoría, categoría y global (ver pipeline/categorias.py).
@@ -217,13 +241,16 @@ def puntuar_categorias(df_temp: pd.DataFrame) -> pd.DataFrame:
        cerca de la media de su grupo; con muchos minutos manda su propio valor.
     2. Percentil 0-100 frente a su grupo de demarcación en la liga-temporada (toda la liga si el grupo es pequeño).
     3. Subcategoría = media de sus métricas; categoría = media de sus subcategorías; sin datos → NaN.
+       Las porteras usan su propia jerarquía (JERARQUIA_PORTEROS); el resto, JERARQUIA.
     4. Global = media ponderada de categorías: Disponibilidad PESO_DISPONIBILIDAD y el resto según el grupo.
+    5. Subcategorías, categorías y global se expresan respecto a la media de su grupo en la liga
+       (media = NOTA_MEDIA_LIGA, ver _relativa_liga). Las notas por métrica, igual desde su percentil.
     """
     df = df_temp.copy()
     mins = df['minutes_played'].astype(float)
     grupos = df['grupo_demarcacion'].where(
-        df.groupby('grupo_demarcacion')['player_id'].transform('size') >= MIN_JUGADORAS_GRUPO, '_liga')
-    notas_met = {}
+        df.groupby('grupo_demarcacion')['player_id'].transform('size') >= MIN_JUGADORAS_GRUPO, '_liga').fillna('_liga')
+    pcts = {}
     for c in METRICA_SUB:
         if c not in df.columns:
             continue
@@ -231,18 +258,26 @@ def puntuar_categorias(df_temp: pd.DataFrame) -> pd.DataFrame:
         if c not in SIN_CORRECCION:
             media = v.groupby(grupos).transform('mean')
             v = (mins * v + K_MINUTOS_CONFIANZA * media) / (mins + K_MINUTOS_CONFIANZA)
-        notas_met[c] = v.groupby(grupos, group_keys=False).apply(lambda g: _percentil_0_100(g, c in MALUS))
-    notas_met = pd.DataFrame(notas_met, index=df.index)
+        pcts[c] = v.groupby(grupos, group_keys=False).apply(lambda g: _percentil_0_100(g, c in MALUS))
+    pcts = pd.DataFrame(pcts, index=df.index)
+    notas_met = _percentil_a_nota(pcts)
 
-    subs, cats = {}, {}
-    for cat, _, lista in JERARQUIA:
-        cols_sub = []
-        for sub, _, ms in lista:
-            presentes = [m for m in ms if m in notas_met.columns]
-            subs[sub] = notas_met[presentes].mean(axis=1) if presentes else pd.Series(np.nan, index=df.index)
-            cols_sub.append(sub)
-        cats[cat] = pd.DataFrame({k: subs[k] for k in cols_sub}).mean(axis=1)
-    subs, cats = pd.DataFrame(subs), pd.DataFrame(cats)
+    es_portera = df['grupo_demarcacion'] == 'Porteros'
+    subs: Dict[str, pd.Series] = {}
+    cats = {c: pd.Series(np.nan, index=df.index) for c in CATEGORIAS}
+    for jerarquia, mask in ((JERARQUIA, ~es_portera), (JERARQUIA_PORTEROS, es_portera)):
+        if not mask.any():
+            continue
+        for cat, _, lista in jerarquia:
+            cols_sub = []
+            for sub, _, ms in lista:
+                presentes = [m for m in ms if m in pcts.columns]
+                subs.setdefault(sub, pd.Series(np.nan, index=df.index))
+                if presentes:
+                    subs[sub][mask] = pcts.loc[mask, presentes].mean(axis=1)
+                cols_sub.append(sub)
+            cats[cat][mask] = pd.DataFrame({k: subs[k][mask] for k in cols_sub}).mean(axis=1)
+    subs, cats = pd.DataFrame(subs, index=df.index), pd.DataFrame(cats, index=df.index)
 
     def nota_global(i):
         pesos = {k: w * (1 - PESO_DISPONIBILIDAD) for k, w in PESOS_GRUPO.get(df.at[i, 'grupo_demarcacion'],
@@ -252,7 +287,10 @@ def puntuar_categorias(df_temp: pd.DataFrame) -> pd.DataFrame:
         total = sum(validos.values())
         return sum(cats.at[i, k] * w for k, w in validos.items()) / total if total else np.nan
 
-    df['nota_global'] = [nota_global(i) for i in df.index]
+    glob = pd.Series([nota_global(i) for i in df.index], index=df.index, dtype=float)
+    df['nota_global'] = _relativa_liga(glob, grupos)
+    cats = cats.apply(lambda col: _relativa_liga(col, grupos))
+    subs = subs.apply(lambda col: _relativa_liga(col, grupos))
     for cat in CATEGORIAS:
         df[f'nota_{cat}'] = cats[cat]
     df['_notas_met'] = [notas_met.loc[i].to_dict() for i in df.index]
@@ -267,18 +305,18 @@ def puntuar_temporada(df_temp: pd.DataFrame) -> pd.DataFrame:
     df_temp = puntuar_categorias(df_temp)
     cols = metric_columns(df_temp)
     # Columnas 0-10 de siempre (ranking y listados) a partir de las notas 0-100 por categoría
-    a10 = lambda s: (s / 10).round(2)
-    df_temp['score_general'] = a10(df_temp['nota_global'].fillna(50))
-    df_temp['score_ofensivo'] = a10(df_temp[['nota_ataque', 'nota_construccion']].mean(axis=1).fillna(50))
-    df_temp['score_defensivo'] = a10(df_temp['nota_defensa'].fillna(50))
-    df_temp['score_abp'] = a10(df_temp['nota_balon_parado'].fillna(50))
-    df_temp['score_comportamiento'] = a10(df_temp['nota_disponibilidad'].fillna(50))
+    a10 = lambda s: (s.fillna(NOTA_MEDIA_LIGA) / 10).round(2)
+    df_temp['score_general'] = a10(df_temp['nota_global'])
+    df_temp['score_ofensivo'] = a10(df_temp[['nota_ataque', 'nota_construccion']].mean(axis=1))
+    df_temp['score_defensivo'] = a10(df_temp['nota_defensa'])
+    df_temp['score_abp'] = a10(df_temp['nota_balon_parado'])
+    df_temp['score_comportamiento'] = a10(df_temp['nota_disponibilidad'])
     puntos = df_temp[SCORE_COLS]
     for sc in SCORE_COLS:
         pct = puntos[sc].rank(pct=True, method='average') * 99 if len(df_temp) > 1 else 50.0
         df_temp[sc.replace('score_', 'percentile_')] = pct.round(2) if len(df_temp) > 1 else pct
-    # Nota de cada métrica (0-10): la de su categoría (percentil corregido por minutos) o, si no está en la
-    # jerarquía, la escala clásica frente a la liga
+    # Nota de cada métrica (0-10): la de su categoría (percentil corregido por minutos, en la escala de la liga)
+    # o, si no está en la jerarquía, la escala clásica frente a la liga
     notas = pd.DataFrame({c: scale_0_10(df_temp[c], invert=c in MALUS_METRICS) for c in cols})
     for i in df_temp.index:
         for c, n in df_temp.at[i, '_notas_met'].items():
@@ -369,14 +407,16 @@ def calcular_temporada(df_partidos: pd.DataFrame) -> Tuple[pd.DataFrame, pd.Data
 
 
 def calcular_similares(filas: List[Dict], top: int = 10) -> Dict[str, List[Dict]]:
-    """Similitud coseno entre perfiles de notas (nota - 5) de todas las filas de temporada,
+    """Similitud coseno entre perfiles de notas (nota - media de la métrica) de todas las filas de temporada,
     de cualquier liga. Devuelve {player_id: [{player_id, sim}]} con los `top` más parecidos."""
     if len(filas) < 2:
         return {}
     cols = sorted({c for f in filas for c in (f.get('radar_data') or {}).get('metricas', {}) if not c.startswith('_')})
     ids = [f['player_id'] for f in filas]
-    m = np.array([[((f.get('radar_data') or {}).get('metricas', {}).get(c) or [0, 5.0])[1] - 5.0 for c in cols]
+    m = np.array([[((f.get('radar_data') or {}).get('metricas', {}).get(c) or [0, np.nan])[1] for c in cols]
                   for f in filas], dtype=np.float32)
+    # Centrado por métrica (sin dato = media): las notas de jerarquía y las de escala clásica tienen distinta media
+    m = np.nan_to_num(m - np.nanmean(m, axis=0, keepdims=True))
     m /= np.maximum(np.linalg.norm(m, axis=1, keepdims=True), 1e-6)
     out = {}
     for i0 in range(0, len(ids), 1000):

@@ -57,8 +57,8 @@ export async function GET(
       .from("player_season_stats")
       .select(`
         *,
-        seasons ( name ),
-        competitions ( name, logo_url ),
+        seasons ( name, start_date, end_date, is_active ),
+        competitions ( name, logo_url, country ),
         teams ( name, badge_url, league_name, league_logo_url )
       `)
       .eq("player_id", playerId)
@@ -66,18 +66,18 @@ export async function GET(
 
     // 3. Match log: every match played with its 0-9.9 rating, and the Soccerdonna career data
     const db = supabaseAdmin as any;
-    const [matchStats, matchScores, marketValues, transfers, nationalTeams, injuries] = await Promise.all([
+    const [matchStats, matchScores, marketValues, transfers, nationalTeams, injuries, physical] = await Promise.all([
       db.from("player_match_stats")
         .select(`
-          match_id, team_id, match_date, minutes_played, is_starter, goals, assists, demarcacion,
-          matches ( home_score, away_score, home_team_id, away_team_id,
+          match_id, team_id, competition_id, season_id, match_date, minutes_played, is_starter, goals, assists, demarcacion,
+          matches ( home_score, away_score, home_team_id, away_team_id, has_events, has_stats,
             home_team:teams!home_team_id ( id, name, badge_url ),
             away_team:teams!away_team_id ( id, name, badge_url ),
             competitions ( name ) )
         `)
         .eq("player_id", playerId)
         .order("match_date", { ascending: false })
-        .limit(60),
+        .limit(1000),
       db.from("player_match_scores")
         .select("match_id, score_general, score_ofensivo, score_defensivo, score_comportamiento, score_abp")
         .eq("player_id", playerId),
@@ -89,6 +89,10 @@ export async function GET(
         .eq("player_id", playerId).order("caps", { ascending: false }),
       db.from("player_injuries").select("season, from_date, until_date, days, injury")
         .eq("player_id", playerId).order("from_date", { ascending: false }),
+      // Football Manager physical attributes (1-20), imported with pipeline/fm_fisico.py
+      db.from("player_physical")
+        .select("acceleration, agility, balance, jumping_reach, natural_fitness, pace, stamina, strength, fm_name, fm_club, updated_at")
+        .eq("player_id", playerId).maybeSingle(),
     ]);
     const scoreByMatch = new Map<string, any>((matchScores.data || []).map((r: any) => [r.match_id, r]));
     const matchLog = (matchStats.data || []).map((r: any) => {
@@ -98,6 +102,10 @@ export async function GET(
       const sc = scoreByMatch.get(r.match_id);
       return {
         matchId: r.match_id,
+        seasonId: r.season_id,
+        competitionId: r.competition_id,
+        hasEvents: !!m.has_events,
+        hasStats: m.has_stats !== false,
         date: r.match_date,
         competition: m.competitions?.name,
         isHome,
@@ -116,30 +124,62 @@ export async function GET(
       };
     });
 
-    // Extract detailed metric map from stats row / radar_data
-    const seasonRow = statsRes.data?.[0] || null;
-    let metricasMap: Record<string, [number, number]> = {};
+    // Opta data available per (competition, season): matches played, how many with eventing / matchstats
+    const coverageKey = (comp: string, season: string) => `${comp}|${season}`;
+    const coverage = new Map<string, { matches: number; minutes: number; withEvents: number; withStats: number }>();
+    for (const r of matchStats.data || []) {
+      const k = coverageKey(r.competition_id, r.season_id);
+      const c = coverage.get(k) || { matches: 0, minutes: 0, withEvents: 0, withStats: 0 };
+      c.matches += 1;
+      c.minutes += Number(r.minutes_played) || 0;
+      if (r.matches?.has_events) c.withEvents += 1;
+      if (r.matches?.has_stats !== false) c.withStats += 1;
+      coverage.set(k, c);
+    }
 
-    if (seasonRow) {
-      // 1. If radar_data has raw metric breakdown from Opta
-      if (seasonRow.radar_data?.metricas) {
-        metricasMap = seasonRow.radar_data.metricas;
-      } else {
-        // Fallback from columns
-        Object.keys(seasonRow).forEach((k) => {
-          if (
-            k.startsWith("of_") ||
-            k.startsWith("def_") ||
-            k.startsWith("abp_") ||
-            k.startsWith("comp_")
-          ) {
-            const valP90 = Number(seasonRow[k]) || 0;
-            const score = Math.min(99, Math.max(45, Math.round(50 + valP90 * 6.5)));
-            metricasMap[k] = [valP90, score];
-          }
+    // One entry per season with Opta data, latest first. Seasons where she played too few minutes for a
+    // season rating (pipeline MIN_MINUTOS_TEMPORADA) still appear, without ratings.
+    const seasonStats: any[] = (statsRes.data || []).map((s: any) => ({
+      ...s,
+      coverage: coverage.get(coverageKey(s.competition_id, s.season_id)) || null,
+    }));
+    const conFila = new Set(seasonStats.map((s) => coverageKey(s.competition_id, s.season_id)));
+    const sinFila = Array.from(coverage.entries()).filter(([k]) => !conFila.has(k));
+    if (sinFila.length) {
+      const seasonIds = sinFila.map(([k]) => k.split("|")[1]);
+      const { data: seasonsInfo } = await db
+        .from("seasons")
+        .select("id, name, start_date, end_date, is_active, competitions ( name, logo_url, country )")
+        .in("id", seasonIds);
+      const info = new Map<string, any>((seasonsInfo || []).map((r: any) => [r.id, r]));
+      for (const [k, c] of sinFila) {
+        const [competitionId, seasonId] = k.split("|");
+        const si = info.get(seasonId);
+        seasonStats.push({
+          id: k,
+          competition_id: competitionId,
+          season_id: seasonId,
+          seasons: si ? { name: si.name, start_date: si.start_date, end_date: si.end_date, is_active: si.is_active } : null,
+          competitions: si?.competitions || null,
+          matches_played: c.matches,
+          minutes_played: c.minutes,
+          coverage: c,
+          sinNotas: true,
         });
       }
     }
+    seasonStats.sort((a, b) =>
+      String(b.seasons?.start_date || "").localeCompare(String(a.seasons?.start_date || "")) ||
+      (b.minutes_played || 0) - (a.minutes_played || 0)
+    );
+
+    const seasonRow = seasonStats.find((s) => !s.sinNotas) || null;
+    // Only real metrics computed by the pipeline (no invented notes when radar_data is missing)
+    const metricasMap: Record<string, [number, number]> = seasonRow?.radar_data?.metricas || {};
+
+    // All seasons together (default view): matches, minutes and Opta coverage are summed; ratings, metric
+    // values and metric notes are averaged weighted by the minutes of each season that has them.
+    const allSeasons = seasonStats.length > 1 ? agregarTemporadas(seasonStats) : null;
 
     // Calculate played positions from matchLog to know all positions she actually plays
     const posCounts: Record<string, { min: number; pj: number }> = {};
@@ -152,8 +192,21 @@ export async function GET(
       }
     });
 
+    // Total minutes across all positions played
+    const totalMinutesPlayed = Object.values(posCounts).reduce((acc, curr) => acc + (curr.min || 0), 0);
+
     // Positions sorted by most minutes played
     const sortedPlayedPositions = Object.entries(posCounts)
+      .sort((a, b) => b[1].min - a[1].min)
+      .map(([pos]) => pos);
+
+    // Only positions with >= 20% of total minutes played (excluding the primary most used position)
+    const qualifyingSecondaryPositions = Object.entries(posCounts)
+      .filter(([pos, data]) => {
+        if (pos === sortedPlayedPositions[0]) return false;
+        if (totalMinutesPlayed <= 0) return false;
+        return (data.min / totalMinutesPlayed) >= 0.20;
+      })
       .sort((a, b) => b[1].min - a[1].min)
       .map(([pos]) => pos);
 
@@ -177,7 +230,7 @@ export async function GET(
         contractUntil: p.contract_expires,
         joinedOn: p.joined_on,
         sdUrl: p.sd_url,
-        otherPositions: sortedPlayedPositions.slice(1).length ? sortedPlayedPositions.slice(1) : p.tm_positions_other || [],
+        otherPositions: qualifyingSecondaryPositions,
         sdPosition: p.tm_position_main,
         citizenship: p.citizenship || [],
         teamId: p.teams?.id,
@@ -187,15 +240,76 @@ export async function GET(
         leagueName: p.current_league_name || p.teams?.league_name || seasonRow?.competitions?.name || seasonRow?.teams?.league_name,
         leagueLogoUrl: p.current_league_logo_url || p.teams?.league_logo_url || seasonRow?.competitions?.logo_url || seasonRow?.teams?.league_logo_url,
       },
-      seasonStats: statsRes.data || [],
+      seasonStats,
+      allSeasons,
       matchLog,
       marketValues: marketValues.data || [],
       transfers: transfers.data || [],
       nationalTeams: nationalTeams.data || [],
       injuries: injuries.data || [],
+      physical: physical.error ? null : physical.data || null,
       metricas: metricasMap,
     });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
+}
+
+const NOTAS = ["nota_global", "nota_ataque", "nota_construccion", "nota_defensa", "nota_balon_parado",
+  "nota_disponibilidad", "percentile_general"];
+
+function agregarTemporadas(seasons: any[]) {
+  const conNotas = seasons.filter((s) => !s.sinNotas);
+  const mins = (s: any) => Number(s.minutes_played) || 0;
+  const media = (vals: [number, number][]) => {
+    const peso = vals.reduce((n, [, w]) => n + w, 0);
+    return peso > 0 ? vals.reduce((n, [v, w]) => n + v * w, 0) / peso : null;
+  };
+
+  const notas: Record<string, number | null> = {};
+  for (const k of NOTAS) {
+    notas[k] = media(conNotas.filter((s) => s[k] != null).map((s) => [Number(s[k]), mins(s)]));
+  }
+
+  const porMetrica: Record<string, { v: [number, number][]; n: [number, number][] }> = {};
+  for (const s of conNotas) {
+    for (const [k, par] of Object.entries<any>(s.radar_data?.metricas || {})) {
+      if (!Array.isArray(par)) continue;
+      const e = (porMetrica[k] ||= { v: [], n: [] });
+      if (par[0] != null) e.v.push([Number(par[0]), mins(s)]);
+      if (par[1] != null) e.n.push([Number(par[1]), mins(s)]);
+    }
+  }
+  const metricas: Record<string, [number, number]> = {};
+  for (const [k, e] of Object.entries(porMetrica)) {
+    const v = media(e.v);
+    const n = media(e.n);
+    if (v != null && n != null) metricas[k] = [Math.round(v * 1000) / 1000, Math.round(n * 100) / 100];
+  }
+
+  const coverage = { matches: 0, minutes: 0, withEvents: 0, withStats: 0 };
+  for (const s of seasons) {
+    if (!s.coverage) continue;
+    coverage.matches += s.coverage.matches;
+    coverage.minutes += s.coverage.minutes;
+    coverage.withEvents += s.coverage.withEvents;
+    coverage.withStats += s.coverage.withStats;
+  }
+  const principal = [...conNotas].sort((a, b) => mins(b) - mins(a))[0];
+
+  return {
+    id: "all",
+    competition_id: "all",
+    season_id: "all",
+    esTotal: true,
+    sinNotas: conNotas.length === 0,
+    competitions: { name: `${new Set(seasons.map((s) => s.competition_id)).size} competitions` },
+    seasons: { name: `All seasons (${seasons.length})` },
+    grupo_demarcacion: principal?.grupo_demarcacion ?? null,
+    matches_played: seasons.reduce((n, s) => n + (Number(s.matches_played) || 0), 0),
+    minutes_played: seasons.reduce((n, s) => n + mins(s), 0),
+    coverage,
+    ...notas,
+    radar_data: { metricas },
+  };
 }

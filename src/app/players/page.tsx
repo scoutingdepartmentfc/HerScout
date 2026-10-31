@@ -11,6 +11,7 @@ import { EmptyState, LoadingState } from "@/components/ui/StatusStates";
 import { EscudoEquipo } from "@/components/scouting/EscudoEquipo";
 import { Bandera } from "@/components/scouting/Bandera";
 import { Search, Filter, Bookmark, ArrowUpRight, Download, Check, Eye } from "lucide-react";
+import { notaClases } from "@/lib/notaColor";
 
 interface PlayerRow {
   id: string;
@@ -85,17 +86,8 @@ export default function PlayersDirectoryPage() {
       return <span className="text-muted-foreground/40 font-mono text-xs">—</span>;
     }
     const val = Math.round(score);
-    let colorClass = "bg-slate-800 text-slate-300 border-slate-700";
-    if (isGeneral) {
-      if (val >= 60) colorClass = "bg-amber-400/20 text-amber-300 border-amber-400/50 font-black shadow-sm shadow-amber-500/20";
-      else if (val >= 50) colorClass = "bg-sky-500/20 text-sky-300 border-sky-400/40 font-bold";
-      else colorClass = "bg-slate-800 text-slate-300 border-slate-700";
-    } else {
-      if (val >= 65) colorClass = "bg-emerald-500/15 text-emerald-400 border-emerald-500/30 font-bold";
-      else if (val >= 50) colorClass = "bg-sky-500/15 text-sky-300 border-sky-400/30";
-      else if (val >= 40) colorClass = "bg-amber-500/15 text-amber-300 border-amber-500/30";
-      else colorClass = "bg-rose-500/15 text-rose-300 border-rose-500/30";
-    }
+    // >= 70 green, 50-70 orange, < 50 red (ratings relative to the league average)
+    const colorClass = `${notaClases(val).badge} ${isGeneral ? "font-black" : "font-bold"}`;
 
     return (
       <span className={`inline-flex items-center justify-center min-w-[32px] px-2 py-0.5 rounded-md text-xs border tabular-nums font-mono ${colorClass}`}>

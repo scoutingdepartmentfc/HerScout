@@ -658,18 +658,35 @@ def metricas_matchstats(st: Dict[str, float], mins_played, titular_pct, veces_ca
         'abp_lanzador_corner_p90': p90(g('cornerTaken'), mins_played),
     }
 
-    # Portería (específicas de portera, desde matchstats)
-    if dem == 'Portero' or any(k in st for k in ('saves', 'goalsConceded', 'cleanSheet', 'savedIbox')):
+    # Portería (específicas de portera, desde matchstats). Solo para porteras: Opta da goalsConceded y
+    # cleanSheet a todas las jugadoras en el campo y no deben puntuar como portería a las de campo.
+    if dem == 'Portero':
+        # % sin intentos en el partido = NaN (no 0): la media de temporada ignora esos partidos
+        pct_nan = lambda num, den: float(num / den * 100) if den > 0 else np.nan
         m.update({
+            # Paradas
             'def_paradas_p90': p90(g('saves'), mins_played),
             'def_goles_encajados_p90': p90(g('goalsConceded'), mins_played),
-            'def_paradas_pct': pct_series(g('saves'), g('saves') + g('goalsConceded')),
+            'def_paradas_pct': pct_nan(g('saves'), g('saves') + g('goalsConceded')),
             'def_paradas_area_p90': p90(g('savedIbox'), mins_played),
             'def_paradas_fuera_area_p90': p90(g('savedObox'), mins_played),
             'def_paradas_ocasiones_claras_p90': p90(g('bigChanceSaves'), mins_played),
+            'def_porteria_cero_pct': 100.0 if g('cleanSheet') > 0 else 0.0,
+            'def_penaltis_parados_pct': pct_nan(g('penaltySave'), g('penaltyFaced')),
+            'def_errores_p90': p90(g('errorLeadToGoal') + g('errorLeadToShot'), mins_played),
+            # Dominio del área
+            'def_blocajes_p90': p90(g('goodHighClaim'), mins_played),
+            'def_blocajes_pct': pct_nan(g('goodHighClaim'), g('totalHighClaim')),
+            'def_centros_no_blocados_p90': p90(g('crossNotClaimed'), mins_played),
             'def_despejes_punos_p90': p90(g('punches'), mins_played),
             'def_salidas_libero_p90': p90(g('accurateKeeperSweeper') or g('totalKeeperSweeper'), mins_played),
-            'def_porteria_cero_pct': 100.0 if g('cleanSheet') > 0 else 0.0,
+            'def_salidas_libero_pct': pct_nan(g('accurateKeeperSweeper'), g('totalKeeperSweeper')),
+            # Distribución
+            'of_saques_puerta_pct': pct_nan(g('accurateGoalKicks'), g('goalKicks')),
+            'of_saques_mano_p90': p90(g('accurateKeeperThrows'), mins_played),
+            'of_saques_mano_pct': pct_nan(g('accurateKeeperThrows'), g('keeperThrows')),
+            'of_envios_largos_p90': p90(g('accurateLaunches'), mins_played),
+            'of_envios_largos_pct': pct_nan(g('accurateLaunches'), g('totalLaunches')),
         })
 
     return {k: float(v) for k, v in m.items()}

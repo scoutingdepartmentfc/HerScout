@@ -7,7 +7,11 @@ import { useThemeContext } from "@/context/ThemeContext";
 import { CromoJugador } from "@/components/scouting/CromoJugador";
 import { PosicionesVertical } from "@/components/scouting/PosicionesVertical";
 import { MarcadorEstadio } from "@/components/scouting/MarcadorEstadio";
-import { MetricasAcordeon } from "@/components/scouting/MetricasAcordeon";
+import { MetricsAccordion } from "@/components/scouting/MetricsAccordion";
+import { NotasResumen } from "@/components/scouting/NotasResumen";
+import { FisicoFM } from "@/components/scouting/FisicoFM";
+import { TemporadasOpta, CoberturaBadges, claveTemporada } from "@/components/scouting/TemporadasOpta";
+import { notaClases } from "@/lib/notaColor";
 import { Bandera } from "@/components/scouting/Bandera";
 import { EscudoEquipo } from "@/components/scouting/EscudoEquipo";
 import { MarketValueChart } from "@/components/scouting/MarketValueChart";
@@ -29,6 +33,7 @@ export default function PlayerProfilePage() {
   const [data, setData] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [seasonKey, setSeasonKey] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadPlayer() {
@@ -55,9 +60,18 @@ export default function PlayerProfilePage() {
   if (error || !data?.player) return <ErrorState title="Player Not Found" message={error || "Profile unavailable"} onRetry={() => window.location.reload()} />;
 
   const p = data.player;
-  const stats = data.seasonStats?.[0] || null;
-  const metricas = data.metricas || {};
-  const matchLog = data.matchLog || [];
+  // Seasons with Opta data (latest first); the selected one drives ratings, metrics and match log
+  // Default: all seasons accumulated (when there is more than one); any single season can be selected
+  const seasons: any[] = data.seasonStats || [];
+  const options: any[] = data.allSeasons ? [data.allSeasons, ...seasons] : seasons;
+  const selected = options.find((s) => claveTemporada(s) === seasonKey) || options[0] || null;
+  const selectedKey = selected ? claveTemporada(selected) : null;
+  const stats = selected && !selected.sinNotas ? selected : null;
+  const metricas = stats?.radar_data?.metricas || {};
+  const matchLog = (data.matchLog || []).filter(
+    (m: any) =>
+      !selected || selected.esTotal || (m.seasonId === selected.season_id && m.competitionId === selected.competition_id)
+  );
   const marketValues = data.marketValues || [];
   const transfers = data.transfers || [];
   const nationalTeams = data.nationalTeams || [];
@@ -67,7 +81,6 @@ export default function PlayerProfilePage() {
   const age = p.birthDate
     ? Math.floor((Date.now() - new Date(p.birthDate).getTime()) / (365.25 * 24 * 3600 * 1000))
     : null;
-  const fmtNota = (v: number | null | undefined) => (v == null ? "—" : Math.round(v));
   const fmtDate = (d: string | null | undefined) => (d ? new Date(d).toLocaleDateString("en-GB") : "—");
   const fmtValue = (v: number | null | undefined) =>
     v ? (v >= 1_000_000 ? `€${(v / 1_000_000).toFixed(2)}m` : `€${Math.round(v / 1000)}k`) : "—";
@@ -170,15 +183,7 @@ export default function PlayerProfilePage() {
   };
 
   const primaryEnglishPos = translatePosition(p.primaryPosition);
-  const secondaryPositionsList = (p.otherPositions?.length ? p.otherPositions : p.playedPositions?.slice(1) || []).slice(0, 2);
-
-  const notasGenerales = {
-    nota_ataque: stats?.nota_ataque ?? 0,
-    nota_construccion: stats?.nota_construccion ?? 0,
-    nota_defensa: stats?.nota_defensa ?? 0,
-    nota_balon_parado: stats?.nota_balon_parado ?? 0,
-    nota_disponibilidad: stats?.nota_disponibilidad ?? 0,
-  };
+  const secondaryPositionsList = (p.otherPositions || []).slice(0, 2);
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
@@ -239,18 +244,19 @@ export default function PlayerProfilePage() {
                   <span>{p.teamName}</span>
                 </span>
                 <span className="inline-flex items-center gap-2 px-2.5 py-1 rounded-md bg-sky-500/10 text-sky-300 font-semibold border border-sky-400/20 text-xs shadow-sm">
-                  {(p.leagueLogoUrl || stats?.competitions?.logo_url) && (
+                  {(p.leagueLogoUrl || selected?.competitions?.logo_url) && (
                     <img
-                      src={p.leagueLogoUrl || stats?.competitions?.logo_url}
+                      src={p.leagueLogoUrl || selected?.competitions?.logo_url}
                       alt=""
                       className="h-4.5 w-auto max-w-[20px] rounded-sm object-contain"
                     />
                   )}
-                  <span>{p.leagueName || stats?.competitions?.name || "Primera División Femenina"}</span>
+                  <span>{p.leagueName || selected?.competitions?.name || "—"}</span>
                 </span>
                 <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-400/10 text-amber-300 border border-amber-400/30">
-                  {stats?.seasons?.name || "2026/2027"}
+                  {selected?.seasons?.name || "No Opta season"}
                 </span>
+                {selected && <CoberturaBadges c={selected.coverage} />}
               </div>
 
               {/* 5-Column Quick Stats Row */}
@@ -272,12 +278,12 @@ export default function PlayerProfilePage() {
                 </div>
                 <div>
                   <div className="text-[11px] text-muted-foreground">Matches</div>
-                  <div className="font-semibold text-white text-sm mt-0.5">{stats?.matches_played ?? "—"}</div>
+                  <div className="font-semibold text-white text-sm mt-0.5">{selected?.matches_played ?? "—"}</div>
                 </div>
                 <div>
                   <div className="text-[11px] text-muted-foreground">Minutes</div>
                   <div className="font-semibold text-white text-sm mt-0.5 font-mono">
-                    {stats?.minutes_played ? `${stats.minutes_played}'` : "—"}
+                    {selected?.minutes_played ? `${selected.minutes_played}'` : "—"}
                   </div>
                 </div>
               </div>
@@ -406,7 +412,7 @@ export default function PlayerProfilePage() {
                         <div className="absolute inset-y-1.5 right-0 w-3 border-l border-y border-white/20" />
 
                         {/* Secondary Positions (translucent amber dots) */}
-                        {secCoords.map((sc, sIdx) => (
+                        {secCoords.map((sc: { x: number; y: number }, sIdx: number) => (
                           <div
                             key={`sec-${sIdx}`}
                             style={{ left: `${sc.x}%`, top: `${sc.y}%` }}
@@ -444,167 +450,29 @@ export default function PlayerProfilePage() {
           </div>
         </div>
 
-        {/* Section 2: Stadium Scoreboard Circular Cards (exact layout like Andreia de Jesus Jacinto) */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-          {/* Card 1: Nota general OVR */}
-          <div className="p-4 rounded-xl border border-border/60 bg-[#070e1e] flex flex-col items-center justify-center text-center">
-            <div className="relative w-24 h-24 flex items-center justify-center">
-              <svg className="w-24 h-24 -rotate-90" viewBox="0 0 36 36">
-                <path
-                  className="text-slate-800"
-                  strokeWidth="3.2"
-                  stroke="currentColor"
-                  fill="none"
-                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                />
-                <path
-                  className="text-sky-400"
-                  strokeDasharray={`${stats?.nota_global || 0}, 100`}
-                  strokeWidth="3.2"
-                  strokeLinecap="round"
-                  stroke="currentColor"
-                  fill="none"
-                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                />
-              </svg>
-              <div className="absolute flex flex-col items-center leading-none">
-                <span className="font-black text-2xl text-white">{fmtNota(stats?.nota_global)}</span>
-                <span className="text-[9px] text-muted-foreground mt-0.5">of 100</span>
-              </div>
-            </div>
-            <div className="mt-3 font-bold text-white text-sm">Overall rating</div>
-            <div className="text-[11px] text-muted-foreground mt-0.5">
-              Better than <span className="font-bold text-white">{stats?.percentile_general ?? "—"}%</span> of the league
-            </div>
-          </div>
+        {/* Seasons with Opta data and what data each one has */}
+        <TemporadasOpta seasons={options} selected={selectedKey} onSelect={setSeasonKey} />
 
-          {/* Card 2: Ofensivo */}
-          <div className="p-4 rounded-xl border border-border/60 bg-[#070e1e] flex flex-col justify-between">
-            <div className="flex items-center gap-3">
-              <div className="relative w-14 h-14 flex items-center justify-center shrink-0">
-                <svg className="w-14 h-14 -rotate-90" viewBox="0 0 36 36">
-                  <path className="text-slate-800" strokeWidth="3.5" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                  <path className="text-amber-400" strokeDasharray={`${stats?.nota_ataque || 0}, 100`} strokeWidth="3.5" strokeLinecap="round" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                </svg>
-                <span className="absolute font-black text-lg text-white">{fmtNota(stats?.nota_ataque)}</span>
-              </div>
-              <div>
-                <div className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">🎯 Phase</div>
-                <div className="font-bold text-white text-sm">Attack</div>
-              </div>
-            </div>
-            <div className="space-y-1.5 mt-3 pt-3 border-t border-border/40 text-[11px]">
-              <div className="flex justify-between text-muted-foreground">
-                <span className="truncate">Finishing & Goal Threat</span>
-                <span className="font-bold text-rose-400">24</span>
-              </div>
-              <div className="flex justify-between text-muted-foreground">
-                <span className="truncate">Chance Creation & Assists</span>
-                <span className="font-bold text-white">58</span>
-              </div>
-              <div className="flex justify-between text-muted-foreground">
-                <span className="truncate">Distribution & Passing</span>
-                <span className="font-bold text-white">67</span>
-              </div>
-              <div className="flex justify-between text-muted-foreground">
-                <span className="truncate">Progression & Dribbling</span>
-                <span className="font-bold text-white">49</span>
-              </div>
-            </div>
+        {/* Section 2: Overall + category ratings (relative to the league average) */}
+        {selected?.sinNotas ? (
+          <div className="rounded-xl border border-border/60 bg-[#070e1e] p-4 text-xs text-muted-foreground">
+            Not enough minutes this season for a season rating ({selected.minutes_played}&apos; played).
           </div>
-
-          {/* Card 3: Defensivo */}
-          <div className="p-4 rounded-xl border border-border/60 bg-[#070e1e] flex flex-col justify-between">
-            <div className="flex items-center gap-3">
-              <div className="relative w-14 h-14 flex items-center justify-center shrink-0">
-                <svg className="w-14 h-14 -rotate-90" viewBox="0 0 36 36">
-                  <path className="text-slate-800" strokeWidth="3.5" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                  <path className="text-white" strokeDasharray={`${stats?.nota_defensa || 0}, 100`} strokeWidth="3.5" strokeLinecap="round" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                </svg>
-                <span className="absolute font-black text-lg text-white">{fmtNota(stats?.nota_defensa)}</span>
-              </div>
-              <div>
-                <div className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">🛡️ Phase</div>
-                <div className="font-bold text-white text-sm">Defence</div>
-              </div>
-            </div>
-            <div className="space-y-1.5 mt-3 pt-3 border-t border-border/40 text-[11px]">
-              <div className="flex justify-between text-muted-foreground">
-                <span className="truncate">Tackles & Ground Duels</span>
-                <span className="font-bold text-white">44</span>
-              </div>
-              <div className="flex justify-between text-muted-foreground">
-                <span className="truncate">Recoveries & Intercep...</span>
-                <span className="font-bold text-white">46</span>
-              </div>
-              <div className="flex justify-between text-muted-foreground">
-                <span className="truncate">Aerial Duels</span>
-                <span className="font-bold text-rose-400">38</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Card 4: ABP (Balón Parado) */}
-          <div className="p-4 rounded-xl border border-border/60 bg-[#070e1e] flex flex-col justify-between">
-            <div className="flex items-center gap-3">
-              <div className="relative w-14 h-14 flex items-center justify-center shrink-0">
-                <svg className="w-14 h-14 -rotate-90" viewBox="0 0 36 36">
-                  <path className="text-slate-800" strokeWidth="3.5" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                  <path className="text-amber-400" strokeDasharray={`${stats?.nota_balon_parado || 0}, 100`} strokeWidth="3.5" strokeLinecap="round" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                </svg>
-                <span className="absolute font-black text-lg text-white">{fmtNota(stats?.nota_balon_parado)}</span>
-              </div>
-              <div>
-                <div className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">🚩 Set pieces</div>
-                <div className="font-bold text-white text-sm">Set Pieces</div>
-              </div>
-            </div>
-            <div className="space-y-1.5 mt-3 pt-3 border-t border-border/40 text-[11px]">
-              <div className="flex justify-between text-muted-foreground">
-                <span className="truncate">Set-Piece Delivery</span>
-                <span className="font-bold text-white">47</span>
-              </div>
-              <div className="flex justify-between text-muted-foreground">
-                <span className="truncate">Set-Piece Finishing</span>
-                <span className="font-bold text-rose-400">13</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Card 5: Comportamiento y Regularidad */}
-          <div className="p-4 rounded-xl border border-border/60 bg-[#070e1e] flex flex-col justify-between">
-            <div className="flex items-center gap-3">
-              <div className="relative w-14 h-14 flex items-center justify-center shrink-0">
-                <svg className="w-14 h-14 -rotate-90" viewBox="0 0 36 36">
-                  <path className="text-slate-800" strokeWidth="3.5" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                  <path className="text-slate-400" strokeDasharray={`${stats?.nota_disponibilidad || 0}, 100`} strokeWidth="3.5" strokeLinecap="round" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                </svg>
-                <span className="absolute font-black text-lg text-white">{fmtNota(stats?.nota_disponibilidad)}</span>
-              </div>
-              <div>
-                <div className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">📈 Consistency</div>
-                <div className="font-bold text-white text-sm leading-tight">Behaviour</div>
-              </div>
-            </div>
-            <div className="space-y-1.5 mt-3 pt-3 border-t border-border/40 text-[11px]">
-              <div className="flex justify-between text-muted-foreground">
-                <span className="truncate">Role & Continuity</span>
-                <span className="font-bold text-white">46</span>
-              </div>
-              <div className="flex justify-between text-muted-foreground">
-                <span className="truncate">Consistency & Discipline</span>
-                <span className="font-bold text-white">42</span>
-              </div>
-            </div>
-          </div>
-        </div>
+        ) : (
+          <NotasResumen stats={stats} metricas={metricas} position={p.primaryPosition} />
+        )}
       </section>
+
+      {/* Physical attributes (Football Manager) */}
+      <FisicoFM physical={data.physical || null} />
 
       {/* Match-by-match ratings (0-9.9, from Opta eventing + matchstats) */}
       <Card className="bg-[#0b1329]">
         <CardHeader className="py-3">
           <CardTitle className="text-sm">Match Ratings</CardTitle>
-          <CardDescription>Rating for every match played (0–10), latest first</CardDescription>
+          <CardDescription>
+            {selected ? `${selected.competitions?.name || ""} ${selected.seasons?.name || ""} · ` : ""}Rating for every match played (0–10), latest first
+          </CardDescription>
         </CardHeader>
         <CardContent className="p-0">
           {matchLog.length === 0 ? (
@@ -615,6 +483,12 @@ export default function PlayerProfilePage() {
                 <div key={m.matchId} className="px-4 py-2.5 flex items-center justify-between gap-3">
                   <div className="flex items-center gap-3 min-w-0">
                     <span className="font-mono text-[11px] text-muted-foreground w-20 shrink-0">{fmtDate(m.date)}</span>
+                    <span
+                      className={`text-[9px] font-bold w-6 shrink-0 ${m.hasEvents ? "text-emerald-400" : "text-sky-400"}`}
+                      title={m.hasEvents ? "Opta eventing + matchstats" : "Opta matchstats only"}
+                    >
+                      {m.hasEvents ? "EV" : "MS"}
+                    </span>
                     <span className="text-[10px] text-muted-foreground w-4 shrink-0">{m.isHome ? "H" : "A"}</span>
                     <EscudoEquipo teamId={m.opponent.id} badgeUrl={m.opponent.badgeUrl} name={m.opponent.name} size={18} />
                     <span className="truncate text-white">{m.opponent.name || "—"}</span>
@@ -674,7 +548,7 @@ export default function PlayerProfilePage() {
 
       {/* Full Hierarchical Metrics Accordion (6 Categories • 15 Subcategories • 150+ Metrics) */}
       <Card className="bg-[#070c18] border-border/80 p-5">
-        <MetricasAcordeon metricas={metricas} notasGenerales={notasGenerales} />
+        <MetricsAccordion metricas={metricas} grupo={stats?.grupo_demarcacion ?? p.grupoDemarcacion} position={p.primaryPosition} />
       </Card>
 
       {/* Positional Pitch & Season Breakdown */}
@@ -697,19 +571,27 @@ export default function PlayerProfilePage() {
             <CardDescription>Verified Opta performances per tournament</CardDescription>
           </CardHeader>
           <CardContent className="p-4 space-y-3">
-            {data.seasonStats.length === 0 ? (
+            {seasons.length === 0 ? (
               <p className="text-xs text-muted-foreground">No season log available for this profile.</p>
             ) : (
               <div className="divide-y divide-border/40 text-xs">
-                {data.seasonStats.map((s: any) => (
-                  <div key={s.id} className="py-3 flex items-center justify-between">
-                    <div>
+                {seasons.map((s: any) => (
+                  <button
+                    type="button"
+                    key={claveTemporada(s)}
+                    onClick={() => setSeasonKey(claveTemporada(s))}
+                    className={`w-full py-3 px-2 -mx-2 rounded flex items-center justify-between text-left hover:bg-white/[0.03] ${
+                      claveTemporada(s) === selectedKey ? "bg-primary/5" : ""
+                    }`}
+                  >
+                    <div className="space-y-1">
                       <div className="font-semibold text-white">
                         {s.competitions?.name || "—"}
                       </div>
                       <div className="text-[11px] text-muted-foreground">
-                        {s.seasons?.name || "—"} • {s.grupo_demarcacion}
+                        {s.seasons?.name || "—"}{s.grupo_demarcacion ? ` • ${s.grupo_demarcacion}` : ""}
                       </div>
+                      <CoberturaBadges c={s.coverage} />
                     </div>
                     <div className="flex items-center gap-6 text-right">
                       <div>
@@ -722,12 +604,12 @@ export default function PlayerProfilePage() {
                       </div>
                       <div>
                         <div className="text-muted-foreground text-[10px]">Rating</div>
-                        <div className="font-bold text-emerald-400 text-sm">
-                          {s.nota_global ? (s.nota_global / 10).toFixed(1) : "—"}
+                        <div className={`font-bold text-sm ${notaClases(s.nota_global).text}`}>
+                          {s.nota_global != null ? Math.round(s.nota_global) : "—"}
                         </div>
                       </div>
                     </div>
-                  </div>
+                  </button>
                 ))}
               </div>
             )}

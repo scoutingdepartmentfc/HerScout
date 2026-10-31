@@ -3,19 +3,15 @@
 import React, { useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import {
-  METRICS_HIERARCHY,
   Metricas,
   categoryNote,
+  hierarchyFor,
   subcategoryNote,
 } from "@/lib/metricsHierarchy";
+import { notaClases } from "@/lib/notaColor";
 
-// Same thresholds as the stadium scoreboard: >= 80 elite, >= 65 good, >= 50 average
-function noteColor(note: number) {
-  if (note >= 80) return { text: "text-emerald-400", bar: "bg-emerald-500", box: "border-emerald-500/30 bg-emerald-500/10" };
-  if (note >= 65) return { text: "text-lime-400", bar: "bg-lime-500", box: "border-lime-500/30 bg-lime-500/10" };
-  if (note >= 50) return { text: "text-amber-400", bar: "bg-amber-500", box: "border-amber-500/30 bg-amber-500/10" };
-  return { text: "text-red-400", bar: "bg-red-500", box: "border-red-500/20 bg-red-500/10" };
-}
+// >= 70 green, 50-70 orange, < 50 red (ratings relative to the league average)
+const noteColor = (note: number) => notaClases(note);
 
 function NoteBadge({ note, size = "md" }: { note: number | null; size?: "sm" | "md" | "lg" }) {
   if (note === null) {
@@ -52,15 +48,25 @@ const formatValue = (value: number, isPct?: boolean) => {
   return isPct ? `${rounded}%` : rounded;
 };
 
-export function MetricsAccordion({ metricas }: { metricas: Metricas }) {
-  const [openCat, setOpenCat] = useState<string | null>("ataque");
+export function MetricsAccordion({
+  metricas,
+  grupo,
+  position,
+}: {
+  metricas: Metricas;
+  grupo?: string | null;
+  position?: string | null;
+}) {
+  const hierarchy = hierarchyFor(grupo, position);
+  const [openCat, setOpenCat] = useState<string | null>(hierarchy[0]?.id ?? null);
   const [openSubs, setOpenSubs] = useState<Record<string, boolean>>({});
 
   return (
     <div className="space-y-2.5">
-      {METRICS_HIERARCHY.map((cat) => {
+      {hierarchy.map((cat) => {
         const isOpen = openCat === cat.id;
         const metricCount = cat.subcategories.reduce((n, s) => n + s.metrics.length, 0);
+        const available = cat.subcategories.reduce((n, s) => n + s.metrics.filter((x) => metricas[x.key]).length, 0);
         return (
           <div key={cat.id} className="rounded-lg border border-border/80 bg-navy-900/60 overflow-hidden">
             <button
@@ -78,7 +84,9 @@ export function MetricsAccordion({ metricas }: { metricas: Metricas }) {
                 </span>
                 <span className="text-sm font-bold text-white">
                   {cat.name}
-                  <span className="ml-2 text-[11px] font-medium text-muted-foreground">{metricCount} metrics</span>
+                  <span className="ml-2 text-[11px] font-medium text-muted-foreground" title="Metrics with Opta data for this player and season">
+                    {available}/{metricCount} metrics with data
+                  </span>
                 </span>
               </div>
               <div className="flex items-center gap-3">
@@ -91,6 +99,7 @@ export function MetricsAccordion({ metricas }: { metricas: Metricas }) {
               <div className="border-t border-border/60 bg-black/20 p-2.5 space-y-2">
                 {cat.subcategories.map((sub) => {
                   const subOpen = !!openSubs[sub.id];
+                  const withData = sub.metrics.filter((x) => metricas[x.key]);
                   return (
                     <div key={sub.id} className="rounded-md border border-border/60 bg-[#070c18]/70 overflow-hidden">
                       <button
@@ -102,14 +111,19 @@ export function MetricsAccordion({ metricas }: { metricas: Metricas }) {
                         <span className="flex items-center gap-2 text-xs font-semibold text-white">
                           <ChevronRight className={`w-3.5 h-3.5 text-muted-foreground transition-transform ${subOpen ? "rotate-90" : ""}`} />
                           {sub.name}
-                          <span className="text-[10px] font-normal text-muted-foreground">({sub.metrics.length})</span>
+                          <span className="text-[10px] font-normal text-muted-foreground">({withData.length}/{sub.metrics.length})</span>
                         </span>
                         <NoteBadge note={subcategoryNote(sub, metricas)} />
                       </button>
 
                       {subOpen && (
                         <div className="border-t border-border/50 px-3 py-2 grid gap-x-6 gap-y-0.5 sm:grid-cols-2">
-                          {sub.metrics.map((metric) => {
+                          {withData.length === 0 && (
+                            <p className="py-1 text-[11px] text-muted-foreground sm:col-span-2">
+                              No Opta data for these metrics this season (they need eventing).
+                            </p>
+                          )}
+                          {withData.map((metric) => {
                             const data = metricas[metric.key];
                             return (
                               <div key={metric.key} className="flex items-center justify-between gap-2 py-1 text-xs">

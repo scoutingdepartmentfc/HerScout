@@ -1,12 +1,19 @@
 "use client";
 
 import React, { useState } from "react";
+import { usePathname } from "next/navigation";
 import { Sidebar } from "./Sidebar";
 import { Navbar } from "./Navbar";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
+  const pathname = usePathname();
+
+  // Login screen: no navigation until signed in
+  if (pathname === "/login") {
+    return <main className="min-h-screen bg-background p-4 antialiased">{children}</main>;
+  }
 
   return (
     <div className="min-h-screen bg-background flex flex-col md:flex-row antialiased selection:bg-primary/30">

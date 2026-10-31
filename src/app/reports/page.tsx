@@ -43,11 +43,11 @@ export default function ReportsListPage() {
   const [saveSuccess, setSaveSuccess] = useState(false);
 
   // Form states
-  const [formPlayer, setFormPlayer] = useState("Vicky López");
+  const [formPlayer, setFormPlayer] = useState("");
   const [formClub, setFormClub] = useState("FC Barcelona");
   const [formPosition, setFormPosition] = useState("Attacking Midfielder (AMF)");
   const [formType, setFormType] = useState<ReportType>("full_scouting");
-  const [formMatch, setFormMatch] = useState("FC Barcelona vs Chelsea FCW (UWCL)");
+  const [formMatch, setFormMatch] = useState("");
   const [formCompetition, setFormCompetition] = useState("UEFA Women's Champions League");
   const [formTacticalContext, setFormTacticalContext] = useState("Interior #10 against mid-block press");
   const [formTechnical, setFormTechnical] = useState<string>("9.0");

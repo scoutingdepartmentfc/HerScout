@@ -12,17 +12,28 @@ export const EscudoEquipo: React.FC<{
 
   useEffect(() => setErrorCount(0), [badgeUrl, teamId]);
 
-  const optaHighRes = teamId
-    ? `https://omo.akamai.opta.net/image.php?secure=true&h=omo.akamai.opta.net&sport=football&entity=team&description=badges&dimensions=300&id=${teamId}`
-    : null;
+  const isRealMadrid =
+    teamId === "vaikl8nl7hdr4y9jj4jyb9ey" ||
+    name.toLowerCase().includes("real madrid");
 
-  const optaBadge = teamId
-    ? `https://secure.cache.images.core.optasports.com/soccer/teams/150x150/${teamId}.png`
-    : null;
+  // Opta has a missing badge placeholder (grey shield) for Real Madrid Femenino; omit it
+  const optaHighRes =
+    teamId && !isRealMadrid
+      ? `https://omo.akamai.opta.net/image.php?secure=true&h=omo.akamai.opta.net&sport=football&entity=team&description=badges&dimensions=300&id=${teamId}`
+      : null;
 
-  const sources = (badgeUrl ? [badgeUrl, optaHighRes, optaBadge] : [optaHighRes, optaBadge]).filter(
-    Boolean
-  ) as string[];
+  const optaBadge =
+    teamId && !isRealMadrid
+      ? `https://secure.cache.images.core.optasports.com/soccer/teams/150x150/${teamId}.png`
+      : null;
+
+  // Curated transparent badges from DB/Storage take first priority
+  const sources = [
+    badgeUrl,
+    optaHighRes,
+    optaBadge,
+    isRealMadrid ? "https://pgrrozynqsqcgfyrpnts.supabase.co/storage/v1/object/public/team-badges/clubs/real_madrid_transparent.png" : null,
+  ].filter(Boolean) as string[];
 
   const currentSrc = sources[errorCount] || null;
 
@@ -38,16 +49,21 @@ export const EscudoEquipo: React.FC<{
     );
   }
 
+  // Todos iguales: mismo círculo claro y tamaño, tenga el escudo fondo propio (JPG) o sea transparente (PNG)
   return (
-    <img
-      src={currentSrc}
-      alt={name || "Badge"}
-      style={{ width: size, height: size }}
-      className={`object-contain shrink-0 bg-transparent ${className}`}
-      loading="lazy"
-      onError={() => setErrorCount((prev) => prev + 1)}
+    <span
+      style={{ width: size, height: size, padding: Math.max(1, Math.round(size * 0.12)) }}
+      className={`inline-flex items-center justify-center rounded-full bg-white shrink-0 overflow-hidden ring-1 ring-black/10 ${className}`}
       title={name}
-    />
+    >
+      <img
+        src={currentSrc}
+        alt={name || "Badge"}
+        className="h-full w-full object-contain"
+        loading="lazy"
+        onError={() => setErrorCount((prev) => prev + 1)}
+      />
+    </span>
   );
 };
 

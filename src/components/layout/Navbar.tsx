@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { useThemeContext, AVAILABLE_CLUBS, UserRole } from "@/context/ThemeContext";
+import { useThemeContext, DEFAULT_THEME, UserRole } from "@/context/ThemeContext";
 import {
   Search,
   Bell,
@@ -12,6 +12,7 @@ import {
   UserCheck,
   Check,
   CheckCheck,
+  LogOut,
 } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 
@@ -20,34 +21,18 @@ interface NavbarProps {
 }
 
 export const Navbar: React.FC<NavbarProps> = ({ onMobileMenuOpen }) => {
-  const { currentClub, setClub, userRole, setUserRole, isPlatformAdmin, user } = useThemeContext();
+  const { currentClub, setClub, userRole, setUserRole, isPlatformAdmin, user, clubs, refreshAdminSession } = useThemeContext();
   const [showClubMenu, setShowClubMenu] = useState(false);
   const [showRoleMenu, setShowRoleMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
 
-  const notifications = [
-    {
-      id: "1",
-      title: "New Match Observation",
-      desc: "Report filed for Melchie Dumornay (vs Wolfsburg)",
-      time: "12m ago",
-      unread: true,
-    },
-    {
-      id: "2",
-      title: "Data Sync Completed",
-      desc: "Synced 420 player stats from local pipeline",
-      time: "1h ago",
-      unread: true,
-    },
-    {
-      id: "3",
-      title: "Contract Alert",
-      desc: "Target player contract expiring in 6 months",
-      time: "3h ago",
-      unread: false,
-    },
-  ];
+  const initials = (user.name || user.email || "?").slice(0, 2).toUpperCase();
+
+  const logout = async () => {
+    await fetch("/api/admin/login", { method: "DELETE" });
+    await refreshAdminSession();
+    window.location.href = "/login";
+  };
 
   return (
     <header className="sticky top-0 z-30 flex h-16 w-full items-center justify-between border-b border-border/80 bg-navy-950/80 px-4 backdrop-blur-md">
@@ -94,7 +79,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onMobileMenuOpen }) => {
               <div className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground border-b border-border/60">
                 Switch Club Workspace
               </div>
-              {AVAILABLE_CLUBS.map((club) => (
+              {[DEFAULT_THEME, ...clubs].map((club) => (
                 <button
                   key={club.id}
                   onClick={() => {
@@ -136,7 +121,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onMobileMenuOpen }) => {
               <div className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground border-b border-border/60">
                 User Role Guard
               </div>
-              {(["chief_scout", "scout", "analyst", "platform_admin"] as UserRole[]).map(
+              {(["chief_scout", "scout", "analyst"] as UserRole[]).map(
                 (role) => (
                   <button
                     key={role}
@@ -153,6 +138,13 @@ export const Navbar: React.FC<NavbarProps> = ({ onMobileMenuOpen }) => {
                   </button>
                 )
               )}
+              <a
+                href={isPlatformAdmin ? "/admin" : "/login"}
+                className="mt-1 flex w-full items-center gap-1.5 border-t border-border/60 px-2.5 py-1.5 text-xs text-primary hover:bg-secondary/60 rounded"
+              >
+                <Shield className="w-3.5 h-3.5" />
+                {isPlatformAdmin ? "Administration" : "Administrator login"}
+              </a>
             </div>
           )}
         </div>
@@ -164,7 +156,6 @@ export const Navbar: React.FC<NavbarProps> = ({ onMobileMenuOpen }) => {
             className="relative rounded-md border border-border/70 bg-navy-900/70 p-2 text-muted-foreground hover:text-white transition-colors"
           >
             <Bell className="w-4 h-4" />
-            <span className="absolute 1 top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-primary" />
           </button>
 
           {showNotifications && (
@@ -173,30 +164,8 @@ export const Navbar: React.FC<NavbarProps> = ({ onMobileMenuOpen }) => {
                 <span className="text-xs font-semibold text-white">
                   Notifications & Alerts
                 </span>
-                <Badge variant="outline" size="sm">
-                  3 unread
-                </Badge>
               </div>
-              <div className="divide-y divide-border/40 max-h-72 overflow-y-auto">
-                {notifications.map((n) => (
-                  <div
-                    key={n.id}
-                    className="p-3 hover:bg-secondary/40 transition-colors cursor-pointer"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-medium text-white">
-                        {n.title}
-                      </span>
-                      <span className="text-[10px] text-muted-foreground">
-                        {n.time}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-muted-foreground mt-0.5">
-                      {n.desc}
-                    </p>
-                  </div>
-                ))}
-              </div>
+              <p className="p-4 text-center text-[11px] text-muted-foreground">No notifications yet.</p>
             </div>
           )}
         </div>
@@ -204,16 +173,24 @@ export const Navbar: React.FC<NavbarProps> = ({ onMobileMenuOpen }) => {
         {/* User Profile Avatar */}
         <div className="flex items-center gap-2 pl-2 border-l border-border/60">
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/20 border border-primary/40 text-primary text-xs font-semibold">
-            ER
+            {initials}
           </div>
           <div className="hidden lg:flex flex-col text-left">
             <span className="text-xs font-medium text-white leading-tight">
               {user.name}
             </span>
             <span className="text-[10px] text-muted-foreground leading-tight">
-              {isPlatformAdmin ? "Platform Owner" : currentClub.shortName}
+              {user.email || currentClub.shortName}
             </span>
           </div>
+          <button
+            onClick={logout}
+            className="rounded-md p-1.5 text-muted-foreground hover:text-white"
+            title="Log out"
+            aria-label="Log out"
+          >
+            <LogOut className="w-4 h-4" />
+          </button>
         </div>
       </div>
     </header>

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Input } from "@/components/ui/Input";
 import { ErrorState } from "@/components/ui/StatusStates";
-import { Database, Plus, Search, Star, Trash2 } from "lucide-react";
+import { Database, Download, Plus, Search, Star, Trash2 } from "lucide-react";
 
 interface CatalogRow {
   season_id: string;
@@ -42,7 +42,7 @@ interface RunRow {
   players_updated: number;
 }
 
-const HEADERS = { "Content-Type": "application/json", "x-is-platform-admin": "true" };
+const HEADERS = { "Content-Type": "application/json" };
 
 export function IngestionTargets() {
   const [catalog, setCatalog] = useState<CatalogRow[]>([]);
@@ -53,7 +53,11 @@ export function IngestionTargets() {
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [levelFilter, setLevelFilter] = useState<string>("all");
+  const [countryFilter, setCountryFilter] = useState<string>("all");
+  const [displayLimit, setDisplayLimit] = useState<number>(20);
   const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [notice, setNotice] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -83,10 +87,19 @@ export function IngestionTargets() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       await load();
+      return true;
     } catch (err: any) {
       setError(err.message || "Could not save");
+      return false;
     } finally {
       setSaving(null);
+    }
+  };
+
+  const runNow = async () => {
+    setNotice(null);
+    if (await send("run", { action: "run" })) {
+      setNotice("Download started on GitHub Actions. It will appear below in a minute.");
     }
   };
 
@@ -101,19 +114,42 @@ export function IngestionTargets() {
     );
   }, [targets]);
 
-  // Catalog search: competitions matching country or name, newest seasons first
-  const results = useMemo(() => {
-    const text = query.trim().toLowerCase();
-    if (text.length < 2) return [];
-    const groups = new Map<string, CatalogRow[]>();
+  // Unique countries and levels for filtering
+  const { countries, levelCounts } = useMemo(() => {
+    const countrySet = new Set<string>();
+    const counts: Record<string, number> = { all: catalog.length };
     for (const r of catalog) {
-      if (!`${r.country} ${r.competition_name}`.toLowerCase().includes(text)) continue;
+      if (r.country) countrySet.add(r.country);
+      counts[r.data_level] = (counts[r.data_level] || 0) + 1;
+    }
+    return {
+      countries: Array.from(countrySet).sort((a, b) => a.localeCompare(b)),
+      levelCounts: counts,
+    };
+  }, [catalog]);
+
+  // Catalog search & filtering: competitions matching country, name or level, newest seasons first
+  const filteredGroups = useMemo(() => {
+    const text = query.trim().toLowerCase();
+    const groups = new Map<string, CatalogRow[]>();
+
+    for (const r of catalog) {
+      if (countryFilter !== "all" && r.country !== countryFilter) continue;
+      if (levelFilter !== "all" && r.data_level !== levelFilter) continue;
+      if (text.length > 0 && !`${r.country} ${r.competition_name} ${r.format || ""}`.toLowerCase().includes(text)) {
+        continue;
+      }
       groups.set(r.competition_id, [...(groups.get(r.competition_id) || []), r]);
     }
-    return Array.from(groups.values())
-      .map((rs) => rs.sort((a, b) => (b.start_date || "").localeCompare(a.start_date || "")))
-      .slice(0, 12);
-  }, [catalog, query]);
+
+    return Array.from(groups.values()).map((rs) =>
+      rs.sort((a, b) => (b.start_date || "").localeCompare(a.start_date || ""))
+    );
+  }, [catalog, query, countryFilter, levelFilter]);
+
+  const results = useMemo(() => {
+    return filteredGroups.slice(0, displayLimit);
+  }, [filteredGroups, displayLimit]);
 
   const togglePick = (id: string) =>
     setPicked((prev) => {
@@ -143,8 +179,8 @@ export function IngestionTargets() {
         <CardHeader>
           <CardTitle>Leagues & Seasons to Download</CardTitle>
           <CardDescription>
-            Downloaded every Tuesday (03:00 UTC) by the data pipeline: Opta squads and stats, FotMob photos and
-            Soccerdonna profiles. The current season gives each player&apos;s team and shirt number.
+            Downloaded every Tuesday (03:00 UTC): Opta squads, played and upcoming matches with eventing and
+            matchstats, then Soccerdonna profiles and FotMob photos. The current season gives each player&apos;s team and shirt number.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -229,17 +265,21 @@ export function IngestionTargets() {
           <CardTitle>Opta Catalog</CardTitle>
           <CardDescription>
             {catalog.length
-              ? `${catalog.length} women's seasons with per-player stats. Eventing seasons also get xG, xA and progressive actions.`
+              ? `${catalog.length.toLocaleString()} women's seasons available across all coverage levels. Eventing seasons also get xG, xA and progressive actions.`
               : "Empty catalog: run `python -m pipeline.catalogo` once to fill it."}
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent className="space-y-4">
           <div className="flex flex-col sm:flex-row gap-2">
             <Input
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search by country or competition (e.g. Spain, Super League)"
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setDisplayLimit(20);
+              }}
+              placeholder="Search by country, competition or format (e.g. Spain, Super League)"
               leftIcon={<Search className="w-3.5 h-3.5" />}
+              className="flex-1"
             />
             <Button
               size="sm"
@@ -254,52 +294,176 @@ export function IngestionTargets() {
               Add {picked.size || ""} season{picked.size === 1 ? "" : "s"}
             </Button>
           </div>
-          {results.map((seasons) => (
-            <div key={seasons[0].competition_id} className="rounded-md border border-border p-3">
-              <p className="text-xs font-semibold text-white">
-                {seasons[0].competition_name}
-                <span className="font-normal text-muted-foreground"> · {seasons[0].country} · {seasons[0].format}</span>
-              </p>
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {seasons.map((s) => {
-                  const already = selected.has(s.season_id);
-                  const isPicked = picked.has(s.season_id);
-                  return (
-                    <button
-                      key={s.season_id}
-                      type="button"
-                      disabled={already}
-                      onClick={() => togglePick(s.season_id)}
-                      className={`rounded border px-2 py-1 text-[11px] transition-colors ${
-                        already
-                          ? "border-emerald-500/40 text-emerald-400 cursor-default"
-                          : isPicked
-                          ? "border-primary bg-primary/20 text-white"
-                          : "border-border text-muted-foreground hover:text-white"
-                      }`}
-                      title={`${s.played_matches} matches played · ${s.has_eventing ? "eventing" : "matchstats only"}`}
-                    >
-                      {s.season_name}
-                      {s.has_eventing ? " ●" : ""}
-                      {already ? " ✓" : ""}
-                    </button>
-                  );
-                })}
-              </div>
+
+          {/* Quick Filters */}
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-border/40 text-xs">
+            {/* Level selector tabs/pills */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[11px] font-medium text-muted-foreground mr-1">Level:</span>
+              {[
+                { id: "all", label: "All" },
+                { id: "jugadora", label: "Jugadora" },
+                { id: "jugadora parcial", label: "Jugadora parcial" },
+                { id: "alineacion", label: "Alineación" },
+                { id: "resultado", label: "Resultado" },
+                { id: "sin jugados", label: "Sin jugados" },
+              ].map((lvl) => {
+                const count = levelCounts[lvl.id] ?? 0;
+                const active = levelFilter === lvl.id;
+                return (
+                  <button
+                    key={lvl.id}
+                    type="button"
+                    onClick={() => {
+                      setLevelFilter(lvl.id);
+                      setDisplayLimit(20);
+                    }}
+                    className={`px-2 py-0.5 rounded text-[11px] transition-colors border ${
+                      active
+                        ? "bg-primary/20 border-primary text-white font-medium"
+                        : "border-border/60 text-muted-foreground hover:text-white hover:border-border"
+                    }`}
+                  >
+                    {lvl.label} <span className="opacity-60 text-[10px]">({count})</span>
+                  </button>
+                );
+              })}
             </div>
-          ))}
-          {query.trim().length >= 2 && results.length === 0 && (
-            <p className="text-xs text-muted-foreground">No competitions match “{query}”.</p>
+
+            {/* Country dropdown */}
+            <div className="flex items-center gap-1.5 ml-auto">
+              <span className="text-[11px] font-medium text-muted-foreground">Country:</span>
+              <select
+                value={countryFilter}
+                onChange={(e) => {
+                  setCountryFilter(e.target.value);
+                  setDisplayLimit(20);
+                }}
+                className="h-7 text-[11px] rounded border border-border bg-navy-950 px-2 text-white focus:outline-none focus:ring-1 focus:ring-primary"
+              >
+                <option value="all">All countries ({countries.length})</option>
+                {countries.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-1">
+            <span>
+              Showing {Math.min(results.length, filteredGroups.length)} of {filteredGroups.length} competitions
+              {filteredGroups.length > 0 && ` (${filteredGroups.reduce((acc, g) => acc + g.length, 0)} seasons)`}
+            </span>
+            {(query || levelFilter !== "all" || countryFilter !== "all") && (
+              <button
+                type="button"
+                onClick={() => {
+                  setQuery("");
+                  setLevelFilter("all");
+                  setCountryFilter("all");
+                  setDisplayLimit(20);
+                }}
+                className="text-primary hover:underline"
+              >
+                Reset filters
+              </button>
+            )}
+          </div>
+
+          <div className="space-y-2.5">
+            {results.map((seasons) => (
+              <div key={seasons[0].competition_id} className="rounded-md border border-border p-3 bg-navy-900/40">
+                <div className="flex flex-wrap items-center justify-between gap-1">
+                  <p className="text-xs font-semibold text-white">
+                    {seasons[0].competition_name}
+                    <span className="font-normal text-muted-foreground"> · {seasons[0].country} · {seasons[0].format}</span>
+                  </p>
+                  <span className="text-[10px] text-muted-foreground bg-navy-950 px-1.5 py-0.5 rounded border border-border/50">
+                    {seasons.length} {seasons.length === 1 ? "season" : "seasons"}
+                  </span>
+                </div>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {seasons.map((s) => {
+                    const already = selected.has(s.season_id);
+                    const isPicked = picked.has(s.season_id);
+                    return (
+                      <button
+                        key={s.season_id}
+                        type="button"
+                        disabled={already}
+                        onClick={() => togglePick(s.season_id)}
+                        className={`rounded border px-2 py-1 text-[11px] transition-colors ${
+                          already
+                            ? "border-emerald-500/40 text-emerald-400 cursor-default"
+                            : isPicked
+                            ? "border-primary bg-primary/20 text-white"
+                            : "border-border text-muted-foreground hover:text-white"
+                        }`}
+                        title={`${s.played_matches} matches · level: ${s.data_level} · ${s.has_eventing ? "eventing" : "matchstats only"}`}
+                      >
+                        {s.season_name}
+                        {s.has_eventing ? " ●" : ""}
+                        {already ? " ✓" : ""}
+                        <span className="ml-1 text-[9px] opacity-60">[{s.data_level}]</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {filteredGroups.length > displayLimit && (
+            <div className="flex items-center justify-center gap-2 pt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setDisplayLimit((prev) => prev + 30)}
+              >
+                Load more competitions ({filteredGroups.length - displayLimit} remaining)
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setDisplayLimit(filteredGroups.length)}
+              >
+                Show all {filteredGroups.length}
+              </Button>
+            </div>
+          )}
+
+          {filteredGroups.length === 0 && (
+            <p className="text-xs text-muted-foreground py-4 text-center">
+              No competitions found matching your search and filter criteria.
+            </p>
           )}
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>Data Pipeline Runs</CardTitle>
-          <CardDescription>Last automatic and manual downloads (GitHub Actions)</CardDescription>
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <CardTitle>Data Pipeline Runs</CardTitle>
+              <CardDescription>Last automatic and manual downloads (GitHub Actions)</CardDescription>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                disabled={!targets.some((t) => t.enabled)}
+                isLoading={saving === "run"}
+                leftIcon={<Download className="w-3.5 h-3.5" />}
+                onClick={() => runNow()}
+              >
+                Download now
+              </Button>
+            </div>
+          </div>
         </CardHeader>
         <CardContent className="space-y-2">
+          {notice && <p className="text-xs text-emerald-400">{notice}</p>}
           {runs.length === 0 && <p className="text-xs text-muted-foreground">No runs yet.</p>}
           {runs.map((r) => (
             <div key={r.id} className="p-3 rounded-md bg-navy-900/80 border border-border flex items-center justify-between text-xs">

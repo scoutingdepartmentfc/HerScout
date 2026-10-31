@@ -5,7 +5,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Input, Select } from "@/components/ui/Input";
-import { useThemeContext, DEFAULT_THEME, AVAILABLE_CLUBS, ClubTheme } from "@/context/ThemeContext";
+import { useThemeContext, DEFAULT_THEME, ClubTheme } from "@/context/ThemeContext";
 import { isColorContrastAccessible } from "@/lib/tenancy";
 import {
   Building2,
@@ -22,7 +22,7 @@ import {
 import { SuccessBanner } from "@/components/ui/StatusStates";
 
 export default function SettingsPage() {
-  const { currentClub, setClub, userRole } = useThemeContext();
+  const { currentClub, setClub, userRole, isPlatformAdmin, clubs } = useThemeContext();
   const [clubName, setClubName] = useState(currentClub.name);
   const [shortName, setShortName] = useState(currentClub.shortName);
   const [timezone, setTimezone] = useState("Europe/London");
@@ -30,7 +30,7 @@ export default function SettingsPage() {
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [contrastWarning, setContrastWarning] = useState(false);
 
-  const isClubAdmin = userRole === "chief_scout" || userRole === "platform_admin";
+  const isClubAdmin = userRole === "chief_scout" || isPlatformAdmin;
 
   const handleColorChange = (newColor: string) => {
     setPrimaryColor(newColor);
@@ -198,10 +198,10 @@ export default function SettingsPage() {
         <CardContent className="space-y-4">
           <div>
             <label className="text-xs font-medium text-foreground block mb-2">
-              Club Presets (Multi-Tenant Palette Simulator)
+              Subscribed Clubs
             </label>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {AVAILABLE_CLUBS.map((c) => (
+              {[DEFAULT_THEME, ...clubs].map((c) => (
                 <button
                   key={c.id}
                   onClick={() => {
@@ -259,38 +259,15 @@ export default function SettingsPage() {
               <Users className="w-4 h-4 text-primary" />
               <CardTitle>Club Members & Seat Allocation</CardTitle>
             </div>
-            <span className="text-xs text-muted-foreground font-mono">
-              3 of 15 seats assigned
-            </span>
           </div>
           <CardDescription>
             Multi-tenant permission assignment. Only assigned members can view private reports and watchlists.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="divide-y divide-border/40">
-            <div className="py-2.5 flex items-center justify-between">
-              <div>
-                <p className="text-xs font-semibold text-white">Elena Rostova (You)</p>
-                <p className="text-[11px] text-muted-foreground">elena.rostova@herscout.pro</p>
-              </div>
-              <Badge variant="default" size="sm">Chief Scout</Badge>
-            </div>
-            <div className="py-2.5 flex items-center justify-between">
-              <div>
-                <p className="text-xs font-semibold text-white">Marcus Vance</p>
-                <p className="text-[11px] text-muted-foreground">marcus.v@herscout.pro</p>
-              </div>
-              <Badge variant="secondary" size="sm">Field Scout</Badge>
-            </div>
-            <div className="py-2.5 flex items-center justify-between">
-              <div>
-                <p className="text-xs font-semibold text-white">Sarah Al-Mansoor</p>
-                <p className="text-[11px] text-muted-foreground">s.almansoor@herscout.pro</p>
-              </div>
-              <Badge variant="secondary" size="sm">Data Analyst</Badge>
-            </div>
-          </div>
+          <p className="text-xs text-muted-foreground">
+            No club members yet. Members are added when each club gets its own logins.
+          </p>
         </CardContent>
       </Card>
     </div>

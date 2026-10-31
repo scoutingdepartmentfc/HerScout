@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
+import { requireAdmin } from "@/lib/adminGuard";
 
 /**
  * Leagues & seasons for the automatic Opta download (pipeline/ingest.py + pipeline/soccerdonna.py).
@@ -9,14 +10,17 @@ import { supabaseAdmin } from "@/lib/supabase";
 
 const PAGE = 1000;
 
-function forbidden(req: NextRequest) {
-  if (req.headers.get("x-is-platform-admin") !== "true") {
-    return NextResponse.json({ error: "Platform admin access required" }, { status: 403 });
-  }
-  if (!supabaseAdmin || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    return NextResponse.json({ error: "SUPABASE_SERVICE_ROLE_KEY is not configured" }, { status: 500 });
-  }
-  return null;
+// Manual run: the same GitHub Action as the weekly download (needs a token with "Actions: write")
+async function dispatchPipeline(inputs: Record<string, string>) {
+  const token = process.env.GITHUB_TOKEN;
+  if (!token) throw new Error("GITHUB_TOKEN is not configured: the download will run on the next weekly schedule");
+  const repo = process.env.GITHUB_REPO || "scoutingdepartmentfc/HerScout";
+  const res = await fetch(`https://api.github.com/repos/${repo}/actions/workflows/data_pipeline.yml/dispatches`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" },
+    body: JSON.stringify({ ref: process.env.GITHUB_REF_NAME || "main", inputs }),
+  });
+  if (!res.ok) throw new Error(`GitHub refused to start the pipeline (${res.status}): ${(await res.text()).slice(0, 200)}`);
 }
 
 // PostgREST returns at most 1000 rows per request: page through the catalog
@@ -31,12 +35,12 @@ async function selectAll(table: string, apply: (q: any) => any = (q) => q) {
 }
 
 export async function GET(req: NextRequest) {
-  const denied = forbidden(req);
+  const denied = await requireAdmin(req);
   if (denied) return denied;
   try {
     const [catalog, targets, runs] = await Promise.all([
-      // Only seasons with per-player stats can feed the scouting metrics
-      selectAll("opta_catalog", (q) => q.like("data_level", "jugadora%")),
+      // Retrieve all seasons in the Opta catalog
+      selectAll("opta_catalog"),
       selectAll("ingestion_targets"),
       (supabaseAdmin as any)
         .from("ingestion_runs")
@@ -51,7 +55,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const denied = forbidden(req);
+  const denied = await requireAdmin(req);
   if (denied) return denied;
   const body = await req.json();
   const db = supabaseAdmin as any;
@@ -109,6 +113,12 @@ export async function POST(req: NextRequest) {
       }
       const { error } = await db.from("ingestion_targets").update({ ...changes, updated_at: now }).eq("season_id", body.seasonId);
       if (error) throw error;
+    } else if (body.action === "run") {
+      // Download now: every enabled league (or one competition): Opta → Soccerdonna → FotMob photos
+      const inputs: Record<string, string> = { modo: "jugadoras" };
+      if (body.competitionId) inputs.competition_id = String(body.competitionId);
+      if (body.limit) inputs.limite = String(Number(body.limit));
+      await dispatchPipeline(inputs);
     } else if (body.action === "remove") {
       // Only stops future downloads: players and stats already in the database are kept
       const { error } = await db.from("ingestion_targets").delete().eq("season_id", body.seasonId);

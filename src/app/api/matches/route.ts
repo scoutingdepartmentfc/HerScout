@@ -26,7 +26,8 @@ export async function GET(req: NextRequest) {
     query = query.gte("match_date", startOfDay.toISOString()).lt("match_date", endOfDay.toISOString())
       .order("match_date", { ascending: true });
   } else if (tab === "upcoming") {
-    query = query.neq("status", "Played").gte("match_date", endOfDay.toISOString())
+    // Next fixtures from right now (today's later kick-offs included)
+    query = query.neq("status", "Played").gte("match_date", now.toISOString())
       .order("match_date", { ascending: true });
   } else {
     query = query.eq("status", "Played").order("match_date", { ascending: false });

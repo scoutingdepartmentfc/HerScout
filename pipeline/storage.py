@@ -180,9 +180,9 @@ def chunked(items: Iterable, size: int):
         yield items[i:i + size]
 
 
-def competiciones_objetivo(store: "Store") -> List[Dict[str, Any]]:
+def competiciones_objetivo(store: "Store", solo_admin: bool = False) -> List[Dict[str, Any]]:
     """Ligas a descargar: las activadas en el panel de administración (`ingestion_targets`);
-    si no hay ninguna (o no hay BD), las de config.py."""
+    si no hay ninguna (o no hay BD), las de config.py, salvo con `solo_admin` (entonces ninguna)."""
     from .config import COMPETITIONS_CONFIG
     if store.online:
         try:
@@ -203,7 +203,7 @@ def competiciones_objetivo(store: "Store") -> List[Dict[str, Any]]:
                      'season_id': f['season_id'],
                      'fotmob_id': f.get('fotmob_id') or fotmob_cfg.get(f['competition_id']) or LIGAS_FOTMOB.get(f['competition_id']),
                      'active': f.get('is_active', False), 'fuente': f.get('fuente') or 'eventing'} for f in filas]
-    return COMPETITIONS_CONFIG
+    return [] if solo_admin and store.online else COMPETITIONS_CONFIG
 
 
 def dorsales_actuales(store: "Store", comps: List[Dict[str, Any]]) -> Dict[str, int]:

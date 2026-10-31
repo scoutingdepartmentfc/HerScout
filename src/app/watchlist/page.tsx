@@ -8,47 +8,12 @@ import { Bookmark, Star, ArrowUpRight, Plus, FolderPlus, Download } from "lucide
 import Link from "next/link";
 
 export default function WatchlistPage() {
-  const watchlistGroups = [
-    {
-      id: "w-1",
-      title: "First-Team Immediate Targets (Summer Window)",
-      targets: [
-        {
-          id: "p-1",
-          name: "Vicky López",
-          pos: "AMF",
-          club: "FC Barcelona",
-          age: 18,
-          rating: 8.9,
-          tier: "tier-a" as const,
-        },
-        {
-          id: "p-2",
-          name: "Melchie Dumornay",
-          pos: "CF",
-          club: "Olympique Lyonnais",
-          age: 21,
-          rating: 9.1,
-          tier: "tier-a" as const,
-        },
-      ],
-    },
-    {
-      id: "w-2",
-      title: "U-20 High Potential Prospects",
-      targets: [
-        {
-          id: "p-6",
-          name: "Alice Soto",
-          pos: "CMF",
-          club: "Pachuca Femenil",
-          age: 18,
-          rating: 7.9,
-          tier: "tier-c" as const,
-        },
-      ],
-    },
-  ];
+  // Watchlists are saved per club (watchlists table) once clubs have their own logins
+  const watchlistGroups: {
+    id: string;
+    title: string;
+    targets: { id: string; name: string; pos: string; club: string; age: number; rating: number; tier: "tier-a" | "tier-b" | "tier-c" }[];
+  }[] = [];
 
   return (
     <div className="space-y-6">
@@ -70,6 +35,13 @@ export default function WatchlistPage() {
       </div>
 
       <div className="space-y-6">
+        {watchlistGroups.length === 0 && (
+          <Card>
+            <CardContent className="py-10 text-center text-xs text-muted-foreground">
+              No watchlists yet.
+            </CardContent>
+          </Card>
+        )}
         {watchlistGroups.map((group) => (
           <Card key={group.id}>
             <CardHeader className="flex flex-row items-center justify-between py-3">

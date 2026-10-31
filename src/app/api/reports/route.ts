@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { INITIAL_REPORTS } from "@/lib/mockReports";
 import { ScoutingReport, calculateTransparentOverallRating } from "@/lib/reports";
+import { reportsStore } from "@/lib/reportsStore";
 import { assertTenantAccess, TenantContext } from "@/lib/tenancy";
 import { MOCK_ORGANIZATIONS } from "@/lib/mockData";
 
-// In-memory reports store
-let reportsStore: ScoutingReport[] = [...INITIAL_REPORTS];
+
 
 export async function GET(req: NextRequest) {
   const callerOrgId = req.headers.get("x-user-org-id") || "org-chelsea";

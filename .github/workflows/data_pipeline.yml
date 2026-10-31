@@ -2,8 +2,8 @@ name: Weekly Data Pipeline (Opta + FotMob + Soccerdonna)
 
 on:
   schedule:
-    # Todos los martes a las 03:00 UTC (05:00 en Europe/Madrid)
-    - cron: '0 3 * * 2'
+    # Todos los jueves a las 03:00 UTC (05:00 en Europe/Madrid): solo datos nuevos
+    - cron: '0 3 * * 4'
   workflow_dispatch:
     inputs:
       competition_id:
@@ -16,6 +16,16 @@ on:
         default: ''
       extra_args:
         description: 'Flags extra: --rebuild, --skip-photos, --only-photos, --refresh-photos'
+        required: false
+        default: ''
+      modo:
+        description: 'jugadoras = ligas de /admin: Opta (plantillas, partidos, eventing, matchstats) → Soccerdonna → fotos FotMob; clasico = pipeline anterior'
+        type: choice
+        options: [soccerdonna, jugadoras, clasico]
+        required: false
+        default: soccerdonna
+      limite:
+        description: 'Soccerdonna y fotos solo para N jugadoras (pruebas; en blanco = todas)'
         required: false
         default: ''
       catalogo:
@@ -65,7 +75,37 @@ jobs:
 
       # 1. Plantillas Opta → jugadoras (matchName, dorsal, nacimiento, lugar...), partidos y estadísticas.
       # 2. Fotos FotMob confirmando matchName + dorsal de la temporada actual + fecha de nacimiento.
+      # Modo jugadoras: ligas de /admin → Opta (plantillas, partidos jugados y por jugar,
+      # eventing + matchstats, valoración por partido) → Soccerdonna (perfil en inglés) → fotos FotMob
+      - name: Jugadoras (Opta + Soccerdonna + FotMob)
+        if: github.event.inputs.modo == 'jugadoras'
+        env:
+          COMP_ID: ${{ github.event.inputs.competition_id }}
+          MAX_MATCHES: ${{ github.event.inputs.max_matches }}
+          LIMITE: ${{ github.event.inputs.limite }}
+        run: |
+          ARGS=""
+          [ -n "$COMP_ID" ] && ARGS="$ARGS --comp-id $COMP_ID"
+          [ -n "$MAX_MATCHES" ] && ARGS="$ARGS --max-matches $MAX_MATCHES"
+          [ -n "$LIMITE" ] && ARGS="$ARGS --limit $LIMITE"
+          python -m pipeline.jugadoras $ARGS
+
+      # Soccerdonna: jugadoras de las ligas elegidas en /admin (Soccerdonna Leagues) + foto FotMob
+      - name: Jugadoras Soccerdonna + fotos FotMob
+        if: github.event.inputs.modo == 'soccerdonna' || github.event_name == 'schedule'
+        env:
+          LIGA: ${{ github.event.inputs.competition_id }}
+          LIMITE: ${{ github.event.inputs.limite }}
+          MAX_MATCHES: ${{ github.event.inputs.max_matches }}
+        run: |
+          ARGS=""
+          [ -n "$LIGA" ] && ARGS="$ARGS --liga $LIGA"
+          [ -n "$LIMITE" ] && ARGS="$ARGS --limit $LIMITE"
+          [ -n "$MAX_MATCHES" ] && ARGS="$ARGS --max-matches $MAX_MATCHES"
+          python -m pipeline.sd_ligas todo $ARGS
+
       - name: Opta + fotos FotMob
+        if: github.event.inputs.modo == 'clasico'
         env:
           COMP_ID: ${{ github.event.inputs.competition_id }}
           MAX_MATCHES: ${{ github.event.inputs.max_matches }}
@@ -79,7 +119,7 @@ jobs:
       # 3. Soccerdonna: perfil, valor de mercado, traspasos, lesiones y selección, confirmando fecha y lugar de
       # nacimiento, dorsal y club. Las nuevas siempre; las demás cada 30 días. Si falla no tumba la descarga.
       - name: Enriquecer jugadoras con Soccerdonna
-        if: success() && !contains(github.event.inputs.extra_args, '--only-photos')
+        if: success() && github.event.inputs.modo == 'clasico' && !contains(github.event.inputs.extra_args, '--only-photos')
         continue-on-error: true
         env:
           COMP_ID: ${{ github.event.inputs.competition_id }}

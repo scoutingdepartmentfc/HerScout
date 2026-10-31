@@ -31,13 +31,13 @@ interface MatchRow {
 }
 
 const TABS: { id: Tab; label: string }[] = [
-  { id: "results", label: "Latest Results" },
-  { id: "today", label: "Today's Fixtures" },
   { id: "upcoming", label: "Upcoming" },
+  { id: "today", label: "Today's Fixtures" },
+  { id: "results", label: "Latest Results" },
 ];
 
 export default function MatchesPage() {
-  const [tab, setTab] = useState<Tab>("results");
+  const [tab, setTab] = useState<Tab>("upcoming");
   const [matches, setMatches] = useState<MatchRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

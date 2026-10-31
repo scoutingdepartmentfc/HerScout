@@ -27,7 +27,7 @@ import {
 export default function ReportDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const { currentClub, user, userRole } = useThemeContext();
+  const { currentClub, user, userRole, isPlatformAdmin } = useThemeContext();
 
   const [report, setReport] = useState<ScoutingReport | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -108,7 +108,7 @@ export default function ReportDetailPage() {
   if (isLoading) return <LoadingState message="Retrieving scouting dossier..." />;
   if (error || !report) return <ErrorState title="Report Unavailable" message={error || "Not found"} onRetry={() => router.push("/reports")} />;
 
-  const isChiefScoutOrAdmin = userRole === "chief_scout" || userRole === "platform_admin";
+  const isChiefScoutOrAdmin = userRole === "chief_scout" || isPlatformAdmin;
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto print:p-0 print:max-w-none">

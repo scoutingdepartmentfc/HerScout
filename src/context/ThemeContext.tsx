@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useCallback, useContext, useState, useEffect } from "react";
 
 export type ClubTheme = {
   id: string;
@@ -21,43 +21,7 @@ export const DEFAULT_THEME: ClubTheme = {
   accentColor: "160 84% 39%", // Pitch emerald
 };
 
-export const AVAILABLE_CLUBS: ClubTheme[] = [
-  DEFAULT_THEME,
-  {
-    id: "chelsea-wfc",
-    name: "Chelsea FC Women",
-    shortName: "Chelsea",
-    primaryColor: "217 95% 45%",
-    secondaryColor: "215 28% 17%",
-    accentColor: "160 84% 39%",
-  },
-  {
-    id: "barcelona-femeni",
-    name: "FC Barcelona Femení",
-    shortName: "Barça",
-    primaryColor: "348 83% 47%",
-    secondaryColor: "217 91% 40%",
-    accentColor: "45 93% 47%",
-  },
-  {
-    id: "arsenal-wfc",
-    name: "Arsenal Women FC",
-    shortName: "Arsenal",
-    primaryColor: "354 80% 48%",
-    secondaryColor: "215 28% 17%",
-    accentColor: "45 93% 47%",
-  },
-  {
-    id: "ol-lyon",
-    name: "Olympique Lyonnais Féminin",
-    shortName: "Lyon",
-    primaryColor: "214 85% 40%",
-    secondaryColor: "350 80% 50%",
-    accentColor: "45 90% 50%",
-  },
-];
-
-export type UserRole = "platform_admin" | "chief_scout" | "scout" | "analyst";
+export type UserRole = "chief_scout" | "scout" | "analyst";
 
 export interface UserContextType {
   currentClub: ClubTheme;
@@ -65,6 +29,9 @@ export interface UserContextType {
   userRole: UserRole;
   setUserRole: (role: UserRole) => void;
   isPlatformAdmin: boolean;
+  refreshAdminSession: () => Promise<void>;
+  // Clubs with a subscription (organizations table), to view the app as each club
+  clubs: ClubTheme[];
   user: {
     name: string;
     email: string;
@@ -76,15 +43,46 @@ const ThemeContext = createContext<UserContextType | undefined>(undefined);
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [currentClub, setClub] = useState<ClubTheme>(DEFAULT_THEME);
-  // No real auth yet: the owner works as platform admin (Administration menu: leagues to download)
-  const [userRole, setUserRole] = useState<UserRole>("platform_admin");
+  const [userRole, setUserRole] = useState<UserRole>("chief_scout");
+  // Platform admin = logged in at /login (HTTP-only session cookie checked by the server)
+  const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
 
-  const user = {
-    name: "Elena Rostova",
-    email: "elena.rostova@herscout.pro",
-  };
+  const refreshAdminSession = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/login", { cache: "no-store" });
+      const data = await res.json();
+      setIsPlatformAdmin(Boolean(data.admin));
+      setUser(data.admin ? { name: "Administrator", email: data.email || "" } : { name: "", email: "" });
+    } catch {
+      setIsPlatformAdmin(false);
+    }
+  }, []);
 
-  const isPlatformAdmin = userRole === "platform_admin";
+  useEffect(() => {
+    refreshAdminSession();
+  }, [refreshAdminSession]);
+
+  useEffect(() => {
+    if (!isPlatformAdmin) return setClubs([]);
+    fetch("/api/admin/clubs")
+      .then((res) => (res.ok ? res.json() : { clubs: [] }))
+      .then((data) =>
+        setClubs(
+          (data.clubs || []).map((c: any) => ({
+            id: c.id,
+            name: c.name,
+            shortName: c.short_name || c.name,
+            primaryColor: c.primary_color || DEFAULT_THEME.primaryColor,
+            secondaryColor: c.secondary_color || DEFAULT_THEME.secondaryColor,
+            accentColor: c.accent_color || DEFAULT_THEME.accentColor,
+          }))
+        )
+      )
+      .catch(() => setClubs([]));
+  }, [isPlatformAdmin]);
+
+  const [user, setUser] = useState<{ name: string; email: string }>({ name: "", email: "" });
+  const [clubs, setClubs] = useState<ClubTheme[]>([]);
 
   useEffect(() => {
     // Apply dynamic club CSS variables
@@ -100,6 +98,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         userRole,
         setUserRole,
         isPlatformAdmin,
+        refreshAdminSession,
+        clubs,
         user,
       }}
     >

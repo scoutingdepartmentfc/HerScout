@@ -29,30 +29,75 @@ export const CromoJugador: React.FC<CromoPlayerProps> = ({
 }) => {
   const DEM_FC_MAP: Record<string, { code: string; subs: string[] }> = {
     Portero: { code: "GK", subs: [] },
+    Goalkeeper: { code: "GK", subs: [] },
     "Lateral Derecho": { code: "RB", subs: ["CB", "RM"] },
+    "Right-Back": { code: "RB", subs: ["CB", "RM"] },
     "Central Derecho": { code: "CB", subs: ["RB", "CDM"] },
     "Central Izquierdo": { code: "CB", subs: ["LB", "CDM"] },
+    "Centre-Back": { code: "CB", subs: ["RB", "LB"] },
     "Lateral Izquierdo": { code: "LB", subs: ["CB", "LM"] },
+    "Left-Back": { code: "LB", subs: ["CB", "LM"] },
     "Mediocentro Defensivo": { code: "CDM", subs: ["CM", "CB"] },
+    "Defensive Midfield": { code: "CDM", subs: ["CM", "CB"] },
     Mediocentro: { code: "CM", subs: ["CDM", "CAM"] },
+    "Central Midfield": { code: "CM", subs: ["CDM", "CAM"] },
     Mediapunta: { code: "CAM", subs: ["CM", "RW"] },
+    "Attacking Midfield": { code: "CAM", subs: ["CM", "RW"] },
     "Extremo Derecho": { code: "RW", subs: ["RM", "ST"] },
+    "Right Winger": { code: "RW", subs: ["RM", "ST"] },
     "Extremo Izquierdo": { code: "LW", subs: ["LM", "ST"] },
+    "Left Winger": { code: "LW", subs: ["LM", "ST"] },
     Delantero: { code: "ST", subs: ["CF", "LW"] },
     Delantera: { code: "ST", subs: ["CF", "LW"] },
+    "Centre-Forward": { code: "ST", subs: ["CF", "LW"] },
     Centrocampista: { code: "CM", subs: ["CAM", "CDM"] },
+    Midfielder: { code: "CM", subs: ["CAM", "CDM"] },
     Defensa: { code: "CB", subs: ["RB", "LB"] },
+    Defender: { code: "CB", subs: ["RB", "LB"] },
+  };
+
+  const toShortCode = (pos: string) => {
+    if (!pos) return "";
+    if (pos.length <= 3 && pos === pos.toUpperCase()) return pos;
+    if (DEM_FC_MAP[pos]) return DEM_FC_MAP[pos].code;
+    const lower = pos.toLowerCase();
+    if (lower.includes("defensive midfield") || lower.includes("defensivo")) return "CDM";
+    if (lower.includes("attacking midfield") || lower.includes("mediapunta")) return "CAM";
+    if (lower.includes("midfield") || lower.includes("mediocentro")) return "CM";
+    if (lower.includes("centre-back") || lower.includes("central")) return "CB";
+    if (lower.includes("fullback, right") || lower.includes("lateral derecho") || lower.includes("right-back")) return "RB";
+    if (lower.includes("fullback, left") || lower.includes("lateral izquierdo") || lower.includes("left-back")) return "LB";
+    if (lower.includes("winger, right") || lower.includes("extremo derecho") || lower.includes("right winger")) return "RW";
+    if (lower.includes("winger, left") || lower.includes("extremo izquierdo") || lower.includes("left winger")) return "LW";
+    if (lower.includes("striker") || lower.includes("forward") || lower.includes("delanter")) return "ST";
+    if (lower.includes("goalkeeper") || lower.includes("porter")) return "GK";
+    return pos.slice(0, 3).toUpperCase();
   };
 
   const demInfo = DEM_FC_MAP[j.demarcacion || ""] || {
-    code: (j.demarcacion?.slice(0, 3) || "CAM").toUpperCase(),
+    code: toShortCode(j.demarcacion || "CAM"),
     subs: ["CM", "RW"],
   };
 
-  const secondaryPositions =
+  // Convert secondary positions to valid 2-3 letter abbreviations
+  const rawSubs =
     j.demarcacionesSecundarias && j.demarcacionesSecundarias.length > 0
-      ? j.demarcacionesSecundarias.slice(0, 2)
-      : demInfo.subs.slice(0, 2);
+      ? j.demarcacionesSecundarias
+      : demInfo.subs;
+
+  const secondaryPositions = rawSubs
+    .map(toShortCode)
+    .filter((code) => code && code !== demInfo.code)
+    .slice(0, 2);
+
+  // If we still need secondary positions, pull from default subs
+  if (secondaryPositions.length < 2) {
+    demInfo.subs.forEach((sub) => {
+      if (secondaryPositions.length < 2 && sub !== demInfo.code && !secondaryPositions.includes(sub)) {
+        secondaryPositions.push(sub);
+      }
+    });
+  }
 
   const rawScore = j.score_general ? Number(j.score_general) : 7.5;
   const ovr = Math.min(99, Math.max(50, Math.round(48 + rawScore * 4.6)));
@@ -80,6 +125,62 @@ export const CromoJugador: React.FC<CromoPlayerProps> = ({
         textLight: true,
       };
     }
+    if (n.includes("real madrid")) {
+      return {
+        bg: "linear-gradient(135deg, #ffffff 0%, #edf1f7 35%, #00266b 85%, #001438 100%)",
+        overlay: "rgba(238, 198, 67, 0.25)",
+        textLight: false,
+      };
+    }
+    if (n.includes("atlético") || n.includes("atletico")) {
+      return {
+        bg: "linear-gradient(135deg, #cb3524 0%, #ffffff 45%, #0c2340 100%)",
+        overlay: "rgba(255, 255, 255, 0.15)",
+        textLight: true,
+      };
+    }
+    if (n.includes("manchester city") || n.includes("man city")) {
+      return {
+        bg: "linear-gradient(135deg, #6cabdd 0%, #4682b4 50%, #1c2c5b 100%)",
+        overlay: "rgba(255, 255, 255, 0.2)",
+        textLight: true,
+      };
+    }
+    if (n.includes("manchester united") || n.includes("man utd")) {
+      return {
+        bg: "linear-gradient(135deg, #c70101 0%, #7e0000 50%, #000000 100%)",
+        overlay: "rgba(255, 255, 255, 0.15)",
+        textLight: true,
+      };
+    }
+    if (n.includes("sevilla")) {
+      return {
+        bg: "linear-gradient(135deg, #ffffff 0%, #f4f4f4 40%, #d4001f 85%, #8f0015 100%)",
+        overlay: "rgba(255, 255, 255, 0.2)",
+        textLight: false,
+      };
+    }
+    if (n.includes("real sociedad")) {
+      return {
+        bg: "linear-gradient(135deg, #004d98 0%, #ffffff 50%, #004d98 100%)",
+        overlay: "rgba(255, 255, 255, 0.2)",
+        textLight: true,
+      };
+    }
+    if (n.includes("valencia")) {
+      return {
+        bg: "linear-gradient(135deg, #ffffff 0%, #f8f8f8 40%, #ee7c00 70%, #000000 100%)",
+        overlay: "rgba(255, 255, 255, 0.2)",
+        textLight: false,
+      };
+    }
+    if (n.includes("bayern")) {
+      return {
+        bg: "linear-gradient(135deg, #dc052d 0%, #a00320 50%, #0066b2 100%)",
+        overlay: "rgba(255, 255, 255, 0.15)",
+        textLight: true,
+      };
+    }
     if (n.includes("lyon")) {
       return {
         bg: "linear-gradient(135deg, #1b3866 0%, #002244 50%, #da291c 100%)",
@@ -87,18 +188,16 @@ export const CromoJugador: React.FC<CromoPlayerProps> = ({
         textLight: true,
       };
     }
-    if (n.includes("real madrid")) {
-      return {
-        bg: "linear-gradient(135deg, #ffffff 0%, #f0f2f5 40%, #e2e8f0 75%, #001c58 100%)",
-        overlay: "rgba(238, 198, 67, 0.25)",
-        textLight: false,
-      };
-    }
-    // Neutral Platinum / EA FC Pro gradient
+    // Dynamic fallback based on club name hash for consistent custom club colors
+    let hash = 0;
+    const str = name || "Club";
+    for (let i = 0; i < str.length; i++) hash = str.charCodeAt(i) + ((hash << 5) - hash);
+    const h1 = Math.abs(hash) % 360;
+    const h2 = (h1 + 45) % 360;
     return {
-      bg: "linear-gradient(180deg, #d8dee4 0%, #cbd4dc 45%, #b4c0cc 70%, #9eabb8 100%)",
-      overlay: "rgba(255, 255, 255, 0.4)",
-      textLight: false,
+      bg: `linear-gradient(135deg, hsl(${h1}, 75%, 32%) 0%, hsl(${h1}, 80%, 18%) 50%, hsl(${h2}, 70%, 12%) 100%)`,
+      overlay: "rgba(255, 255, 255, 0.15)",
+      textLight: true,
     };
   };
 
@@ -168,18 +267,18 @@ export const CromoJugador: React.FC<CromoPlayerProps> = ({
           }}
         />
 
-        {/* Diagonal 3D Geometric Stripe */}
-        <div className="absolute top-16 left-[-15%] right-[-15%] h-36 border-y-2 border-white/25 bg-gradient-to-r from-white/10 via-white/20 to-white/10 -rotate-12 pointer-events-none z-0" />
+        {/* Diagonal 3D Geometric Subtle Stripe */}
+        <div className="absolute top-12 left-[-15%] right-[-15%] h-32 border-y border-slate-200/60 bg-gradient-to-r from-slate-100/30 via-slate-200/50 to-slate-100/30 -rotate-12 pointer-events-none z-0" />
 
         {/* Top Left: OVR and Position */}
         <div
-          className={`absolute top-6 left-4 z-20 flex flex-col items-center leading-none select-none ${
-            clubTheme.textLight ? "text-white" : "text-[#181d22]"
+          className={`absolute top-6 left-5 z-20 flex flex-col items-center leading-none select-none ${
+            clubTheme.textLight ? "text-white" : "text-[#10141a]"
           }`}
           style={{
             textShadow: clubTheme.textLight
               ? "0 2px 6px rgba(0,0,0,0.7)"
-              : "0 1px 2px rgba(255,255,255,0.4)",
+              : "0 1px 2px rgba(255,255,255,0.8)",
           }}
         >
           <span className="font-black text-3xl md:text-4xl tracking-tighter">
@@ -187,7 +286,7 @@ export const CromoJugador: React.FC<CromoPlayerProps> = ({
           </span>
           <span
             className={`mt-0.5 font-black text-xs md:text-sm tracking-wider uppercase ${
-              clubTheme.textLight ? "text-amber-300" : "text-[#2c333a]"
+              clubTheme.textLight ? "text-amber-300" : "text-[#1e2530]"
             }`}
           >
             {demInfo.code}
@@ -200,26 +299,26 @@ export const CromoJugador: React.FC<CromoPlayerProps> = ({
             <img
               src={j.photo_url}
               alt={j.name}
-              className="h-[97%] w-auto max-w-[88%] object-contain object-bottom drop-shadow-[0_8px_16px_rgba(0,0,0,0.5)] transition-transform duration-300 group-hover:scale-105"
+              className="h-[97%] w-auto max-w-[88%] object-contain object-bottom drop-shadow-[0_8px_16px_rgba(0,0,0,0.25)] transition-transform duration-300 group-hover:scale-105"
               loading="lazy"
               onError={(e) => {
                 (e.target as HTMLElement).style.display = "none";
               }}
             />
           ) : (
-            <div className="h-full flex items-center justify-center font-black text-white/50 text-5xl">
+            <div className="h-full flex items-center justify-center font-black text-slate-400 text-5xl">
               ⚽
             </div>
           )}
         </div>
 
         {/* Bottom U-Base with Flag, Club Badge & League Crest */}
-        <div className="absolute bottom-0.5 inset-x-0 z-20 flex justify-center pb-0 pt-2 px-3 bg-gradient-to-t from-black/40 via-black/10 to-transparent pointer-events-none">
+        <div className="absolute bottom-0.5 inset-x-0 z-20 flex justify-center pb-0 pt-2 px-3 bg-gradient-to-t from-slate-300/40 via-transparent to-transparent pointer-events-none">
           <div
-            className="w-[88%] h-9 flex items-center justify-around px-3 border border-white/90 shadow-[0_8px_20px_rgba(0,0,0,0.35),0_2px_4px_rgba(0,0,0,0.2),inset_0_1px_1px_rgba(255,255,255,0.9)] backdrop-blur-md transition-transform duration-200 group-hover:scale-[1.03]"
+            className="w-[88%] h-9 flex items-center justify-around px-3 border border-white/95 shadow-[0_6px_16px_rgba(0,0,0,0.18),inset_0_1px_1px_rgba(255,255,255,1)] backdrop-blur-md transition-transform duration-200 group-hover:scale-[1.03]"
             style={{
               background:
-                "linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(245, 247, 250, 0.94) 100%)",
+                "linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(240, 244, 248, 0.95) 100%)",
               borderRadius: "6px 6px 20px 20px",
               clipPath:
                 "polygon(0% 0%, 100% 0%, 100% 70%, 88% 95%, 70% 100%, 30% 100%, 12% 95%, 0% 70%)",
@@ -236,7 +335,7 @@ export const CromoJugador: React.FC<CromoPlayerProps> = ({
             <div
               className="flex items-center justify-center shrink-0"
               style={{
-                filter: "drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3))",
+                filter: "drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2))",
               }}
             >
               <EscudoEquipo
@@ -249,11 +348,23 @@ export const CromoJugador: React.FC<CromoPlayerProps> = ({
 
             <div className="h-5 w-[1px] bg-slate-300/80" />
 
-            {/* League Badge / Code */}
-            <div className="flex items-center justify-center shrink-0">
-              <span className="text-[11px] font-black tracking-tight text-[#0f3460]">
-                {j.league_name || j.competition_name || "LIGA F"}
-              </span>
+            {/* League Badge / Logo / Code */}
+            <div className="flex items-center justify-center shrink-0 max-w-[70px]">
+              {j.league_logo_url ? (
+                <img
+                  src={j.league_logo_url}
+                  alt={j.league_name || "League"}
+                  className="h-5 max-w-[55px] object-contain"
+                  loading="lazy"
+                  onError={(e) => {
+                    (e.target as HTMLElement).style.display = "none";
+                  }}
+                />
+              ) : (
+                <span className="text-[11px] font-black tracking-tight text-[#0f3460] truncate uppercase">
+                  {j.league_name || j.competition_name || "LIGA F"}
+                </span>
+              )}
             </div>
           </div>
         </div>

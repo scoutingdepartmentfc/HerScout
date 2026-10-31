@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { INITIAL_REPORTS } from "@/lib/mockReports";
+import { reportsStore } from "@/lib/reportsStore";
 import { ScoutingReport, calculateTransparentOverallRating } from "@/lib/reports";
 import { assertTenantAccess, TenantContext } from "@/lib/tenancy";
 import { MOCK_ORGANIZATIONS } from "@/lib/mockData";
@@ -14,7 +14,7 @@ export async function GET(
   const isPlatformAdmin = req.headers.get("x-is-platform-admin") === "true";
 
   const reportId = params.id;
-  const report = INITIAL_REPORTS.find((r) => r.id === reportId);
+  const report = reportsStore.find((r) => r.id === reportId);
 
   if (!report) {
     return NextResponse.json({ error: "Report not found" }, { status: 404 });
@@ -69,7 +69,7 @@ export async function POST(
   const isPlatformAdmin = req.headers.get("x-is-platform-admin") === "true";
 
   const reportId = params.id;
-  const report = INITIAL_REPORTS.find((r) => r.id === reportId);
+  const report = reportsStore.find((r) => r.id === reportId);
 
   if (!report) {
     return NextResponse.json({ error: "Report not found" }, { status: 404 });

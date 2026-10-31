@@ -41,9 +41,11 @@ def now_iso() -> str:
 
 def sincronizar_fotos_jugadoras(store: Store, fotmob: FotMobClient, sd: SDClient,
                                 jugadoras: List[Dict[str, Any]], clubes: Dict[str, str],
-                                refrescar: bool = False, liga_fotmob: Optional[int] = None) -> Dict[str, int]:
+                                refrescar: bool = False, liga_fotmob: Optional[int] = None,
+                                solo_fotmob: bool = False) -> Dict[str, int]:
     """`jugadoras`: filas de players (id, name, match_name, first_name, last_name, birth_date, photo_url, current_team_id).
-    `clubes`: {team_id: nombre}. Sin `refrescar` solo se buscan las que no tienen foto de FotMob."""
+    `clubes`: {team_id: nombre}. Sin `refrescar` solo se buscan las que no tienen foto de FotMob.
+    `solo_fotmob`: sin foto en FotMob la jugadora se queda sin foto (no se usa Soccerdonna ni Opta)."""
     totales = {"soccerdonna": 0, "fotmob": 0, "opta": 0, "sin_foto": 0}
     filas: List[Dict[str, Any]] = []
     for n, p in enumerate(jugadoras, 1):
@@ -61,6 +63,9 @@ def sincronizar_fotos_jugadoras(store: Store, fotmob: FotMobClient, sd: SDClient
 
         # Sin FotMob: se conserva la de Soccerdonna/Opta que ya tuviera
         if not url and actual and not refrescar:
+            continue
+        if not url and solo_fotmob:
+            totales["sin_foto"] += 1
             continue
 
         if not url:
@@ -89,19 +94,12 @@ def sincronizar_fotos_jugadoras(store: Store, fotmob: FotMobClient, sd: SDClient
     return totales
 
 
-def main():
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
-    parser = argparse.ArgumentParser(description="Fotos de jugadoras por nombre: FotMob > Soccerdonna > Opta")
-    parser.add_argument("--comp-id", type=str, default=None)
-    parser.add_argument("--refresh-photos", action="store_true", help="Volver a buscar todas las fotos")
-    args = parser.parse_args()
-    from .storage import Store, competiciones_objetivo, dorsales_actuales, get_supabase_client
-    store = Store(get_supabase_client())
-    comps = [c for c in competiciones_objetivo(store) if not args.comp_id or c["id"] == args.comp_id]
+def jugadoras_objetivo(store: Store, comps: List[Dict[str, Any]]):
+    """Jugadoras de los equipos de `comps` (sin equipo actual: el de su última temporada) y {team_id: nombre}."""
+    from .storage import dorsales_actuales
     comp_ids = {c["id"] for c in comps}
     clubes = {t["id"]: t["name"] for t in store.select_all("teams", "id,name,competition_id")
               if t.get("competition_id") in comp_ids}
-    # Sin equipo actual (ya no están en la plantilla): el club de su última temporada
     ultimo = {}
     orden = {c["season_id"]: i for i, c in enumerate(comps)}
     filas = store.select_all("squad_members", "player_id,team_id,season_id") + \
@@ -117,6 +115,19 @@ def main():
         p["current_team_id"] = p.get("current_team_id") if p.get("current_team_id") in clubes else ultimo.get(p["id"])
         if p["current_team_id"] in clubes:
             jugadoras.append(p)
+    return jugadoras, clubes
+
+
+def main():
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+    parser = argparse.ArgumentParser(description="Fotos de jugadoras por nombre: FotMob > Soccerdonna > Opta")
+    parser.add_argument("--comp-id", type=str, default=None)
+    parser.add_argument("--refresh-photos", action="store_true", help="Volver a buscar todas las fotos")
+    args = parser.parse_args()
+    from .storage import competiciones_objetivo
+    store = Store(get_supabase_client())
+    comps = [c for c in competiciones_objetivo(store) if not args.comp_id or c["id"] == args.comp_id]
+    jugadoras, clubes = jugadoras_objetivo(store, comps)
     logger.info(f"Fotos: {len(jugadoras)} jugadoras")
     logger.info(f"Fotos completado: {sincronizar_fotos_jugadoras(store, FotMobClient(), SDClient(), jugadoras, clubes, args.refresh_photos, comps[-1]['fotmob_id'])}")
 

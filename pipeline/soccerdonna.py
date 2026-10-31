@@ -38,6 +38,7 @@ from rapidfuzz import fuzz
 from .config import BUCKET_PLAYER_PHOTOS, BUCKET_TEAM_BADGES, LOCAL_CACHE_DIR
 from .photos import es_foto_fotmob, normalizar, normalizar_club, sim_nombre, variantes_nombre
 from .storage import Store, competiciones_objetivo, dorsales_actuales, get_supabase_client
+from . import traducciones as en
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("soccerdonna")
@@ -107,9 +108,11 @@ class SDClient:
         self.peticiones = 0
         SD_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
-    def get(self, path: str) -> Optional[str]:
+    def get(self, path: str, max_dias: Optional[float] = None) -> Optional[str]:
+        """`max_dias`: antigüedad máxima de la caché para esta página (por defecto la del cliente)."""
         f = SD_CACHE_DIR / (hashlib.md5(path.encode()).hexdigest() + ".html")
-        if f.exists() and time.time() - f.stat().st_mtime < self.cache_days * 86400:
+        dias = self.cache_days if max_dias is None else max_dias
+        if f.exists() and time.time() - f.stat().st_mtime < dias * 86400:
             return f.read_text(encoding="utf-8", errors="ignore")
         for intento in range(3):
             try:
@@ -202,8 +205,8 @@ class SDClient:
         return None
 
     # ── Perfil ───────────────────────────────────────────────
-    def perfil(self, slug: str, sd_id: int) -> Optional[Dict[str, Any]]:
-        html = self.get(f"/en/{slug}/profil/spieler_{sd_id}.html")
+    def perfil(self, slug: str, sd_id: int, max_dias: Optional[float] = None) -> Optional[Dict[str, Any]]:
+        html = self.get(f"/en/{slug}/profil/spieler_{sd_id}.html", max_dias)
         if not html:
             return None
         datos = {}
@@ -292,8 +295,8 @@ class SDClient:
 
 
 
-    def traspasos(self, slug: str, sd_id: int) -> List[Dict[str, Any]]:
-        html = self.get(f"/en/{slug}/transfers/spieler_{sd_id}.html") or ""
+    def traspasos(self, slug: str, sd_id: int, max_dias: Optional[float] = None) -> List[Dict[str, Any]]:
+        html = self.get(f"/en/{slug}/transfers/spieler_{sd_id}.html", max_dias) or ""
         i = html.find("Transfer history")
         if i < 0:
             return []
@@ -455,23 +458,23 @@ def filas_jugadora(p: Dict[str, Any], c: Dict[str, Any], prof: Dict[str, Any], t
     for v in prof["valores"]:
         if v["date"]:
             valores[v["date"]] = {"player_id": pid, "date": v["date"], "market_value": v["market_value"],
-                                  "club_name": v["club_name"], "sd_club_id": v["sd_club_id"], "age": v["age"],
+                                  "club_name": en.club(v["club_name"]), "sd_club_id": v["sd_club_id"], "age": v["age"],
                                   "club_badge_url": SD_BADGE.format(id=v["sd_club_id"]) if v["sd_club_id"] else None}
     traspasos = [{
         "tm_transfer_id": _id_traspaso(sd_id, t["date"], t["sd_from"] or t["club_from"], t["sd_to"] or t["club_to"]),
         "player_id": pid, "date": t["date"], "season": t["season"],
-        "club_from": t["club_from"], "club_to": t["club_to"],
+        "club_from": en.club(t["club_from"]), "club_to": en.club(t["club_to"]),
         "club_from_badge_url": SD_BADGE.format(id=t["sd_from"]) if t["sd_from"] else None,
         "club_to_badge_url": SD_BADGE.format(id=t["sd_to"]) if t["sd_to"] else None,
         "fee": _euros(t["fee_text"]) if t["fee_text"] and "€" in t["fee_text"] else None,
-        "fee_text": t["fee_text"], "loan": t["loan"], "upcoming": False,
+        "fee_text": en.traspaso(t["fee_text"]), "loan": t["loan"], "upcoming": False,
     } for t in tras]
-    lesiones = {(l["from_date"], l["injury"][:150]): {
-        "player_id": pid, "from_date": l["from_date"], "injury": l["injury"][:150], "season": l["season"],
+    lesiones = {(l["from_date"], en.lesion(l["injury"])[:150]): {
+        "player_id": pid, "from_date": l["from_date"], "injury": en.lesion(l["injury"])[:150], "season": l["season"],
         "until_date": l["until_date"],
         "days": (date.fromisoformat(l["until_date"]) - date.fromisoformat(l["from_date"])).days if l["until_date"] else None,
     } for l in prof["lesiones"]}
-    selecciones = [{"player_id": pid, **s} for s in prof["selecciones"]]
+    selecciones = [{"player_id": pid, **s, "team_name": en.seleccion(s["team_name"])} for s in prof["selecciones"]]
     return {"players": [row], "player_market_values": list(valores.values()), "player_transfers": traspasos,
             "player_injuries": list(lesiones.values()), "player_national_teams": selecciones}
 
@@ -480,8 +483,10 @@ class SoccerdonnaSync:
     PK = (("player_market_values", "player_id,date"), ("player_transfers", "tm_transfer_id"),
           ("player_injuries", "player_id,from_date,injury"), ("player_national_teams", "player_id,sd_team_id"))
 
-    def __init__(self, refresh_days: Optional[int] = None, limit: Optional[int] = None, refresh_photos: bool = False):
+    def __init__(self, refresh_days: Optional[int] = None, limit: Optional[int] = None, refresh_photos: bool = False,
+                 fotos: bool = True):
         self.store = Store(get_supabase_client())
+        self.fotos = fotos  # False: las fotos las pone FotMob (pipeline/jugadoras.py)
         self.sd = SDClient(cache_days=refresh_days or 30)
         self.refresh_days = refresh_days
         self.limit = limit
@@ -537,7 +542,7 @@ class SoccerdonnaSync:
         # o si la actual no es de FotMob (es_foto_fotmob)
         actual_foto = p.get("photo_url")
         puede_foto_sd = not actual_foto or (self.refresh_photos and not es_foto_fotmob(actual_foto))
-        if prof["foto"] and puede_foto_sd:
+        if self.fotos and prof["foto"] and puede_foto_sd:
             img = self.sd.image(prof["foto"])
             url = self.store.upload(BUCKET_PLAYER_PHOTOS, f"{p['id']}_sd.jpg", img, "image/jpeg") if img else None
             if url:
@@ -578,6 +583,7 @@ class SoccerdonnaSync:
                       or datetime.fromisoformat(p["sd_updated_at"].replace("Z", "+00:00")) < limite]
         if self.limit:
             pendientes = pendientes[:self.limit]
+        self.procesadas = [p["id"] for p in pendientes]
         logger.info(f"Soccerdonna: {len(pendientes)}/{len(jugadoras)} jugadoras pendientes")
         for p in pendientes:
             try:

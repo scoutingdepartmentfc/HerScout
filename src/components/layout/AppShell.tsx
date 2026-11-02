@@ -12,7 +12,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   // Login screen: no navigation until signed in
   if (pathname === "/login") {
-    return <main className="min-h-screen bg-background p-4 antialiased">{children}</main>;
+    return <main className="min-h-screen bg-background antialiased">{children}</main>;
   }
 
   return (

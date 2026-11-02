@@ -65,3 +65,9 @@ body {
   background: hsl(var(--muted-foreground));
 }
 
+
+/* Login: broadcast scan sweep over the tracking background */
+@keyframes scan {
+  from { transform: translateY(-10rem); }
+  to { transform: translateY(100vh); }
+}

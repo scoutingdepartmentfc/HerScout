@@ -421,7 +421,6 @@ export function LoginBackground() {
         src="/login-bg.jpg"
         alt=""
         className="absolute inset-0 h-full w-full object-cover object-center scale-105 select-none pointer-events-none"
-        priority="true"
       />
       {/* Subtle darkening vignette only at the edges to leave the center transparent */}
       <div className="pointer-events-none absolute inset-0 bg-black/25" />

@@ -34,6 +34,7 @@ TABLAS = [
     ("player_injuries", "player_id"),
     ("player_national_teams", "player_id"),
     ("player_physical", "player_id"),
+    ("player_ea_ratings", "player_id"),
     ("matches", "id"),
     ("players", "id"),
     ("teams", "id"),

@@ -35,6 +35,7 @@ interface PlayerRow {
   notaDefensa?: number | null;
   notaBalonParado?: number | null;
   notaDisponibilidad?: number | null;
+  notaFisico?: number | null;
 }
 
 export default function PlayersDirectoryPage() {
@@ -152,6 +153,7 @@ export default function PlayersDirectoryPage() {
               { id: "nota_defensa", label: "Defending" },
               { id: "nota_balon_parado", label: "Set Pieces" },
               { id: "nota_disponibilidad", label: "Availability" },
+              { id: "nota_fisico", label: "Physical" },
             ].map((col) => {
               const active = sortBy === col.id;
               return (
@@ -250,6 +252,13 @@ export default function PlayersDirectoryPage() {
                   >
                     AVAIL {sortBy === "nota_disponibilidad" && (sortOrder === "desc" ? "↓" : "↑")}
                   </TableHead>
+                  <TableHead
+                    onClick={() => handleSort("nota_fisico")}
+                    className="cursor-pointer text-center font-semibold text-slate-300 hover:text-white select-none"
+                    title="Click to sort by Physical Rating"
+                  >
+                    PHY {sortBy === "nota_fisico" && (sortOrder === "desc" ? "↓" : "↑")}
+                  </TableHead>
                   <TableHead className="text-right font-semibold text-white">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -336,6 +345,9 @@ export default function PlayersDirectoryPage() {
                     </TableCell>
                     <TableCell className="text-center">
                       {getScoreBadge(player.notaDisponibilidad)}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      {getScoreBadge(player.notaFisico)}
                     </TableCell>
 
                     <TableCell className="text-right">

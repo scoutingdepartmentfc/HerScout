@@ -459,12 +459,15 @@ export default function PlayerProfilePage() {
             Not enough minutes this season for a season rating ({selected.minutes_played}&apos; played).
           </div>
         ) : (
-          <NotasResumen stats={stats} metricas={metricas} position={p.primaryPosition} />
+          <NotasResumen
+            stats={stats}
+            metricas={metricas}
+            position={p.primaryPosition}
+            physical={data.physical || null}
+            ea={data.eaRatings || null}
+          />
         )}
       </section>
-
-      {/* Physical attributes (Football Manager) */}
-      <FisicoFM physical={data.physical || null} />
 
       {/* Match-by-match ratings (0-9.9, from Opta eventing + matchstats) */}
       <Card className="bg-[#0b1329]">
@@ -546,9 +549,16 @@ export default function PlayerProfilePage() {
         />
       </div>
 
-      {/* Full Hierarchical Metrics Accordion (6 Categories • 15 Subcategories • 150+ Metrics) */}
+      {/* Full Hierarchical Metrics Accordion (Categories • Subcategories • Metrics + Physical) */}
       <Card className="bg-[#070c18] border-border/80 p-5">
-        <MetricsAccordion metricas={metricas} grupo={stats?.grupo_demarcacion ?? p.grupoDemarcacion} position={p.primaryPosition} />
+        <MetricsAccordion
+          metricas={metricas}
+          leagueAverages={data?.leagueAverages || {}}
+          grupo={stats?.grupo_demarcacion ?? p.grupoDemarcacion}
+          position={p.primaryPosition}
+          physical={data.physical || null}
+          ea={data.eaRatings || null}
+        />
       </Card>
 
       {/* Positional Pitch & Season Breakdown */}

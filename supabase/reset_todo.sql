@@ -19,7 +19,7 @@ BEGIN
         'organization_members', 'organizations',
         -- Datos descargados por el pipeline
         'player_match_scores', 'player_match_stats', 'player_season_stats', 'squad_members',
-        'player_market_values', 'player_transfers', 'player_injuries', 'player_national_teams', 'player_physical',
+        'player_market_values', 'player_transfers', 'player_injuries', 'player_national_teams', 'player_physical', 'player_ea_ratings',
         'matches', 'players', 'teams', 'ingestion_checkpoints', 'seasons', 'competitions',
         'leagues', 'ingestion_runs'
     ] LOOP

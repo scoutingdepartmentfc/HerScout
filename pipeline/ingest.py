@@ -153,6 +153,13 @@ class IngestionPipeline:
                 miembros[pid] = {'season_id': comp['season_id'], 'player_id': pid, 'competition_id': comp['id'],
                                  'team_id': tid, 'active': activo, 'shirt_number': pers.get('shirtNumber'),
                                  'updated_at': ts}
+        # Temporada antigua: el equipo y el dorsal de entonces no pisan los actuales (puede estar ya en otra liga);
+        # solo se ponen a las jugadoras nuevas, como último club conocido
+        if not comp.get('active', True) and self.store.online:
+            existentes = {p['id'] for p in self.store.select_all('players', 'id')}
+            for pid in players.keys() & existentes:
+                players[pid].pop('current_team_id', None)
+                players[pid].pop('shirt_number', None)
         # Sin NULLs: no pisar datos ya guardados (equipo actual, altura de FotMob...) con huecos de Opta
         filas = [{k: v for k, v in p.items() if v is not None} for p in players.values()]
         self.store.upsert('teams', teams)

@@ -29,7 +29,7 @@ from rapidfuzz import fuzz
 
 from . import traducciones as en
 from .config import BUCKET_PLAYER_PHOTOS, BUCKET_TEAM_BADGES, FOTMOB_PLAYER_IMG, FOTMOB_TEAM_IMG
-from .photos import FotMobClient, misma_fecha, normalizar, normalizar_club, sim_nombre
+from .photos import FotMobClient, misma_fecha, normalizar, normalizar_club, sim_nombre, variantes_nombre
 from .soccerdonna import SD_BASE, SDClient, _homogeneo, filas_jugadora, now_iso
 from .storage import Store, get_supabase_client
 
@@ -263,7 +263,7 @@ def vincular(store: Store, liga_code: Optional[str]):
                                                               "league_name,league_logo_url")}
     jugadoras = store.select_all("players", "id,name,first_name,last_name,match_name,birth_date,current_team_id,"
                                             "sd_league_code,opta_id," + ",".join(SD_CAMPOS))
-    unidas = 0
+    unidas, unidas_ids, opta_unidas = 0, set(), set()
     for liga in ligas:
         # Equipos Opta de la liga: escudo y liga del club de Soccerdonna con el nombre más parecido
         sd_eq = [t for t in equipos.values() if t.get("sd_league_code") == liga["code"] and t["id"].startswith("sd-")]
@@ -291,16 +291,86 @@ def vincular(store: Store, liga_code: Optional[str]):
                     mejor, puntos = o, sim + (50 if fecha else 0) + club / 2
             if not mejor:
                 continue
-            datos = {k: s_[k] for k in SD_CAMPOS if s_.get(k) is not None and (k.startswith(("sd_", "market", "photo"))
-                                                                              or not mejor.get(k))}
-            store.update("players", {"sd_id": None}, id=s_["id"])  # sd_id es único: se libera antes de moverlo
-            store.update("players", {**datos, "opta_id": mejor["id"]}, id=mejor["id"])
-            for tabla in ("player_market_values", "player_transfers", "player_injuries", "player_national_teams"):
-                store.update(tabla, {"player_id": mejor["id"]}, player_id=s_["id"])
-            store.delete("players", id=s_["id"])
+            _unir(store, s_, mejor)
+            unidas_ids.add(s_["id"])
+            opta_unidas.add(mejor["id"])
             libres.pop(mejor["id"])
             unidas += 1
         logger.info(f"Vincular {liga['name']}: {unidas} jugadoras unidas con Opta ({len(sd)} de Soccerdonna sin unir antes)")
+
+    # Entre ligas: la jugadora de Opta de una temporada antigua (o que salió de la plantilla) que Soccerdonna
+    # tiene ahora en otra liga. Se une solo con nombre parecido y la misma fecha de nacimiento.
+    sd = [p for p in jugadoras if p["id"].startswith("sd-") and p["id"] not in unidas_ids]
+    op = [p for p in jugadoras if not p["id"].startswith("sd-") and not p.get("sd_id")
+          and p["id"] not in opta_unidas]
+    activas = jugadoras_activas(store)
+    pares = emparejar_entre_ligas(sd, op)
+    for s_, o in pares:
+        # Si ya no está en ninguna plantilla Opta actual, el club de hoy es el de Soccerdonna
+        _unir(store, s_, o, club_de_soccerdonna=o["id"] not in activas)
+    logger.info(f"Vincular entre ligas: {len(pares)} jugadoras unidas con su ficha Opta de otra liga o temporada")
+
+
+def _unir(store: Store, s_: Dict[str, Any], mejor: Dict[str, Any], club_de_soccerdonna: bool = False):
+    """Pasa los datos de la ficha "sd-" a la fila Opta (que tiene las estadísticas) y borra la "sd-"."""
+    club = ("fm_team_name", "fm_team_badge_url", "current_league_name", "current_league_logo_url")
+    datos = {k: s_[k] for k in SD_CAMPOS if s_.get(k) is not None and (k.startswith(("sd_", "market", "photo"))
+                                                                      or not mejor.get(k)
+                                                                      or (club_de_soccerdonna and k in club))}
+    if club_de_soccerdonna and s_.get("current_team_id"):
+        datos["current_team_id"] = s_["current_team_id"]
+    store.update("players", {"sd_id": None}, id=s_["id"])  # sd_id es único: se libera antes de moverlo
+    store.update("players", {**datos, "opta_id": mejor["id"]}, id=mejor["id"])
+    for tabla in ("player_market_values", "player_transfers", "player_injuries", "player_national_teams"):
+        store.update(tabla, {"player_id": mejor["id"]}, player_id=s_["id"])
+    store.delete("players", id=s_["id"])
+
+
+def _fechas_iguales(a: Any, b: Any) -> bool:
+    """Misma fecha de nacimiento, o con día y mes invertidos (errata típica). Más estricta que misma_fecha:
+    entre ligas no hay club que confirme."""
+    a, b = str(a or "")[:10], str(b or "")[:10]
+    if len(a) < 10 or len(b) < 10:
+        return False
+    return a == b or (a[:4] == b[:4] and a[5:7] == b[8:10] and a[8:10] == b[5:7])
+
+
+def _sim_estricta(o: Dict[str, Any], nombre: Any) -> float:
+    """Parecido de nombre exigiendo al menos dos palabras en común (nombre y apellido): con la misma fecha,
+    coincidir solo en el nombre de pila no basta."""
+    n = normalizar(nombre)
+    palabras = set(n.split())
+    return max((fuzz.token_set_ratio(normalizar(v), n) for v in variantes_nombre(o)
+                if len(palabras & set(normalizar(v).split())) >= 2), default=0)
+
+
+def emparejar_entre_ligas(sd: List[Dict[str, Any]], op: List[Dict[str, Any]], min_sim: int = 80):
+    """[(ficha sd-, jugadora Opta)] con la misma fecha de nacimiento y nombre parecido, sin mirar liga ni club.
+    Si dos jugadoras Opta encajan igual de bien con una ficha, no se une (mejor separadas que mal unidas)."""
+    por_anyo: Dict[str, List[Dict[str, Any]]] = {}
+    for o in op:
+        if o.get("birth_date"):
+            por_anyo.setdefault(str(o["birth_date"])[:4], []).append(o)
+    pares, usadas = [], set()
+    for s_ in sd:
+        if not s_.get("birth_date"):
+            continue
+        cands = sorted(((_sim_estricta(o, s_["name"]), o) for o in por_anyo.get(str(s_["birth_date"])[:4], [])
+                        if o["id"] not in usadas and _fechas_iguales(o["birth_date"], s_["birth_date"])),
+                       key=lambda t: -t[0])
+        cands = [c for c in cands if c[0] >= min_sim]
+        if not cands or (len(cands) > 1 and cands[1][0] == cands[0][0]):
+            continue
+        pares.append((s_, cands[0][1]))
+        usadas.add(cands[0][1]["id"])
+    return pares
+
+
+def jugadoras_activas(store: Store) -> set:
+    """Jugadoras en la plantilla (activa) de alguna temporada actual de Opta."""
+    actuales = {s["id"] for s in store.select_all("seasons", "id,is_active") if s.get("is_active")}
+    return {m["player_id"] for m in store.select_all("squad_members", "player_id,season_id,active")
+            if m["season_id"] in actuales and m.get("active")}
 
 
 def _sin_w(nombre: Optional[str]) -> str:

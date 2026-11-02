@@ -55,7 +55,8 @@ export async function GET(req: NextRequest) {
             weight,
             market_value,
             fm_team_name, fm_team_badge_url, current_league_name, current_league_logo_url,
-            teams:current_team_id ( id, name, badge_url, league_name, league_logo_url )
+            teams:current_team_id ( id, name, badge_url, league_name, league_logo_url ),
+            player_ea_ratings ( pace, physicality )
           )
         `)
         .order(sortBy, { ascending: order === "asc" })
@@ -94,6 +95,13 @@ export async function GET(req: NextRequest) {
             notaDefensa: row.nota_defensa,
             notaBalonParado: row.nota_balon_parado,
             notaDisponibilidad: row.nota_disponibilidad,
+            notaFisico: (() => {
+              const ea = Array.isArray(p.player_ea_ratings) ? p.player_ea_ratings[0] : p.player_ea_ratings;
+              if (ea?.pace != null && ea?.physicality != null) {
+                return Math.round((Number(ea.pace) * 0.45) + (Number(ea.physicality) * 0.55));
+              }
+              return ea?.pace != null ? Number(ea.pace) : ea?.physicality != null ? Number(ea.physicality) : null;
+            })(),
           };
         });
 

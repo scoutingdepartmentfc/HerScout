@@ -7,3 +7,4 @@ scikit-learn==1.8.0   # misma versión con la que se entrenaron modelos/modelo_x
 supabase>=2.4
 rapidfuzz>=3.6
 python-dotenv>=1.0
+kagglehub>=0.3   # dataset EA SPORTS FC (pipeline/ea_fc.py)

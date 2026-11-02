@@ -37,7 +37,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from rapidfuzz import fuzz
 
 from .config import LOCAL_CACHE_DIR
-from .photos import normalizar, normalizar_club, sim_nombre
+from .photos import misma_fecha, normalizar, normalizar_club, sim_nombre
 from .storage import Store, get_supabase_client
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -220,7 +220,11 @@ def emparejar(fila: Dict[str, Any], jugadoras: List[Dict[str, Any]],
 
     club = normalizar_club(fila.get("fm_club"))
     casi = sorted(((sim_nombre(j, nombre), j) for j in jugadoras), key=lambda x: -x[0])
-    buenos = [(s, j) for s, j in casi if s >= 92]
+    # Con fecha en las dos fichas y distinta no es la misma jugadora aunque el nombre encaje
+    # (token_set_ratio da 100 si solo coincide el nombre de pila: "Ainhoa Alguacil" vs "Ainhoa Doménech")
+    fecha = fila.get("fm_birth_date")
+    buenos = [(s, j) for s, j in casi if s >= 92
+              and not (fecha and j.get("birth_date") and not misma_fecha(fecha, str(j["birth_date"])[:10]))]
     for s, j in buenos:
         clubs_j = [normalizar_club(j.get("fm_team_name")), normalizar_club((j.get("teams") or {}).get("name"))]
         if club and any(c and fuzz.token_set_ratio(club, c) >= 85 for c in clubs_j):

@@ -41,20 +41,20 @@ interface ZoneMeta {
 }
 
 const ZONE_METAS: Record<BodyZone, ZoneMeta> = {
-  head: { label: "Head & Face", cx: 100, cy: 38, group: "head" },
-  shoulder_left: { label: "Left Shoulder", cx: 62, cy: 80, group: "upper" },
-  shoulder_right: { label: "Right Shoulder", cx: 138, cy: 80, group: "upper" },
-  chest: { label: "Chest & Heart", cx: 100, cy: 96, group: "core" },
-  abdomen: { label: "Abdomen & Illness", cx: 100, cy: 132, group: "core" },
-  hip_groin: { label: "Groin & Abductor", cx: 100, cy: 168, group: "core" },
-  thigh_left: { label: "Left Thigh / Hamstring", cx: 78, cy: 206, group: "thigh" },
-  thigh_right: { label: "Right Thigh / Hamstring", cx: 122, cy: 206, group: "thigh" },
-  knee_left: { label: "Left Knee & Ligaments", cx: 78, cy: 254, group: "knee" },
-  knee_right: { label: "Right Knee & Ligaments", cx: 122, cy: 254, group: "knee" },
-  calf_left: { label: "Left Calf & Shin", cx: 77, cy: 298, group: "calf" },
-  calf_right: { label: "Right Calf & Shin", cx: 123, cy: 298, group: "calf" },
-  ankle_foot_left: { label: "Left Ankle & Foot", cx: 74, cy: 346, group: "ankle" },
-  ankle_foot_right: { label: "Right Ankle & Foot", cx: 126, cy: 346, group: "ankle" },
+  head: { label: "Head & Face", cx: 100, cy: 36, group: "head" },
+  shoulder_left: { label: "Left Shoulder", cx: 64, cy: 82, group: "upper" },
+  shoulder_right: { label: "Right Shoulder", cx: 136, cy: 82, group: "upper" },
+  chest: { label: "Chest & Heart", cx: 100, cy: 104, group: "core" },
+  abdomen: { label: "Abdomen & Illness", cx: 100, cy: 140, group: "core" },
+  hip_groin: { label: "Groin & Abductor", cx: 100, cy: 174, group: "core" },
+  thigh_left: { label: "Left Thigh / Hamstring", cx: 80, cy: 218, group: "thigh" },
+  thigh_right: { label: "Right Thigh / Hamstring", cx: 120, cy: 218, group: "thigh" },
+  knee_left: { label: "Left Knee & Ligaments", cx: 81, cy: 268, group: "knee" },
+  knee_right: { label: "Right Knee & Ligaments", cx: 119, cy: 268, group: "knee" },
+  calf_left: { label: "Left Calf & Shin", cx: 82, cy: 312, group: "calf" },
+  calf_right: { label: "Right Calf & Shin", cx: 118, cy: 312, group: "calf" },
+  ankle_foot_left: { label: "Left Ankle & Foot", cx: 82, cy: 356, group: "ankle" },
+  ankle_foot_right: { label: "Right Ankle & Foot", cx: 118, cy: 356, group: "ankle" },
 };
 
 function classifyInjury(name: string, index: number = 0): BodyZone[] {
@@ -202,18 +202,20 @@ export const InjuryAnatomy: React.FC<InjuryAnatomyProps> = ({ injuries }) => {
                 className="w-[155px] h-[310px] overflow-visible select-none drop-shadow-[0_4px_16px_rgba(0,0,0,0.5)]"
               >
                 <defs>
-                  {/* Athletic metallic muscle gradient */}
-                  <linearGradient id="bodyMuscleGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#1e293b" />
-                    <stop offset="50%" stopColor="#0f172a" />
+                  {/* Subtle glossy 3D mannequin body gradient */}
+                  <linearGradient id="bodySkinGrad" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0%" stopColor="#334155" />
+                    <stop offset="25%" stopColor="#1e293b" />
+                    <stop offset="70%" stopColor="#0f172a" />
                     <stop offset="100%" stopColor="#090e17" />
                   </linearGradient>
 
-                  {/* Muscle contours subtle gradient */}
-                  <linearGradient id="contourGrad" x1="0" y1="0" x2="1" y2="0">
-                    <stop offset="0%" stopColor="#38bdf8" stopOpacity="0.1" />
-                    <stop offset="50%" stopColor="#38bdf8" stopOpacity="0.25" />
-                    <stop offset="100%" stopColor="#38bdf8" stopOpacity="0.1" />
+                  {/* Highlights reflecting light like a mannequin */}
+                  <linearGradient id="sheenGrad" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stopColor="#94a3b8" stopOpacity="0.3" />
+                    <stop offset="35%" stopColor="#ffffff" stopOpacity="0.45" />
+                    <stop offset="70%" stopColor="#38bdf8" stopOpacity="0.1" />
+                    <stop offset="100%" stopColor="#0f172a" stopOpacity="0" />
                   </linearGradient>
 
                   {/* Hotspot radial pulse glow */}
@@ -224,109 +226,116 @@ export const InjuryAnatomy: React.FC<InjuryAnatomyProps> = ({ injuries }) => {
                   </radialGradient>
                 </defs>
 
-                {/* --- REALISTIC ATHLETIC HUMAN ANATOMY SILHOUETTE --- */}
-                <g className="fill-[url(#bodyMuscleGrad)] stroke-slate-600/70 stroke-[1.2] transition-colors">
-                  {/* Head & Cranium */}
+                {/* --- REALISTIC FEMALE ATHLETE STANDING POSE MANNEQUIN --- */}
+                {/* 1. Base Silhouette with 3D Skin Gradient */}
+                <g className="fill-[url(#bodySkinGrad)] stroke-[#475569] stroke-[1.1] transition-colors drop-shadow-md">
+                  {/* Head (refined oval cranium & jaw) */}
                   <path
-                    d="M 100,16 
-                       C 84,16 80,27 80,42 
-                       C 80,54 86,63 92,67 
-                       L 93,73 
-                       L 107,73 
-                       L 108,67 
-                       C 114,63 120,54 120,42 
-                       C 120,27 116,16 100,16 Z"
+                    d="M 100,14 
+                       C 87,14 83,23 83,36 
+                       C 83,48 88,57 93,62 
+                       L 95,68 
+                       L 105,68 
+                       L 107,62 
+                       C 112,57 117,48 117,36 
+                       C 117,23 113,14 100,14 Z"
                   />
 
-                  {/* Neck Trapezius */}
-                  <path d="M 93,71 L 80,82 L 120,82 L 107,71 Z" />
+                  {/* Slender neck & elegant trapezius slope */}
+                  <path d="M 94,66 C 90,75 80,82 72,85 L 128,85 C 120,82 110,75 106,66 Z" />
 
-                  {/* Torso: Pectorals, Ribcage & Abdominals */}
+                  {/* Torso: Natural hourglass waist, feminine athletic ribcage & hips */}
                   <path
-                    d="M 80,82 
-                       C 68,84 56,92 56,104 
-                       C 56,118 64,136 67,155 
-                       L 72,175 
-                       C 84,180 116,180 128,175 
-                       L 133,155 
-                       C 136,136 144,118 144,104 
-                       C 144,92 132,84 120,82 Z"
+                    d="M 72,85 
+                       C 63,88 62,98 63,110 
+                       C 64,124 71,136 73,150 
+                       C 74,160 70,172 68,182 
+                       C 78,188 122,188 132,182 
+                       C 130,172 126,160 127,150 
+                       C 129,136 136,124 137,110 
+                       C 138,98 137,88 128,85 Z"
                   />
 
-                  {/* Left Arm (Athletic Deltoid, Bicep, Forearm, Hand) */}
+                  {/* Left Arm: Standing relaxed pose along the body */}
                   <path
-                    d="M 56,92 
-                       C 48,94 40,105 40,118 
-                       C 40,132 44,152 42,170 
-                       L 38,198 
-                       C 36,206 37,212 40,212 
-                       C 43,212 45,206 46,198 
-                       L 50,168 
-                       C 53,152 56,132 58,118 Z"
+                    d="M 64,88 
+                       C 56,92 50,102 49,114 
+                       C 48,126 50,142 49,158 
+                       C 48,172 45,188 44,204 
+                       C 43,212 45,217 48,217 
+                       C 51,217 53,211 54,202 
+                       C 56,186 58,168 59,152 
+                       C 60,138 61,122 64,110 Z"
                   />
 
-                  {/* Right Arm */}
+                  {/* Right Arm: Standing pose with hand lightly poised near thigh/hip */}
                   <path
-                    d="M 144,92 
-                       C 152,94 160,105 160,118 
-                       C 160,132 156,152 158,170 
-                       L 162,198 
-                       C 164,206 163,212 160,212 
-                       C 157,212 155,206 154,198 
-                       L 150,168 
-                       C 147,152 144,132 142,118 Z"
+                    d="M 136,88 
+                       C 144,92 150,102 151,114 
+                       C 152,126 150,142 151,158 
+                       C 152,172 155,188 156,204 
+                       C 157,212 155,217 152,217 
+                       C 149,217 147,211 146,202 
+                       C 144,186 142,168 141,152 
+                       C 140,138 139,122 136,110 Z"
                   />
 
-                  {/* Left Leg: Hip, Quadriceps, Knee, Calf, Ankle, Foot */}
+                  {/* Left Leg: Athletic feminine curve - Thigh, Knee, Calf, Ankle */}
                   <path
-                    d="M 72,175 
-                       C 64,188 62,212 63,234 
-                       C 64,244 68,252 68,260 
-                       C 68,268 64,286 64,304 
-                       C 64,324 67,342 66,354 
-                       L 61,358 
-                       C 58,362 62,366 70,366 
-                       C 78,366 82,360 82,354 
-                       C 83,342 86,324 87,304 
-                       C 88,286 86,268 86,260 
-                       C 86,252 90,244 91,234 
-                       C 93,212 92,188 88,177 Z"
+                    d="M 69,183 
+                       C 65,198 64,222 66,244 
+                       C 68,256 72,263 72,272 
+                       C 72,282 69,298 69,314 
+                       C 69,332 72,348 72,358 
+                       L 67,364 
+                       C 64,368 68,372 75,372 
+                       C 83,372 87,366 87,358 
+                       C 87,346 89,330 89,314 
+                       C 89,298 87,282 87,272 
+                       C 87,263 90,256 92,244 
+                       C 94,222 93,198 88,184 Z"
                   />
 
-                  {/* Right Leg */}
+                  {/* Right Leg: Symmetrical athletic posture */}
                   <path
-                    d="M 128,175 
-                       C 136,188 138,212 137,234 
-                       C 136,244 132,252 132,260 
-                       C 132,268 136,286 136,304 
-                       C 136,324 133,342 134,354 
-                       L 139,358 
-                       C 142,362 138,366 130,366 
-                       C 122,366 118,360 118,354 
-                       C 117,342 114,324 113,304 
-                       C 112,286 114,268 114,260 
-                       C 114,252 110,244 109,234 
-                       C 107,212 108,188 112,177 Z"
+                    d="M 131,183 
+                       C 135,198 136,222 134,244 
+                       C 132,256 128,263 128,272 
+                       C 128,282 131,298 131,314 
+                       C 131,332 128,348 128,358 
+                       L 133,364 
+                       C 136,368 132,372 125,372 
+                       C 117,372 113,366 113,358 
+                       C 113,346 111,330 111,314 
+                       C 111,298 113,282 113,272 
+                       C 113,263 110,256 108,244 
+                       C 106,222 107,198 112,184 Z"
                   />
                 </g>
 
-                {/* Anatomical Line Contours (Chest, Knees, Shins) */}
-                <g className="fill-none stroke-sky-400/20 stroke-[1] pointer-events-none">
-                  {/* Clavicles */}
-                  <path d="M 82,86 Q 100,92 118,86" />
-                  {/* Pectoral line */}
-                  <path d="M 75,108 Q 100,116 125,108" />
-                  {/* Sternum & Abdominal midline */}
-                  <path d="M 100,108 L 100,165" strokeDasharray="3,3" />
-                  {/* Pelvic arch */}
-                  <path d="M 80,174 Q 100,183 120,174" />
-                  {/* Left Patella (Knee Cap) */}
-                  <ellipse cx="78" cy="254" rx="6" ry="6" />
-                  {/* Right Patella */}
-                  <ellipse cx="122" cy="254" rx="6" ry="6" />
-                  {/* Shin lines */}
-                  <path d="M 77,272 L 75,328" strokeDasharray="2,3" />
-                  <path d="M 123,272 L 125,328" strokeDasharray="2,3" />
+                {/* 2. Mannequin Gloss / Form Highlights */}
+                <g className="fill-none stroke-[url(#sheenGrad)] stroke-[1.2] opacity-80 pointer-events-none">
+                  {/* Cranium glossy curve */}
+                  <path d="M 87,26 C 90,18 97,16 100,16" />
+                  {/* Collarbone / Clavicle elegance */}
+                  <path d="M 76,88 Q 100,94 124,88" />
+                  {/* Bust contour definition */}
+                  <path d="M 73,114 Q 85,124 97,118" />
+                  <path d="M 127,114 Q 115,124 103,118" />
+                  {/* Torso light reflection */}
+                  <path d="M 100,122 L 100,170" strokeDasharray="3,4" opacity="0.4" />
+                  {/* Hip / Waist feminine curvature highlight */}
+                  <path d="M 72,154 Q 68,168 70,180" />
+                  <path d="M 128,154 Q 132,168 130,180" />
+                  {/* Left Patella & Quad highlight */}
+                  <ellipse cx="80" cy="268" rx="4.5" ry="5" />
+                  <path d="M 72,216 Q 74,242 79,262" opacity="0.6" />
+                  {/* Right Patella & Quad highlight */}
+                  <ellipse cx="120" cy="268" rx="4.5" ry="5" />
+                  <path d="M 128,216 Q 126,242 121,262" opacity="0.6" />
+                  {/* Calves shine lines */}
+                  <path d="M 78,284 Q 75,306 77,336" opacity="0.5" />
+                  <path d="M 122,284 Q 125,306 123,336" opacity="0.5" />
                 </g>
 
                 {/* --- INTERACTIVE INJURY HOTSPOTS ON PRECISE ANATOMICAL COORDS --- */}

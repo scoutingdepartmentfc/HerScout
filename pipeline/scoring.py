@@ -202,14 +202,14 @@ def agregar_temporada(df_partidos: pd.DataFrame, df_scores_partido: pd.DataFrame
     return pd.DataFrame(records)
 
 
-def _percentil_0_100(serie: pd.Series, invert: bool = False) -> pd.Series:
-    """Percentil 0-100 entre los valores no nulos (empates = media); NaN se queda NaN."""
+def _percentil_0_100(serie: pd.Series, invert: bool = False, rank_method: str = 'average') -> pd.Series:
+    """Percentil 0-100 entre los valores no nulos; rank_method='min' para no inflar empates a 0. NaN se queda NaN."""
     validos = serie.dropna()
     if len(validos) == 0:
         return serie * np.nan
     if len(validos) == 1:
         return serie.where(serie.isna(), 50.0)
-    r = validos.rank(method='average', ascending=not invert)
+    r = validos.rank(method=rank_method, ascending=not invert)
     return ((r - 1) / (len(validos) - 1) * 100).reindex(serie.index)
 
 
@@ -254,11 +254,22 @@ def puntuar_categorias(df_temp: pd.DataFrame) -> pd.DataFrame:
     for c in METRICA_SUB:
         if c not in df.columns:
             continue
-        v = pd.to_numeric(df[c], errors='coerce').astype(float)
+        v_orig = pd.to_numeric(df[c], errors='coerce').astype(float)
+        v = v_orig.copy()
         if c not in SIN_CORRECCION:
             media = v.groupby(grupos).transform('mean')
             v = (mins * v + K_MINUTOS_CONFIANZA * media) / (mins + K_MINUTOS_CONFIANZA)
-        pcts[c] = v.groupby(grupos, group_keys=False).apply(lambda g: _percentil_0_100(g, c in MALUS))
+            # En métricas positivas (no malus), si la jugadora tiene valor real 0.0, no inflar su valor
+            # con la media de grupo: se queda en 0.0 para que el empate a cero no otorgue notas altas.
+            if c not in MALUS:
+                v = v.where(v_orig > 0, 0.0)
+
+        # Usar method='min' para empates a 0 en métricas positivas, evitando inflar percentiles a la media
+        is_malus = c in MALUS
+        pct = v.groupby(grupos, group_keys=False).apply(
+            lambda g: _percentil_0_100(g, invert=is_malus, rank_method='min' if not is_malus else 'average')
+        )
+        pcts[c] = pct
     pcts = pd.DataFrame(pcts, index=df.index)
     notas_met = _percentil_a_nota(pcts)
 

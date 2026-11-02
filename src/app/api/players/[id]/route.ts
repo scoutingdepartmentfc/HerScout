@@ -66,7 +66,7 @@ export async function GET(
 
     // 3. Match log: every match played with its 0-9.9 rating, and the Soccerdonna career data
     const db = supabaseAdmin as any;
-    const [matchStats, matchScores, marketValues, transfers, nationalTeams, injuries, physical] = await Promise.all([
+    const [matchStats, matchScores, marketValues, transfers, nationalTeams, injuries, physical, eaRatings] = await Promise.all([
       db.from("player_match_stats")
         .select(`
           match_id, team_id, competition_id, season_id, match_date, minutes_played, is_starter, goals, assists, demarcacion,
@@ -93,8 +93,16 @@ export async function GET(
       db.from("player_physical")
         .select("acceleration, agility, balance, jumping_reach, natural_fitness, pace, stamina, strength, fm_name, fm_club, updated_at")
         .eq("player_id", playerId).maybeSingle(),
+      // EA SPORTS FC ratings (1-99), imported with pipeline/ea_fc.py
+      db.from("player_ea_ratings")
+        .select("pace, acceleration, sprint_speed, physicality, jumping, stamina, strength, aggression, edition, ea_club")
+        .eq("player_id", playerId).maybeSingle(),
     ]);
     const scoreByMatch = new Map<string, any>((matchScores.data || []).map((r: any) => [r.match_id, r]));
+
+    // Fetch league averages for metrics (cached in memory or queried from player_season_stats)
+    const leagueAverages = await getLeagueAverages(db);
+
     const matchLog = (matchStats.data || []).map((r: any) => {
       const m = r.matches || {};
       const isHome = m.home_team_id === r.team_id;
@@ -248,7 +256,9 @@ export async function GET(
       nationalTeams: nationalTeams.data || [],
       injuries: injuries.data || [],
       physical: physical.error ? null : physical.data || null,
+      eaRatings: eaRatings.error ? null : eaRatings.data || null,
       metricas: metricasMap,
+      leagueAverages,
     });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
@@ -313,3 +323,57 @@ function agregarTemporadas(seasons: any[]) {
     radar_data: { metricas },
   };
 }
+
+let cachedLeagueAverages: Record<string, number> | null = null;
+let lastCacheTime = 0;
+
+async function getLeagueAverages(db: any): Promise<Record<string, number>> {
+  const now = Date.now();
+  if (cachedLeagueAverages && now - lastCacheTime < 5 * 60 * 1000) {
+    return cachedLeagueAverages;
+  }
+
+  try {
+    const { data } = await db
+      .from("player_season_stats")
+      .select("minutes_played, radar_data")
+      .not("radar_data", "is", null);
+
+    if (!data || data.length === 0) return {};
+
+    const metricSums: Record<string, number> = {};
+    const metricMinutes: Record<string, number> = {};
+
+    for (const row of data) {
+      const minutes = Number(row.minutes_played) || 0;
+      const metrics = row.radar_data?.metricas || {};
+      for (const [key, pair] of Object.entries<any>(metrics)) {
+        if (!Array.isArray(pair) || pair[0] == null || key.startsWith("_")) continue;
+        const val = Number(pair[0]);
+        if (isNaN(val)) continue;
+
+        if (minutes > 0) {
+          metricSums[key] = (metricSums[key] || 0) + val * minutes;
+          metricMinutes[key] = (metricMinutes[key] || 0) + minutes;
+        } else {
+          metricSums[key] = (metricSums[key] || 0) + val;
+          metricMinutes[key] = (metricMinutes[key] || 0) + 1;
+        }
+      }
+    }
+
+    const averages: Record<string, number> = {};
+    for (const [key, sum] of Object.entries(metricSums)) {
+      const totalMin = metricMinutes[key] || 1;
+      averages[key] = Number((sum / totalMin).toFixed(3));
+    }
+
+    cachedLeagueAverages = averages;
+    lastCacheTime = now;
+    return averages;
+  } catch (err) {
+    console.error("Failed to compute league averages:", err);
+    return cachedLeagueAverages || {};
+  }
+}
+

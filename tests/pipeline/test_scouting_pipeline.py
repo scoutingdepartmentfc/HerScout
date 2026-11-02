@@ -353,3 +353,31 @@ class TestFMFisico(unittest.TestCase):
         self.assertEqual(metodo, 'fecha+nombre')
         fila2 = {'fm_name': 'Laia Desconocida', 'fm_club': 'Barcelona', 'fm_birth_date': '2001-01-01', 'fm_age': None}
         self.assertIsNone(emparejar(fila2, [j, otra], {})[0])
+
+
+class TestVincularEntreLigas(unittest.TestCase):
+    def test_une_por_nombre_y_fecha_sin_mirar_liga(self):
+        from pipeline.sd_ligas import emparejar_entre_ligas
+        sd = [{'id': 'sd-1', 'name': 'Aitana Bonmatí', 'birth_date': '1998-01-18'},
+              {'id': 'sd-2', 'name': 'Laia Desconocida', 'birth_date': '2001-01-01'}]
+        op = [{'id': 'o1', 'name': 'Aitana Bonmatí Conca', 'first_name': 'Aitana', 'last_name': 'Bonmatí Conca',
+               'birth_date': '1998-01-18'},
+              {'id': 'o2', 'name': 'Laia Otra', 'first_name': 'Laia', 'last_name': 'Otra', 'birth_date': '2001-01-01'}]
+        pares = emparejar_entre_ligas(sd, op)
+        self.assertEqual([(s['id'], o['id']) for s, o in pares], [('sd-1', 'o1')])
+
+    def test_fecha_estricta_y_empates(self):
+        from pipeline.sd_ligas import _fechas_iguales, emparejar_entre_ligas
+        self.assertTrue(_fechas_iguales('2001-08-04', '2001-04-08'))
+        self.assertFalse(_fechas_iguales('2001-08-04', '2001-09-04'))
+        sd = [{'id': 'sd-1', 'name': 'Ana García', 'birth_date': '2000-05-05'}]
+        op = [{'id': 'o1', 'name': 'Ana García', 'birth_date': '2000-05-05'},
+              {'id': 'o2', 'name': 'Ana García', 'birth_date': '2000-05-05'}]
+        self.assertEqual(emparejar_entre_ligas(sd, op), [])
+
+    def test_fecha_distinta_no_empareja_por_nombre_y_edad(self):
+        from pipeline.fm_fisico import emparejar
+        j = {'id': 'p1', 'name': 'Ainhoa Doménech Cedrés', 'first_name': 'Ainhoa', 'last_name': 'Doménech Cedrés',
+             'birth_date': '2001-03-10', 'fm_team_name': 'Real Madrid'}
+        fila = {'fm_name': 'Ainhoa Alguacil', 'fm_club': 'Real Madrid', 'fm_birth_date': '2001-11-25', 'fm_age': None}
+        self.assertIsNone(emparejar(fila, [j], {'2001-03-10': [j]})[0])

@@ -5,6 +5,7 @@ module.exports = {
     "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
+    "./src/lib/**/*.{js,ts,jsx,tsx,mdx}",
   ],
   theme: {
     extend: {
@@ -53,6 +54,13 @@ module.exports = {
         pitch: {
           500: "#10b981",
           400: "#34d399",
+        },
+        score: {
+          purple: "#7068FF",
+          mint: "#00E676",
+          green: "#00C853",
+          amber: "#FFB300",
+          white: "#FFFFFF",
         },
       },
       borderRadius: {

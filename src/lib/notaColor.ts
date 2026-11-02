@@ -1,33 +1,51 @@
-// Colour of a 0-100 rating. Ratings are relative to the league average (average player ≈ 62):
-// >= 70 green, 50-70 orange, < 50 red.
-export type NotaTono = "verde" | "naranja" | "rojo" | "nulo";
+// Scoring scale palette:
+// 90-100: Indigo / Purple (#6366F1 / #7068FF)
+// 80-89:  Bright Mint / Green (#00E676 / #10B981)
+// 72-79:  Medium / Emerald Green (#00C853 / #059669)
+// 60-71:  Amber / Yellow-Orange (#FFB300 / #F59E0B)
+// 0-59:   White / Neutral (#FFFFFF / #F8FAFC)
+export type NotaTono = "purple" | "mint" | "green" | "amber" | "white" | "nulo";
 
 export function notaTono(v: number | null | undefined): NotaTono {
   if (v == null || Number.isNaN(v)) return "nulo";
   const r = Math.round(v);
-  if (r >= 70) return "verde";
-  if (r >= 50) return "naranja";
-  return "rojo";
+  if (r >= 90) return "purple";
+  if (r >= 80) return "mint";
+  if (r >= 72) return "green";
+  if (r >= 60) return "amber";
+  return "white";
 }
 
 const CLASES: Record<NotaTono, { text: string; bar: string; box: string; badge: string }> = {
-  verde: {
-    text: "text-emerald-400",
-    bar: "bg-emerald-500",
-    box: "border-emerald-500/30 bg-emerald-500/10",
-    badge: "bg-emerald-500/15 text-emerald-400 border-emerald-500/40",
+  purple: {
+    text: "text-score-purple",
+    bar: "bg-score-purple",
+    box: "border-score-purple/40 bg-score-purple/15",
+    badge: "bg-score-purple/20 text-[#8B85FF] border-score-purple/40",
   },
-  naranja: {
-    text: "text-orange-400",
-    bar: "bg-orange-500",
-    box: "border-orange-500/30 bg-orange-500/10",
-    badge: "bg-orange-500/15 text-orange-300 border-orange-500/40",
+  mint: {
+    text: "text-score-mint",
+    bar: "bg-score-mint",
+    box: "border-score-mint/40 bg-score-mint/15",
+    badge: "bg-score-mint/20 text-score-mint border-score-mint/40",
   },
-  rojo: {
-    text: "text-red-400",
-    bar: "bg-red-500",
-    box: "border-red-500/20 bg-red-500/10",
-    badge: "bg-red-500/15 text-red-300 border-red-500/30",
+  green: {
+    text: "text-score-green",
+    bar: "bg-score-green",
+    box: "border-score-green/40 bg-score-green/15",
+    badge: "bg-score-green/20 text-score-green border-score-green/40",
+  },
+  amber: {
+    text: "text-score-amber",
+    bar: "bg-score-amber",
+    box: "border-score-amber/40 bg-score-amber/15",
+    badge: "bg-score-amber/20 text-score-amber border-score-amber/40",
+  },
+  white: {
+    text: "text-white",
+    bar: "bg-white",
+    box: "border-white/30 bg-white/10",
+    badge: "bg-white/15 text-white border-white/30",
   },
   nulo: {
     text: "text-muted-foreground",
@@ -40,3 +58,4 @@ const CLASES: Record<NotaTono, { text: string; bar: string; box: string; badge: 
 export function notaClases(v: number | null | undefined) {
   return CLASES[notaTono(v)];
 }
+

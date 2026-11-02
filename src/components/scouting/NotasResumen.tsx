@@ -26,20 +26,67 @@ function Anillo({ valor, size, grosor }: { valor: number | null; size: "lg" | "m
 
 const fmt = (v: number | null | undefined) => (v == null ? "—" : Math.round(v));
 
-/** Overall rating + one card per category (with its real sub-category notes). Goalkeepers get their own
- *  categories (Goalkeeping, Distribution, Availability). Colours: >= 70 green, 50-70 orange, < 50 red. */
+interface PhysicalData {
+  pace?: number | null;
+  physicality?: number | null;
+  overall?: number | null;
+  acceleration?: number | null;
+  sprint_speed?: number | null;
+  jumping?: number | null;
+  stamina?: number | null;
+  strength?: number | null;
+  aggression?: number | null;
+}
+
+/** Overall rating + category cards (including Physical/Athletic card). */
 export function NotasResumen({
   stats,
   metricas,
   position,
+  physical,
+  ea,
 }: {
   stats: Record<string, any> | null;
   metricas: Metricas;
   position?: string | null;
+  physical?: Record<string, any> | null;
+  ea?: Record<string, any> | null;
 }) {
   const hierarchy = hierarchyFor(stats?.grupo_demarcacion, position);
   const global = stats?.nota_global ?? null;
-  const cols = hierarchy.length + 1 >= 5 ? "lg:grid-cols-5" : "lg:grid-cols-4";
+
+  // Calculate physical score from EA FC ratings or FM physical attributes
+  let physicalScore: number | null = null;
+  let paceScore: number | null = null;
+  let staminaScore: number | null = null;
+  let strengthScore: number | null = null;
+
+  if (ea) {
+    paceScore = ea.pace != null ? Number(ea.pace) : null;
+    staminaScore = ea.stamina != null ? Number(ea.stamina) : null;
+    strengthScore = ea.strength != null ? Number(ea.strength) : null;
+    const phys = ea.physicality != null ? Number(ea.physicality) : null;
+    if (paceScore != null && phys != null) {
+      physicalScore = Math.round((paceScore * 0.45) + (phys * 0.55));
+    } else {
+      physicalScore = paceScore ?? phys ?? null;
+    }
+  } else if (physical) {
+    const p = (k: string) => (physical[k] != null ? Math.round(Number(physical[k]) * 5) : null);
+    paceScore = p("pace");
+    staminaScore = p("stamina");
+    strengthScore = p("strength");
+    const acc = p("acceleration");
+    const agi = p("agility");
+    const arr = [paceScore, staminaScore, strengthScore, acc, agi].filter((v): v is number => v != null);
+    if (arr.length > 0) {
+      physicalScore = Math.round(arr.reduce((a, b) => a + b, 0) / arr.length);
+    }
+  }
+
+  const hasPhysical = physicalScore != null;
+  const totalCards = 1 + hierarchy.length + (hasPhysical ? 1 : 0);
+  const cols = totalCards >= 7 ? "lg:grid-cols-4 xl:grid-cols-7" : totalCards >= 6 ? "lg:grid-cols-3 xl:grid-cols-6" : totalCards >= 5 ? "lg:grid-cols-5" : "lg:grid-cols-4";
 
   return (
     <div className={`grid grid-cols-1 sm:grid-cols-2 ${cols} gap-4`}>
@@ -82,6 +129,33 @@ export function NotasResumen({
           </div>
         );
       })}
+
+      {/* Physical Category Card (same design and scale) */}
+      {hasPhysical && (
+        <div className="p-4 rounded-xl border border-border/60 bg-[#070e1e] flex flex-col justify-between">
+          <div className="flex items-center gap-3">
+            <div className="relative w-14 h-14 flex items-center justify-center shrink-0">
+              <Anillo valor={physicalScore} size="md" grosor={3.5} />
+              <span className={`absolute font-black text-lg ${notaClases(physicalScore).text}`}>{fmt(physicalScore)}</span>
+            </div>
+            <div className="font-bold text-white text-sm leading-tight">Physical</div>
+          </div>
+          <div className="space-y-1.5 mt-3 pt-3 border-t border-border/40 text-[11px]">
+            <div className="flex justify-between gap-2 text-muted-foreground">
+              <span className="truncate" title="Pace & Acceleration">Pace</span>
+              <span className={`font-bold tabular-nums ${notaClases(paceScore).text}`}>{fmt(paceScore)}</span>
+            </div>
+            <div className="flex justify-between gap-2 text-muted-foreground">
+              <span className="truncate" title="Stamina & Aerobic Capacity">Stamina</span>
+              <span className={`font-bold tabular-nums ${notaClases(staminaScore).text}`}>{fmt(staminaScore)}</span>
+            </div>
+            <div className="flex justify-between gap-2 text-muted-foreground">
+              <span className="truncate" title="Strength & Duels">Strength</span>
+              <span className={`font-bold tabular-nums ${notaClases(strengthScore).text}`}>{fmt(strengthScore)}</span>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

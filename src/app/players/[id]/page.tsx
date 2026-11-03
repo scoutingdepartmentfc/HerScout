@@ -236,14 +236,9 @@ export default function PlayerProfilePage() {
           <div className="space-y-6 w-full">
             {/* Player Name and Club/League Header */}
             <div>
-              <div className="flex items-center gap-3">
-                {p.shirtNumber && (
-                  <CamisetaDorsal number={p.shirtNumber} size="md" />
-                )}
-                <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight text-white">
-                  {p.matchName || p.name}
-                </h1>
-              </div>
+              <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight text-white">
+                {p.matchName || p.name}
+              </h1>
               {p.matchName && p.matchName !== p.name && (
                 <p className="text-sm font-medium text-slate-400 mt-1 tracking-wide">
                   {p.name}
@@ -251,6 +246,9 @@ export default function PlayerProfilePage() {
               )}
               <div className="mt-2.5 flex flex-wrap items-center gap-3 text-xs sm:text-sm">
                 <span className="inline-flex items-center gap-2 font-semibold text-white">
+                  {p.shirtNumber && (
+                    <CamisetaDorsal number={p.shirtNumber} size="sm" />
+                  )}
                   <EscudoEquipo teamId={p.teamId} badgeUrl={p.badgeUrl} name={p.teamName} size={22} />
                   <span>{p.teamName}</span>
                 </span>

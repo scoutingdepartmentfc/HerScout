@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Input } from "@/components/ui/Input";
 import { Bandera } from "@/components/scouting/Bandera";
+import { OptaLogo } from "@/components/scouting/OptaLogo";
 import { Check, CheckCircle2, Download, Filter, Globe2, Layers, Search, Shield, Sparkles, Trash2, Trophy, Users, X } from "lucide-react";
 
 interface SdLeague {
@@ -87,10 +88,10 @@ export function SoccerdonnaLeagues() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       await load();
-      return true;
+      return data || {};
     } catch (err: any) {
       setError(err.message || "Could not save");
-      return false;
+      return null;
     } finally {
       setSaving(null);
     }
@@ -182,19 +183,42 @@ export function SoccerdonnaLeagues() {
             </CardDescription>
           </div>
 
-          <Button
-            size="sm"
-            disabled={selectedCount === 0}
-            isLoading={saving === "run"}
-            leftIcon={<Download className="w-3.5 h-3.5" />}
-            onClick={async () => {
-              setNotice(null);
-              if (await send("run", { action: "run" })) setNotice("Descarga iniciada con éxito en GitHub Actions.");
-            }}
-            className="shadow-lg shadow-primary/20 shrink-0"
-          >
-            Descargar ({selectedCount}) ligas
-          </Button>
+          {/* Automático: Opta cada martes (última temporada + calendario), Soccerdonna el día 1 de cada mes */}
+          <div className="flex flex-col items-stretch sm:items-end gap-1.5 shrink-0">
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                disabled={selectedCount === 0}
+                isLoading={saving === "run-opta"}
+                leftIcon={<Download className="w-3.5 h-3.5" />}
+                onClick={async () => {
+                  setNotice(null);
+                  if (await send("run-opta", { action: "run", modo: "opta" }))
+                    setNotice("Actualización de la API Opta (última temporada y calendario) iniciada en GitHub Actions.");
+                }}
+                className="shadow-lg shadow-primary/20"
+              >
+                Actualizar Opta
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={selectedCount === 0}
+                isLoading={saving === "run-soccerdonna"}
+                leftIcon={<Download className="w-3.5 h-3.5" />}
+                onClick={async () => {
+                  setNotice(null);
+                  if (await send("run-soccerdonna", { action: "run", modo: "soccerdonna" }))
+                    setNotice("Actualización de Soccerdonna iniciada en GitHub Actions.");
+                }}
+              >
+                Actualizar Soccerdonna
+              </Button>
+            </div>
+            <span className="text-[10px] text-muted-foreground">
+              Automático: Opta cada martes · Soccerdonna el día 1 de cada mes
+            </span>
+          </div>
         </div>
 
         {/* Global Notifications */}
@@ -450,7 +474,10 @@ export function SoccerdonnaLeagues() {
                   {/* Opta Link Dropdown */}
                   <div className="space-y-1 mb-4">
                     <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center justify-between">
-                      <span>Métricas Opta vinculadas</span>
+                      <span className="flex items-center gap-1.5">
+                        <OptaLogo variant="icon" size="xs" />
+                        <span>Métricas Opta vinculadas</span>
+                      </span>
                       {optaMatch?.has_eventing && (
                         <span className="text-amber-400 flex items-center gap-0.5 text-[9px] font-bold">
                           <Sparkles className="w-2.5 h-2.5" /> Eventing
@@ -539,13 +566,16 @@ export function SoccerdonnaLeagues() {
                     variant={l.enabled ? "outline" : "primary"}
                     isLoading={isSaving}
                     leftIcon={l.enabled ? <X className="w-3 h-3" /> : <Check className="w-3 h-3" />}
-                    onClick={() =>
-                      send(`en-${l.code}`, {
+                    onClick={async () => {
+                      setNotice(null);
+                      const res = await send(`en-${l.code}`, {
                         action: "update",
                         code: l.code,
                         enabled: !l.enabled,
-                      })
-                    }
+                      });
+                      if (res?.started) setNotice(`${l.name}: descarga de Soccerdonna y Opta iniciada en GitHub Actions.`);
+                      else if (res?.warning) setError(`${l.name} activada, pero no se pudo iniciar la descarga: ${res.warning}`);
+                    }}
                     className={
                       l.enabled
                         ? "border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10 hover:border-rose-500/60 hover:text-rose-300"

@@ -10,11 +10,19 @@ Jugadoras desde Soccerdonna, por ligas elegidas en /admin (tabla sd_leagues):
   vincular   Une cada jugadora de Soccerdonna con la de Opta (nombre + fecha de nacimiento o club): una sola ficha
   escudos    Escudos PNG transparentes de FotMob para los clubes de la liga y el club actual de cada jugadora
   fotos      Jugadoras de la liga sin foto (también las que solo están en Opta): FotMob y, si no, la oficial de Opta
-  todo       descargar → opta → vincular → escudos → fotos, en cadena
+  todo       descargar → opta → vincular → escudos → fotos, en cadena (todas las temporadas elegidas)
+
+Descargas automáticas (GitHub Action):
+  actualizar-opta         Martes. Ligas nuevas (nunca descargadas): Soccerdonna completo + escudos. Opta: solo la
+                          última temporada de cada liga (plantillas, partidos nuevos y calendario con horarios) y las
+                          temporadas elegidas que aún no tienen ningún partido en BD → vincular → fotos
+  actualizar-soccerdonna  Mensual. descargar (fichas con más de --refresco-dias) → vincular → escudos → fotos
 
 Uso:
     python -m pipeline.sd_ligas catalogo
     python -m pipeline.sd_ligas todo [--liga ESP1] [--limit 10] [--max-matches 5]
+    python -m pipeline.sd_ligas actualizar-opta [--liga ESP1] [--todas-temporadas]
+    python -m pipeline.sd_ligas actualizar-soccerdonna [--liga ESP1] [--refresco-dias 25]
 """
 
 import argparse
@@ -215,8 +223,9 @@ def ligas_opta(store: Store, liga_code: Optional[str]) -> List[Dict[str, Any]]:
             if l.get("opta_competition_id") and (l["code"] == liga_code if liga_code else l["enabled"])]
 
 
-def opta(store: Store, liga_code: Optional[str], max_matches: Optional[int]):
-    """Temporadas Opta elegidas en /admin de cada competición enlazada (o la última con datos) → pipeline."""
+def opta(store: Store, liga_code: Optional[str], max_matches: Optional[int], solo_ultima: bool = False):
+    """Temporadas Opta elegidas en /admin de cada competición enlazada (o la última con datos) → pipeline.
+    `solo_ultima`: de cada competición solo su temporada más reciente (y las elegidas que nunca se descargaron)."""
     from .ingest import IngestionPipeline
     from .storage import competiciones_objetivo
     ligas = ligas_opta(store, liga_code)
@@ -238,15 +247,41 @@ def opta(store: Store, liga_code: Optional[str], max_matches: Optional[int]):
             "country": c["country"], "season_name": c["season_name"], "is_active": True, "enabled": True,
             "fuente": "eventing" if c.get("has_eventing") else "matchstats", "updated_at": now_iso()}
             for c in nuevas], on_conflict="season_id")
-    pipe = IngestionPipeline(skip_photos=True, max_matches_per_comp=max_matches)
     # competiciones_objetivo ordena de antigua a actual: la temporada activa se procesa la última
-    for comp in competiciones_objetivo(store, solo_admin=True):
-        if comp["id"] in comp_ids:
-            logger.info(f"▶ Opta {comp['name']} {comp['season_id']}")
-            pipe.procesar_competicion(comp)
+    comps = [c for c in competiciones_objetivo(store, solo_admin=True) if c["id"] in comp_ids]
+    if solo_ultima:
+        comps = temporadas_semanales(store, comps)
+    pipe = IngestionPipeline(skip_photos=True, max_matches_per_comp=max_matches)
+    for comp in comps:
+        logger.info(f"▶ Opta {comp['name']} {comp['season_id']}")
+        pipe.procesar_competicion(comp)
     if pipe.totales["matches"]:
         pipe.actualizar_similares()
     logger.info(f"Opta completado: {pipe.totales}")
+
+
+def temporadas_semanales(store: Store, comps: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """De cada competición, la temporada más reciente (fecha de inicio en opta_catalog) y las que aún no tienen
+    ningún partido en BD (recién elegidas). Las antiguas ya descargadas no cambian: no se vuelven a pedir."""
+    inicio = {c["season_id"]: c.get("start_date") or "" for c in store.select_all("opta_catalog", "season_id,start_date")}
+    ultima: Dict[str, Dict[str, Any]] = {}
+    for c in comps:
+        clave = (inicio.get(c["season_id"], ""), c.get("active", False))
+        prev = ultima.get(c["id"])
+        if not prev or clave >= (inicio.get(prev["season_id"], ""), prev.get("active", False)):
+            ultima[c["id"]] = c
+    con_partidos = {m["season_id"] for m in store.select_all("matches", "season_id")}
+    elegidas = [c for c in comps if c is ultima[c["id"]] or c["season_id"] not in con_partidos]
+    for c in comps:
+        if c not in elegidas:
+            logger.info(f"  Opta {c['name']} {c['season_id']}: temporada anterior ya descargada, se omite")
+    return elegidas
+
+
+def ligas_nuevas(store: Store, liga_code: Optional[str]) -> List[str]:
+    """Ligas activadas en /admin que nunca se han descargado de Soccerdonna (o cuyos datos se borraron)."""
+    return [l["code"] for l in store.select_all("sd_leagues", "code,enabled,last_download_at")
+            if not l.get("last_download_at") and (l["code"] == liga_code if liga_code else l["enabled"])]
 
 
 SD_CAMPOS = ("sd_id", "sd_url", "sd_updated_at", "sd_league_code", "market_value", "market_value_updated_at",
@@ -490,16 +525,37 @@ def fotos(store: Store, liga_code: Optional[str], limit: Optional[int] = None):
 
 def main():
     parser = argparse.ArgumentParser(description="Jugadoras desde las ligas de Soccerdonna elegidas en /admin")
-    parser.add_argument("accion", choices=["catalogo", "descargar", "opta", "vincular", "escudos", "fotos", "todo"])
+    parser.add_argument("accion", choices=["catalogo", "descargar", "opta", "vincular", "escudos", "fotos", "todo",
+                                           "actualizar-opta", "actualizar-soccerdonna"])
     parser.add_argument("--max-matches", type=int, help="Opta: máximo de partidos nuevos por temporada (pruebas)")
     parser.add_argument("--refresco-dias", type=int, default=REFRESCO_DIAS,
                         help="Volver a leer la ficha de las ya guardadas cada N días (0 = todas)")
     parser.add_argument("--liga", help="Código Soccerdonna (ESP1...), aunque no esté marcada")
     parser.add_argument("--limit", type=int, help="Máximo de jugadoras por liga (pruebas)")
+    parser.add_argument("--todas-temporadas", action="store_true",
+                        help="actualizar-opta: todas las temporadas elegidas, no solo la última")
     args = parser.parse_args()
     store, sd = Store(get_supabase_client()), SDClient()
     if args.accion == "catalogo":
         return catalogo(store, sd)
+    if args.accion == "actualizar-opta":
+        # Una liga recién activada se descarga entera (Soccerdonna + todas sus temporadas Opta) en la misma pasada
+        nuevas = ligas_nuevas(store, args.liga)
+        for code in nuevas:
+            logger.info(f"▶ Liga nueva {code}: descarga completa de Soccerdonna")
+            descargar(store, sd, code, args.limit, args.refresco_dias)
+        opta(store, args.liga, args.max_matches, solo_ultima=not args.todas_temporadas)
+        vincular(store, args.liga)
+        for code in nuevas:
+            escudos(store, code)
+        fotos(store, args.liga, args.limit)
+        return
+    if args.accion == "actualizar-soccerdonna":
+        descargar(store, sd, args.liga, args.limit, args.refresco_dias)
+        vincular(store, args.liga)
+        escudos(store, args.liga)
+        fotos(store, args.liga, args.limit)
+        return
     if args.accion in ("descargar", "todo"):
         descargar(store, sd, args.liga, args.limit, args.refresco_dias)
     if args.accion in ("opta", "todo"):

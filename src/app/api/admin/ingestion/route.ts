@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { requireAdmin } from "@/lib/adminGuard";
+import { dispatchPipeline } from "@/lib/githubDispatch";
 
 /**
  * Leagues & seasons for the automatic Opta download (pipeline/ingest.py + pipeline/soccerdonna.py).
@@ -9,19 +10,6 @@ import { requireAdmin } from "@/lib/adminGuard";
  */
 
 const PAGE = 1000;
-
-// Manual run: the same GitHub Action as the weekly download (needs a token with "Actions: write")
-async function dispatchPipeline(inputs: Record<string, string>) {
-  const token = process.env.GITHUB_TOKEN;
-  if (!token) throw new Error("GITHUB_TOKEN is not configured: the download will run on the next weekly schedule");
-  const repo = process.env.GITHUB_REPO || "scoutingdepartmentfc/HerScout";
-  const res = await fetch(`https://api.github.com/repos/${repo}/actions/workflows/data_pipeline.yml/dispatches`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" },
-    body: JSON.stringify({ ref: process.env.GITHUB_REF_NAME || "main", inputs }),
-  });
-  if (!res.ok) throw new Error(`GitHub refused to start the pipeline (${res.status}): ${(await res.text()).slice(0, 200)}`);
-}
 
 // PostgREST returns at most 1000 rows per request: page through the catalog
 async function selectAll(table: string, apply: (q: any) => any = (q) => q) {

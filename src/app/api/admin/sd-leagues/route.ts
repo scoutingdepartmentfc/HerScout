@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { requireAdmin } from "@/lib/adminGuard";
 import { checkAdminPassword } from "@/lib/adminPassword";
+import { dispatchPipeline } from "@/lib/githubDispatch";
 
 export const runtime = "nodejs";
 
@@ -51,23 +52,34 @@ export async function POST(req: NextRequest) {
     const changes: Record<string, any> = { updated_at: new Date().toISOString() };
     if (typeof body.enabled === "boolean") changes.enabled = body.enabled;
     if (body.optaCompetitionId !== undefined) changes.opta_competition_id = body.optaCompetitionId || null;
+    const { data: before } = await db.from("sd_leagues").select("enabled, last_download_at").eq("code", body.code).single();
     const { error } = await db.from("sd_leagues").update(changes).eq("code", body.code);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    // League just activated and never downloaded: start Soccerdonna + Opta (all its seasons) right away.
+    // The "opta" run picks up every enabled league without last_download_at, so several activations in a row
+    // are all covered even if GitHub replaces a pending run.
+    if (body.enabled === true && before && !before.enabled && !before.last_download_at) {
+      try {
+        await dispatchPipeline({ modo: "opta" });
+        return NextResponse.json({ ok: true, started: true });
+      } catch (err: any) {
+        return NextResponse.json({ ok: true, started: false, warning: err.message });
+      }
+    }
     return NextResponse.json({ ok: true });
   }
   if (body.action === "run") {
-    const token = process.env.GITHUB_TOKEN;
-    if (!token) return NextResponse.json({ error: "GITHUB_TOKEN is not configured" }, { status: 500 });
-    const repo = process.env.GITHUB_REPO || "scoutingdepartmentfc/HerScout";
-    const inputs: Record<string, string> = { modo: "soccerdonna" };
+    // Manual: "opta" (latest season + fixtures), "soccerdonna" (profiles) or "todo" (both, every season)
+    const modo = ["opta", "soccerdonna", "todo"].includes(body.modo) ? body.modo : "todo";
+    const inputs: Record<string, string> = { modo };
     if (body.code) inputs.competition_id = String(body.code);
     if (body.limit) inputs.limite = String(Number(body.limit));
-    const res = await fetch(`https://api.github.com/repos/${repo}/actions/workflows/data_pipeline.yml/dispatches`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" },
-      body: JSON.stringify({ ref: process.env.GITHUB_REF_NAME || "main", inputs }),
-    });
-    if (!res.ok) return NextResponse.json({ error: `GitHub ${res.status}: ${(await res.text()).slice(0, 200)}` }, { status: 500 });
+    if (modo === "soccerdonna") inputs.refresco_dias = "0"; // manual: re-read every profile
+    try {
+      await dispatchPipeline(inputs);
+    } catch (err: any) {
+      return NextResponse.json({ error: err.message }, { status: 500 });
+    }
     return NextResponse.json({ ok: true });
   }
   if (body.action === "deleteData") {

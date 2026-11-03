@@ -14,6 +14,7 @@ import { Bandera } from "@/components/scouting/Bandera";
 import { Search, SlidersHorizontal, Bookmark, Eye, X, Check } from "lucide-react";
 import { notaClases } from "@/lib/notaColor";
 import { getPositionBadge } from "@/lib/positions";
+import { OptaLogo } from "@/components/scouting/OptaLogo";
 
 interface PlayerRow {
   id: string;
@@ -229,11 +230,9 @@ function PlayersDirectoryContent() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
             <h1 className="text-2xl font-black tracking-tight text-white">Player Database</h1>
-            <Badge variant="default" size="sm" className="bg-primary/20 text-sky-300 border-primary/40">
-              Opta & Liga F Verified
-            </Badge>
+            <OptaLogo size="xs" label="Verified" className="bg-sky-500/10 border-sky-400/30 text-sky-300" />
           </div>
           <p className="text-xs text-muted-foreground mt-1">
             Searchable registry of professional women's football profiles ranked by advanced performance ratings.

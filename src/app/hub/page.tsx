@@ -11,6 +11,7 @@ import { LoadingState, EmptyState, ErrorState } from "@/components/ui/StatusStat
 import { Modal } from "@/components/ui/Modal";
 import { Input, Select } from "@/components/ui/Input";
 import { notaClases } from "@/lib/notaColor";
+import { OptaLogo } from "@/components/scouting/OptaLogo";
 import {
   TrendingUp,
   FileSpreadsheet,
@@ -161,6 +162,7 @@ export default function HubPage() {
                 <div className="flex items-center gap-2">
                   <TrendingUp className="w-4 h-4 text-primary" />
                   <CardTitle>Trending Scouting Profiles</CardTitle>
+                  <OptaLogo variant="icon" size="xs" />
                 </div>
                 <CardDescription>
                   Ranked by verified Opta match ratings and continuous season performance

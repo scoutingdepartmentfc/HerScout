@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/StatusStates";
 import { EscudoEquipo } from "@/components/scouting/EscudoEquipo";
+import { OptaLogo } from "@/components/scouting/OptaLogo";
 import { Trophy, Clock, MapPin } from "lucide-react";
 
 type Tab = "results" | "today" | "upcoming";
@@ -70,9 +71,12 @@ export default function MatchesPage() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold tracking-tight text-white">Matches & Fixtures</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl font-bold tracking-tight text-white">Matches & Fixtures</h1>
+            <OptaLogo variant="icon" size="xs" />
+          </div>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Opta results and fixture schedules of the leagues selected in Administration.
+            Results and fixture schedules synchronized with official Opta data.
           </p>
         </div>
         <div className="flex items-center gap-1 rounded-md bg-navy-900 border border-border p-1">

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Input } from "@/components/ui/Input";
 import { ErrorState } from "@/components/ui/StatusStates";
+import { OptaLogo } from "@/components/scouting/OptaLogo";
 import { Database, Download, Plus, Search, Star, Trash2 } from "lucide-react";
 
 interface CatalogRow {
@@ -262,7 +263,10 @@ export function IngestionTargets() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Opta Catalog</CardTitle>
+          <div className="flex items-center gap-2.5">
+            <OptaLogo variant="icon" size="sm" />
+            <CardTitle>Opta Catalog</CardTitle>
+          </div>
           <CardDescription>
             {catalog.length
               ? `${catalog.length.toLocaleString()} women's seasons available across all coverage levels. Eventing seasons also get xG, xA and progressive actions.`

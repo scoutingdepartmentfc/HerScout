@@ -1,6 +1,7 @@
 import React from "react";
 import { Database } from "lucide-react";
 import { notaClases } from "@/lib/notaColor";
+import { OptaLogo } from "@/components/scouting/OptaLogo";
 
 export interface CoberturaOpta {
   matches: number;
@@ -65,9 +66,9 @@ export function TemporadasOpta({
   return (
     <div className="rounded-xl border border-border/60 bg-[#070e1e] p-4 space-y-3">
       <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
-        <Database className="w-3.5 h-3.5 text-primary" />
-        Opta data · {seasons.filter((s) => !s.esTotal).length}{" "}
-        {seasons.filter((s) => !s.esTotal).length === 1 ? "season" : "seasons"}
+        <OptaLogo variant="icon" size="xs" />
+        <span className="text-slate-300">Data Coverage · {seasons.filter((s) => !s.esTotal).length}{" "}
+        {seasons.filter((s) => !s.esTotal).length === 1 ? "season" : "seasons"}</span>
       </div>
       <div className="flex flex-wrap gap-2">
         {seasons.map((s) => {

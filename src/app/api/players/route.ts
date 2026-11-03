@@ -48,6 +48,9 @@ export async function GET(req: NextRequest) {
         players:player_id (
           id,
           name,
+          match_name,
+          first_name,
+          last_name,
           country,
           birth_date,
           photo_url,
@@ -86,6 +89,7 @@ export async function GET(req: NextRequest) {
         return {
           id: p.id,
           name: p.name,
+          matchName: p.match_name || p.name,
           country: p.country,
           birthDate: p.birth_date,
           photoUrl: p.photo_url,
@@ -119,7 +123,10 @@ export async function GET(req: NextRequest) {
     // Filters
     if (search) {
       const s = search.toLowerCase();
-      list = list.filter((p: any) => p.name.toLowerCase().includes(s));
+      list = list.filter((p: any) =>
+        (p.name && p.name.toLowerCase().includes(s)) ||
+        (p.matchName && p.matchName.toLowerCase().includes(s))
+      );
     }
 
     if (position !== "all") {

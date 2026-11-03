@@ -18,6 +18,7 @@ export async function GET(
       .select(`
         id,
         name,
+        match_name,
         first_name,
         last_name,
         country,
@@ -222,6 +223,7 @@ export async function GET(
       player: {
         id: p.id,
         name: p.name,
+        matchName: p.match_name || p.name,
         country: p.country,
         birthDate: p.birth_date,
         photoUrl: p.photoUrl || p.photo_url,

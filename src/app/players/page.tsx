@@ -19,6 +19,7 @@ import { OptaLogo } from "@/components/scouting/OptaLogo";
 interface PlayerRow {
   id: string;
   name: string;
+  matchName?: string;
   country?: string;
   photoUrl?: string;
   position: string;
@@ -514,8 +515,11 @@ function PlayersDirectoryContent() {
                           )}
                         </div>
                         <div>
-                          <div className="font-semibold text-white group-hover:text-primary transition-colors leading-tight">
-                            {player.name}
+                          <div
+                            className="font-semibold text-white group-hover:text-primary transition-colors leading-tight"
+                            title={player.name !== player.matchName ? player.name : undefined}
+                          >
+                            {player.matchName || player.name}
                           </div>
                           <div className="flex items-center gap-1.5 mt-0.5">
                             <Bandera country={player.country} size="xs" />

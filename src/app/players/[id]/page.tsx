@@ -216,7 +216,7 @@ export default function PlayerProfilePage() {
               j={{
                 player_id: p.id,
                 photo_url: p.photoUrl,
-                name: p.name,
+                name: p.matchName || p.name,
                 team_id: p.teamId,
                 team_name: p.teamName,
                 badge_url: p.badgeUrl,
@@ -236,8 +236,13 @@ export default function PlayerProfilePage() {
             {/* Player Name and Club/League Header */}
             <div>
               <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight text-white">
-                {p.name}
+                {p.matchName || p.name}
               </h1>
+              {p.matchName && p.matchName !== p.name && (
+                <p className="text-sm font-medium text-slate-400 mt-1 tracking-wide">
+                  {p.name}
+                </p>
+              )}
               <div className="mt-2.5 flex flex-wrap items-center gap-3 text-xs sm:text-sm">
                 <span className="inline-flex items-center gap-2 font-semibold text-white">
                   <EscudoEquipo teamId={p.teamId} badgeUrl={p.badgeUrl} name={p.teamName} size={22} />

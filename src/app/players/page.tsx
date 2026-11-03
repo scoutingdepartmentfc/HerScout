@@ -33,6 +33,8 @@ interface PlayerRow {
   badgeUrl?: string;
   leagueName?: string;
   leagueLogoUrl?: string;
+  seasonName?: string | null;
+  isCurrentSeason?: boolean;
   minutesPlayed?: number;
   matchesPlayed?: number;
   notaGlobal?: number | null;
@@ -562,6 +564,15 @@ function PlayersDirectoryContent() {
                                 />
                               )}
                               <span className="truncate">{player.leagueName}</span>
+                            </div>
+                          )}
+                          {/* No stats yet this season: ratings are from her latest season */}
+                          {player.seasonName && player.isCurrentSeason === false && (
+                            <div
+                              className="mt-0.5 inline-flex rounded border border-amber-500/30 bg-amber-500/10 px-1 text-[9px] font-semibold text-amber-300"
+                              title="Not enough minutes this season yet: ratings from this season"
+                            >
+                              {player.seasonName}
                             </div>
                           )}
                         </div>

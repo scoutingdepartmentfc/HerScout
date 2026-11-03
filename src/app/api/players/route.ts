@@ -29,10 +29,13 @@ export async function GET(req: NextRequest) {
       "nota_fisico",
     ];
 
-    let statsQuery = db
+    // One row per player and season in player_season_stats: read them all (PostgREST pages of 1000)
+    const selectStats = () => db
       .from("player_season_stats")
       .select(`
         player_id,
+        season_id,
+        seasons:season_id ( name, is_active, start_date ),
         demarcacion,
         grupo_demarcacion,
         matches_played,
@@ -66,16 +69,25 @@ export async function GET(req: NextRequest) {
         )
       `);
 
-    if (validScores.includes(sortBy) && sortBy !== "nota_fisico") {
-      statsQuery = statsQuery.order(sortBy, { ascending: order === "asc" });
+    const rows: any[] = [];
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await selectStats().order("player_id").order("season_id").range(from, from + 999);
+      if (error) throw error;
+      rows.push(...(data || []));
+      if (!data || data.length < 1000) break;
     }
-    statsQuery = statsQuery.limit(300);
 
-    const res = await statsQuery;
-    if (res.error) throw res.error;
+    // A player with several seasons appears once: the current season (is_active) or, if she has no stats
+    // there yet, her most recent one
+    const rank = (r: any) => `${r.seasons?.is_active ? 1 : 0}|${r.seasons?.start_date || ""}`;
+    const byPlayer = new Map<string, any>();
+    for (const r of rows) {
+      if (!r.players) continue;
+      const prev = byPlayer.get(r.player_id);
+      if (!prev || rank(r) > rank(prev)) byPlayer.set(r.player_id, r);
+    }
 
-    let list = (res.data || [])
-      .filter((row: any) => row.players)
+    let list = Array.from(byPlayer.values())
       .map((row: any) => {
         const p = row.players;
         const ea = Array.isArray(p.player_ea_ratings) ? p.player_ea_ratings[0] : p.player_ea_ratings;
@@ -104,6 +116,9 @@ export async function GET(req: NextRequest) {
           badgeUrl: (p.fm_team_name ? p.fm_team_badge_url : null) || p.teams?.badge_url,
           leagueName: p.current_league_name || p.teams?.league_name || "Primera División Femenina",
           leagueLogoUrl: p.current_league_logo_url || p.teams?.league_logo_url,
+          seasonId: row.season_id,
+          seasonName: row.seasons?.name || null,
+          isCurrentSeason: !!row.seasons?.is_active,
           minutesPlayed: row.minutes_played,
           matchesPlayed: row.matches_played,
           notaGlobal: row.nota_global,
@@ -146,14 +161,19 @@ export async function GET(req: NextRequest) {
       list = list.filter((p: any) => (p.notaGlobal || 0) >= minRating);
     }
 
-    // Custom sorting if sorting by physical or if needed
-    if (sortBy === "nota_fisico") {
-      list.sort((a: any, b: any) => {
-        const valA = a.notaFisico ?? -1;
-        const valB = b.notaFisico ?? -1;
-        return order === "asc" ? valA - valB : valB - valA;
-      });
-    }
+    // Sorting (nulls last)
+    const key: Record<string, string> = {
+      nota_global: "notaGlobal", nota_ataque: "notaAtaque", nota_construccion: "notaConstruccion",
+      nota_defensa: "notaDefensa", nota_balon_parado: "notaBalonParado", nota_disponibilidad: "notaDisponibilidad",
+      nota_fisico: "notaFisico",
+    };
+    const field = key[validScores.includes(sortBy) ? sortBy : "nota_global"];
+    list.sort((a: any, b: any) => {
+      const valA = a[field];
+      const valB = b[field];
+      if (valA == null || valB == null) return valA == null ? (valB == null ? 0 : 1) : -1;
+      return order === "asc" ? valA - valB : valB - valA;
+    });
 
     return NextResponse.json({
       players: list,

@@ -469,7 +469,7 @@ export default function PlayerProfilePage() {
         )}
       </section>
 
-      {/* Match-by-match ratings (0-9.9, from Opta eventing + matchstats) */}
+      {/* Match-by-match ratings (FotMob-like scale: average 6.5, vs. same position group; pipeline/scoring.py) */}
       <Card className="bg-[#0b1329]">
         <CardHeader className="py-3">
           <CardTitle className="text-sm">Match Ratings</CardTitle>
@@ -512,7 +512,7 @@ export default function PlayerProfilePage() {
                           ? "text-muted-foreground"
                           : m.rating >= 7
                           ? "bg-emerald-500/15 text-emerald-400"
-                          : m.rating >= 5.5
+                          : m.rating >= 6
                           ? "bg-sky-500/15 text-sky-300"
                           : "bg-rose-500/15 text-rose-300"
                       }`}

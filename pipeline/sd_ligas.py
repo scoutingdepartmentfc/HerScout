@@ -17,6 +17,8 @@ Descargas automáticas (GitHub Action):
                           última temporada de cada liga (plantillas, partidos nuevos y calendario con horarios) y las
                           temporadas elegidas que aún no tienen ningún partido en BD → vincular → fotos
   actualizar-soccerdonna  Mensual. descargar (fichas con más de --refresco-dias) → vincular → escudos → fotos
+  recalcular              Ratings por partido y notas de temporada desde la caché de partidos (sin descargar nada):
+                          tras cambiar la fórmula en pipeline/scoring.py
 
 Uso:
     python -m pipeline.sd_ligas catalogo
@@ -284,6 +286,25 @@ def ligas_nuevas(store: Store, liga_code: Optional[str]) -> List[str]:
             if not l.get("last_download_at") and (l["code"] == liga_code if liga_code else l["enabled"])]
 
 
+def recalcular(store: Store, liga_code: Optional[str]):
+    """Vuelve a puntuar todas las temporadas elegidas en /admin con los partidos ya procesados (caché)."""
+    from .ingest import IngestionPipeline
+    from .storage import competiciones_objetivo
+    comp_ids = {l["opta_competition_id"] for l in ligas_opta(store, liga_code)} if liga_code else None
+    pipe = IngestionPipeline(skip_photos=True)
+    for comp in competiciones_objetivo(store, solo_admin=True):
+        if comp_ids is not None and comp["id"] not in comp_ids:
+            continue
+        cache = store.load_match_cache(comp["season_id"])
+        if cache.empty:
+            continue
+        logger.info(f"▶ Recalcular {comp['name']} {comp['season_id']}: {cache['match_id'].nunique()} partidos")
+        pipe.recalcular_temporada(comp, cache, {}, actualizar_jugadoras=False)
+    if pipe.totales["season_rows"]:
+        pipe.actualizar_similares()
+    logger.info(f"Recalcular completado: {pipe.totales}")
+
+
 SD_CAMPOS = ("sd_id", "sd_url", "sd_updated_at", "sd_league_code", "market_value", "market_value_updated_at",
              "contract_expires", "citizenship", "tm_position_main", "outfitter", "photo_url", "photo_updated_at",
              "height", "preferred_foot", "place_of_birth", "fm_team_name", "fm_team_badge_url",
@@ -526,7 +547,7 @@ def fotos(store: Store, liga_code: Optional[str], limit: Optional[int] = None):
 def main():
     parser = argparse.ArgumentParser(description="Jugadoras desde las ligas de Soccerdonna elegidas en /admin")
     parser.add_argument("accion", choices=["catalogo", "descargar", "opta", "vincular", "escudos", "fotos", "todo",
-                                           "actualizar-opta", "actualizar-soccerdonna"])
+                                           "actualizar-opta", "actualizar-soccerdonna", "recalcular"])
     parser.add_argument("--max-matches", type=int, help="Opta: máximo de partidos nuevos por temporada (pruebas)")
     parser.add_argument("--refresco-dias", type=int, default=REFRESCO_DIAS,
                         help="Volver a leer la ficha de las ya guardadas cada N días (0 = todas)")
@@ -538,6 +559,8 @@ def main():
     store, sd = Store(get_supabase_client()), SDClient()
     if args.accion == "catalogo":
         return catalogo(store, sd)
+    if args.accion == "recalcular":
+        return recalcular(store, args.liga)
     if args.accion == "actualizar-opta":
         # Una liga recién activada se descarga entera (Soccerdonna + todas sus temporadas Opta) en la misma pasada
         nuevas = ligas_nuevas(store, args.liga)

@@ -18,7 +18,7 @@ from pipeline.events import build_lineups, events_to_dataframe
 from pipeline.metrics_engine import MetricsEngine
 from pipeline.photos import emparejar_equipos, emparejar_jugador, normalizar
 from pipeline.positions import asignar_demarcacion, demarcacion_por_posicion_opta, get_grupo_demarcacion
-from pipeline.scoring import PESOS, calcular_temporada, scale_0_10
+from pipeline.scoring import calcular_temporada, scale_0_10
 
 
 def q(qid, value=None):
@@ -227,6 +227,34 @@ class TestScoring(unittest.TestCase):
         self.assertIn('_sub_finalizacion', met)
         # Sin métricas de construcción en los datos: categoría sin datos, no 0
         self.assertNotIn('_cat_construccion', met)
+
+    def test_rating_partido_por_posicion_y_minutos(self):
+        """Rating por partido: media 6.5 en cada grupo de demarcación (una central no se mide en ataque con las
+        delanteras) y quien juega pocos minutos queda cerca de la media."""
+        from pipeline.scoring import scores_por_partido
+        rng = np.random.default_rng(1)
+        filas = []
+        for m in range(10):
+            for p in range(12):
+                delantera = p < 6
+                filas.append({
+                    'match_id': f'm{m}', 'player_id': f'p{p}', 'demarcacion': 'Delantero' if delantera else 'Central',
+                    'grupo_demarcacion': 'Delanteros' if delantera else 'Centrales',
+                    'minutes_played': 10 if p in (5, 11) else 90,
+                    'of_goles_p90': rng.random() * (3 if delantera else 0.2),
+                    'def_entradas_p90': rng.random() * (1 if delantera else 5),
+                    'abp_lanzador_corner_p90': 0.0, 'comp_disciplina_malus': 0.0,
+                })
+        df = pd.DataFrame(filas)
+        sp = scores_por_partido(df).merge(df[['match_id', 'player_id', 'minutes_played']], on=['match_id', 'player_id'])
+        self.assertTrue(sp['score_general'].between(3, 10).all())
+        largos = sp[sp['minutes_played'] == 90]
+        for _, g in largos.groupby('grupo_demarcacion'):
+            self.assertAlmostEqual(g['score_general'].mean(), 6.5, delta=0.2)
+        cortos = sp[sp['minutes_played'] == 10]
+        self.assertLess((cortos['score_general'] - 6.5).abs().mean(), (largos['score_general'] - 6.5).abs().mean())
+        # Nadie lanza córners: el balón parado no resta
+        self.assertTrue((sp['score_abp'] == 6.5).all())
 
     def test_juega_mas_puntua_mas(self):
         """Mejor p90 en pocos minutos no supera a una jugadora buena con muchos minutos."""

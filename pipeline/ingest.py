@@ -296,7 +296,10 @@ class IngestionPipeline:
         return cache
 
     # ── Temporada ────────────────────────────────────────────
-    def recalcular_temporada(self, comp: Dict[str, Any], cache: pd.DataFrame, perfiles: Dict[str, Dict[str, Any]]):
+    def recalcular_temporada(self, comp: Dict[str, Any], cache: pd.DataFrame, perfiles: Dict[str, Dict[str, Any]],
+                             actualizar_jugadoras: bool = True):
+        """Ratings por partido y tabla de temporada desde la caché. Sin `actualizar_jugadoras` no se tocan las
+        fichas (nombre y demarcación principal): para recalcular sin plantillas de Opta."""
         cid, sid = comp['id'], comp['season_id']
         df_sp, df_temp = calcular_temporada(cache)
         if df_temp.empty:
@@ -316,6 +319,10 @@ class IngestionPipeline:
         # Una fila por jugador (antes una por demarcación): se borran las de versiones anteriores
         self.store.delete('player_season_stats', competition_id=cid, season_id=sid)
         self.store.upsert('player_season_stats', season_rows, on_conflict='player_id,season_id,demarcacion', batch=200)
+        self.totales['season_rows'] += len(season_rows)
+        if not actualizar_jugadoras:
+            logger.info(f"  Temporada recalculada: {len(season_rows)} filas, {len(score_rows)} ratings por partido")
+            return
 
         # Demarcación principal = la de más minutos en la temporada
         principal = cache.groupby(['player_id', 'demarcacion'])['minutes_played'].sum().reset_index() \
@@ -329,7 +336,6 @@ class IngestionPipeline:
                           'grupo_demarcacion': cache.loc[cache['demarcacion'] == r.demarcacion, 'grupo_demarcacion'].iloc[0],
                           'updated_at': ts})
         self.store.upsert('players', filas)
-        self.totales['season_rows'] += len(season_rows)
         top = df_temp.sort_values('score_general', ascending=False).head(3)
         logger.info(f"  Temporada: {len(season_rows)} filas jugador-demarcación, {len(score_rows)} scores por partido. "
                     f"Top: {', '.join(f'{nombres.get(p, p)} ({s:.2f})' for p, s in zip(top.player_id, top.score_general))}")

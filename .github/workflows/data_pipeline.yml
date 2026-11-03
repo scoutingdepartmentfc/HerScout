@@ -14,9 +14,9 @@ on:
   workflow_dispatch:
     inputs:
       modo:
-        description: 'opta = solo API Opta (última temporada); soccerdonna = solo Soccerdonna; todo = ambas, todas las temporadas'
+        description: 'opta = solo API Opta (última temporada); soccerdonna = solo Soccerdonna; todo = ambas, todas las temporadas; recalcular = ratings desde la caché'
         type: choice
-        options: [opta, soccerdonna, todo, jugadoras, clasico]
+        options: [opta, soccerdonna, todo, recalcular, jugadoras, clasico]
         required: false
         default: opta
       competition_id:
@@ -108,7 +108,7 @@ jobs:
 
       # Ligas de /admin (Soccerdonna Leagues + temporadas Opta). Martes → opta; día 1 → soccerdonna; manual → el modo elegido
       - name: Ligas de /admin (Opta / Soccerdonna)
-        if: github.event_name == 'schedule' || contains(fromJSON('["opta","soccerdonna","todo"]'), inputs.modo)
+        if: github.event_name == 'schedule' || contains(fromJSON('["opta","soccerdonna","todo","recalcular"]'), inputs.modo)
         env:
           CRON: ${{ github.event.schedule }}
           MODO: ${{ inputs.modo }}
@@ -130,6 +130,7 @@ jobs:
           case "$MODO" in
             opta) ACCION=actualizar-opta ;;
             soccerdonna) ACCION=actualizar-soccerdonna ;;
+            recalcular) ACCION=recalcular ;;
             *) ACCION=todo ;;
           esac
           echo "▶ python -m pipeline.sd_ligas $ACCION $ARGS"

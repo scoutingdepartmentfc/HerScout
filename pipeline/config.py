@@ -42,6 +42,18 @@ NOTA_DESVIACION = 14.0
 # Grupos de demarcación con menos jugadoras que esto se comparan con toda la liga
 MIN_JUGADORAS_GRUPO = 5
 
+# Rating por partido (0-10, estilo FotMob): cada actuación frente a las de su grupo de demarcación en la liga.
+# La actuación media saca NOTA_PARTIDO_MEDIA y cada desviación típica suma/resta NOTA_PARTIDO_DESVIACION.
+# Con 6.5/0.85: ~16% >= 7.4, ~2.5% >= 8.2. Recorte a [NOTA_PARTIDO_MIN, 10].
+NOTA_PARTIDO_MEDIA = 6.5
+NOTA_PARTIDO_DESVIACION = 0.85
+NOTA_PARTIDO_MIN = 3.0
+# Corrección por minutos del partido: la distancia a la media se multiplica por (min/(min+K)) / (90/(90+K)).
+# Con K=20: 90' → 1, 60' → 0.92, 30' → 0.73, 12' → 0.46, 2' → 0.12 (casi la media: no hubo tiempo de juzgar)
+K_MINUTOS_PARTIDO = 20
+# Grupos con menos actuaciones que esto en la temporada se comparan con toda la liga
+MIN_ACTUACIONES_GRUPO = 20
+
 # Descargas concurrentes a la API (por partido se piden 2 feeds)
 MAX_WORKERS_DESCARGA = int(os.environ.get("SCOUTING_MAX_WORKERS", "4"))
 

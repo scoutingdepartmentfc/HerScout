@@ -1,10 +1,11 @@
 """
 pipeline/scoring.py
 Agregación de temporada y escala 0-10 (port de _agregar_metricas_jugador y
-_normalizar_y_guardar de Debrecen_app), aplicada por competición-temporada SIN separar por demarcación:
-todas las métricas para todos los jugadores, comparadas con la media de su liga (media = 5).
+_normalizar_y_guardar de Debrecen_app), aplicada por competición-temporada.
 
-- Scores por partido: cada métrica se escala contra todas las actuaciones de la competición.
+- Rating por partido (escala tipo FotMob, media NOTA_PARTIDO_MEDIA): cada actuación frente a las de su
+  grupo de demarcación en la liga, con la jerarquía y los pesos por grupo de categorias.py. Las métricas se
+  corrigen por minutos (K_MINUTOS_PARTIDO), los minutos jugados no puntúan y el balón parado solo suma.
 - Scores de temporada: una fila por jugador; métricas p90 = media ponderada por minutos
   (equivale a total / minutos * 90), con >= MIN_MINUTOS_TEMPORADA, escaladas contra la liga.
 - comp_regularidad: regularidad y tendencia de los scores por partido (CV + pendiente).
@@ -24,10 +25,10 @@ import pandas as pd
 
 from .categorias import (CATEGORIAS, JERARQUIA, JERARQUIA_PORTEROS, MALUS, METRICA_SUB, PESO_DISPONIBILIDAD,
                          PESOS_GRUPO, SIN_CORRECCION)
-from .config import (K_MINUTOS_CONFIANZA, MIN_JUGADORAS_GRUPO, MIN_MINUTOS_TEMPORADA, NOTA_DESVIACION,
-                     NOTA_MEDIA_LIGA)
+from .config import (K_MINUTOS_CONFIANZA, K_MINUTOS_PARTIDO, MIN_ACTUACIONES_GRUPO, MIN_JUGADORAS_GRUPO,
+                     MIN_MINUTOS_TEMPORADA, NOTA_DESVIACION, NOTA_MEDIA_LIGA, NOTA_PARTIDO_DESVIACION,
+                     NOTA_PARTIDO_MEDIA, NOTA_PARTIDO_MIN)
 
-PESOS = {'score_ofensivo': 0.4, 'score_defensivo': 0.4, 'score_comportamiento': 0.1, 'score_abp': 0.1}
 NOTA_COLS = ['nota_global'] + [f'nota_{c}' for c in CATEGORIAS]
 SCORE_COLS = ['score_general', 'score_ofensivo', 'score_defensivo', 'score_comportamiento', 'score_abp']
 
@@ -44,15 +45,6 @@ CONTEO_COLS = ['goals', 'assists', 'xg', 'xa', 'xca', 'passes_completed', 'passe
 
 def metric_columns(df: pd.DataFrame) -> List[str]:
     return [c for c in df.columns if c.startswith(('comp_', 'of_', 'def_', 'abp_'))]
-
-
-def bloques(cols: List[str]) -> Dict[str, List[str]]:
-    return {
-        'score_ofensivo': [c for c in cols if c.startswith('of_')],
-        'score_defensivo': [c for c in cols if c.startswith('def_')],
-        'score_abp': [c for c in cols if c.startswith('abp_')],
-        'score_comportamiento': [c for c in cols if c.startswith('comp_')],
-    }
 
 
 def scale_0_10(serie: pd.Series, invert: bool = False) -> pd.Series:
@@ -75,24 +67,103 @@ def scale_0_10(serie: pd.Series, invert: bool = False) -> pd.Series:
     return out.fillna(5.0).round(2)
 
 
-def _puntuar_bloques(sub: pd.DataFrame, cols: List[str]) -> pd.DataFrame:
-    """Devuelve los 5 scores (0-10) de las filas (todas las de la competición)."""
-    res = pd.DataFrame(index=sub.index)
-    for nombre, bcols in bloques(cols).items():
-        if not bcols:
-            res[nombre] = 5.0
+def _grupos(df: pd.DataFrame, minimo: int) -> pd.Series:
+    """Grupo de demarcación de cada fila; los grupos pequeños (o sin grupo) se comparan con toda la liga."""
+    return df['grupo_demarcacion'].where(
+        df.groupby('grupo_demarcacion')['player_id'].transform('size') >= minimo, '_liga').fillna('_liga')
+
+
+def _categorias(pcts: pd.DataFrame, grupo: pd.Series) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """Percentiles por métrica → (subcategorías, categorías) 0-100: media de sus métricas / subcategorías.
+    Porteras con JERARQUIA_PORTEROS, el resto con JERARQUIA. Sin datos → NaN."""
+    es_portera = grupo == 'Porteros'
+    subs: Dict[str, pd.Series] = {}
+    cats = {c: pd.Series(np.nan, index=pcts.index) for c in CATEGORIAS}
+    for jerarquia, mask in ((JERARQUIA, ~es_portera), (JERARQUIA_PORTEROS, es_portera)):
+        if not mask.any():
             continue
-        escaladas = pd.DataFrame({c: scale_0_10(sub[c], invert=c in MALUS_METRICS) for c in bcols})
-        res[nombre] = scale_0_10(escaladas.mean(axis=1))
-    res['score_general'] = sum(res[k] * w for k, w in PESOS.items()).round(2)
-    return res
+        for cat, _, lista in jerarquia:
+            cols_sub = []
+            for sub, _, ms in lista:
+                presentes = [m for m in ms if m in pcts.columns]
+                subs.setdefault(sub, pd.Series(np.nan, index=pcts.index))
+                if presentes:
+                    subs[sub][mask] = pcts.loc[mask, presentes].mean(axis=1)
+                cols_sub.append(sub)
+            cats[cat][mask] = pd.DataFrame({k: subs[k][mask] for k in cols_sub}).mean(axis=1)
+    return pd.DataFrame(subs, index=pcts.index), pd.DataFrame(cats, index=pcts.index)
+
+
+def _nota_partido(serie: pd.Series, grupos: pd.Series, mins: pd.Series) -> pd.Series:
+    """Escala del rating por partido: media del grupo = NOTA_PARTIDO_MEDIA, ± NOTA_PARTIDO_DESVIACION por
+    desviación típica. Media y desviación ponderadas por minutos (las actuaciones largas fijan la escala) y la
+    distancia a la media se reduce con pocos minutos (K_MINUTOS_PARTIDO). Sin datos → la media."""
+    confianza = ((mins / (mins + K_MINUTOS_PARTIDO)) / (90 / (90 + K_MINUTOS_PARTIDO))).clip(upper=1.0)
+
+    def escalar(g: pd.Series) -> pd.Series:
+        ok = g.notna()
+        w = mins[g.index][ok]
+        if ok.sum() < 3 or w.sum() <= 0:
+            return pd.Series(0.0, index=g.index)
+        media = np.average(g[ok], weights=w)
+        std = np.sqrt(np.average((g[ok] - media) ** 2, weights=w))
+        return (g - media) / std if std > 1e-9 else pd.Series(0.0, index=g.index)
+    z = serie.groupby(grupos, group_keys=False).apply(escalar).reindex(serie.index).fillna(0.0)
+    out = NOTA_PARTIDO_MEDIA + NOTA_PARTIDO_DESVIACION * z * confianza
+    return out.clip(NOTA_PARTIDO_MIN, 10.0).round(2)
 
 
 def scores_por_partido(df_partidos: pd.DataFrame) -> pd.DataFrame:
-    """Scores 0-10 de cada actuación (match_id, player_id), comparada con toda la competición."""
-    cols = [c for c in metric_columns(df_partidos) if c != 'comp_regularidad']
-    return pd.concat([df_partidos[['match_id', 'player_id', 'demarcacion', 'grupo_demarcacion']],
-                      _puntuar_bloques(df_partidos, cols)], axis=1)
+    """Rating 0-10 de cada actuación (match_id, player_id) frente a las de su grupo de demarcación en la liga.
+    1. Cada métrica de la jerarquía (sin Disponibilidad: los minutos no puntúan en el partido) pasa a percentil
+       dentro del grupo (empates al rango medio: un 0 en goles, como casi todas, queda cerca de la mitad).
+       En balón parado el 0 es "no lanza": sin dato, así que solo suma a quien lo hace.
+    2. Subcategoría → categoría → global ponderado con PESOS_GRUPO de su grupo (+ disciplina 10%).
+    3. Global y bloques a la escala del partido (_nota_partido), que acerca a la media a quien jugó poco."""
+    base = df_partidos[['match_id', 'player_id', 'demarcacion', 'grupo_demarcacion']].copy()
+    if df_partidos.empty:
+        return base.assign(**{c: pd.Series(dtype=float) for c in SCORE_COLS})
+    df = df_partidos
+    mins = pd.to_numeric(df['minutes_played'], errors='coerce').fillna(0).clip(lower=1).astype(float)
+    grupos = _grupos(df, MIN_ACTUACIONES_GRUPO)
+    pcts = {}
+    for c, (cat, _) in METRICA_SUB.items():
+        if c not in df.columns or cat == 'disponibilidad':
+            continue
+        v = pd.to_numeric(df[c], errors='coerce').astype(float)
+        if cat == 'balon_parado':
+            v = v.where(v != 0)
+        if not v.notna().any():
+            continue
+        pcts[c] = v.groupby(grupos, group_keys=False).apply(lambda g, inv=c in MALUS: _percentil_0_100(g, invert=inv))
+    pcts = pd.DataFrame(pcts, index=df.index)
+    _, cats = _categorias(pcts, df['grupo_demarcacion'])
+
+    # Disciplina (tarjetas y faltas) por partido: menos es mejor
+    if 'comp_disciplina_malus' in df.columns:
+        d = pd.to_numeric(df['comp_disciplina_malus'], errors='coerce').astype(float)
+        disciplina = d.groupby(grupos, group_keys=False).apply(lambda g: _percentil_0_100(g, invert=True))
+    else:
+        disciplina = pd.Series(np.nan, index=df.index)
+
+    # Global: media ponderada de las categorías con datos, con los pesos de su grupo de demarcación
+    num = pd.Series(0.0, index=df.index)
+    den = pd.Series(0.0, index=df.index)
+    columnas = {**{k: cats[k] for k in cats.columns}, '_disciplina': disciplina}
+    for k, col in columnas.items():
+        w = df['grupo_demarcacion'].map(lambda g: 0.10 if k == '_disciplina' else
+                                        PESOS_GRUPO.get(g, PESOS_GRUPO['Medios']).get(k, 0.0) * 0.90).astype(float)
+        w = w.where(col.notna(), 0.0)
+        num += col.fillna(0) * w
+        den += w
+    glob = (num / den).where(den > 0)
+
+    base['score_general'] = _nota_partido(glob, grupos, mins)
+    base['score_ofensivo'] = _nota_partido(cats[['ataque', 'construccion']].mean(axis=1), grupos, mins)
+    base['score_defensivo'] = _nota_partido(cats['defensa'], grupos, mins)
+    base['score_abp'] = _nota_partido(cats['balon_parado'], grupos, mins)
+    base['score_comportamiento'] = _nota_partido(disciplina, grupos, mins)
+    return base
 
 
 def calcular_regularidad_scores(scores: np.ndarray) -> float:
@@ -248,8 +319,7 @@ def puntuar_categorias(df_temp: pd.DataFrame) -> pd.DataFrame:
     """
     df = df_temp.copy()
     mins = df['minutes_played'].astype(float)
-    grupos = df['grupo_demarcacion'].where(
-        df.groupby('grupo_demarcacion')['player_id'].transform('size') >= MIN_JUGADORAS_GRUPO, '_liga').fillna('_liga')
+    grupos = _grupos(df, MIN_JUGADORAS_GRUPO)
     pcts = {}
     for c in METRICA_SUB:
         if c not in df.columns:
@@ -273,22 +343,7 @@ def puntuar_categorias(df_temp: pd.DataFrame) -> pd.DataFrame:
     pcts = pd.DataFrame(pcts, index=df.index)
     notas_met = _percentil_a_nota(pcts)
 
-    es_portera = df['grupo_demarcacion'] == 'Porteros'
-    subs: Dict[str, pd.Series] = {}
-    cats = {c: pd.Series(np.nan, index=df.index) for c in CATEGORIAS}
-    for jerarquia, mask in ((JERARQUIA, ~es_portera), (JERARQUIA_PORTEROS, es_portera)):
-        if not mask.any():
-            continue
-        for cat, _, lista in jerarquia:
-            cols_sub = []
-            for sub, _, ms in lista:
-                presentes = [m for m in ms if m in pcts.columns]
-                subs.setdefault(sub, pd.Series(np.nan, index=df.index))
-                if presentes:
-                    subs[sub][mask] = pcts.loc[mask, presentes].mean(axis=1)
-                cols_sub.append(sub)
-            cats[cat][mask] = pd.DataFrame({k: subs[k][mask] for k in cols_sub}).mean(axis=1)
-    subs, cats = pd.DataFrame(subs, index=df.index), pd.DataFrame(cats, index=df.index)
+    subs, cats = _categorias(pcts, df['grupo_demarcacion'])
 
     def nota_global(i):
         pesos = {k: w * (1 - PESO_DISPONIBILIDAD) for k, w in PESOS_GRUPO.get(df.at[i, 'grupo_demarcacion'],

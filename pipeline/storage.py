@@ -11,6 +11,7 @@ Acceso a Supabase (Postgres + Storage) para el pipeline:
 import io
 import logging
 import os
+import re
 import time
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
@@ -32,16 +33,34 @@ logger = logging.getLogger(__name__)
 PUBLIC_BUCKETS = {BUCKET_PLAYER_PHOTOS, BUCKET_TEAM_BADGES}
 
 
+def _limpiar_env(valor: Optional[str], nombre: str) -> Optional[str]:
+    """Valor de un secret pegado a mano: sin espacios ni saltos de línea, sin comillas y sin 'NOMBRE=' delante
+    (errores típicos al copiarlo de .env.local a GitHub → Settings → Secrets)."""
+    if not valor:
+        return valor
+    v = valor.strip()
+    v = re.sub(rf"^(export\s+)?[A-Z_]*{nombre}\s*=\s*", "", v)
+    return v.strip().strip("'\"").strip()
+
+
 def get_supabase_client():
     from supabase import create_client
-    url = (os.environ.get("SUPABASE_URL") or os.environ.get("NEXT_PUBLIC_SUPABASE_URL")
-           or os.environ.get("VITE_SUPABASE_URL"))
-    key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+    url = _limpiar_env(os.environ.get("SUPABASE_URL") or os.environ.get("NEXT_PUBLIC_SUPABASE_URL")
+                       or os.environ.get("VITE_SUPABASE_URL"), "SUPABASE_URL")
+    key = _limpiar_env(os.environ.get("SUPABASE_SERVICE_ROLE_KEY"), "SUPABASE_SERVICE_ROLE_KEY")
     if not url or not key:
         raise ValueError(
             "Se requieren SUPABASE_URL (o NEXT_PUBLIC_SUPABASE_URL) y SUPABASE_SERVICE_ROLE_KEY. "
             "La anon key no sirve: RLS solo permite escribir al service_role."
         )
+    if re.fullmatch(r"[a-z0-9]{20}", url):  # solo el id del proyecto
+        url = f"https://{url}.supabase.co"
+    url = url.rstrip("/")
+    if not re.match(r"^https?://[^\s/]+", url):
+        # Sin mostrar el valor (en GitHub es un secret): solo qué forma tiene
+        raise ValueError(
+            f"SUPABASE_URL no es una URL válida ({len(url)} caracteres, empieza por {url[:8]!r}…). "
+            "Debe ser https://<proyecto>.supabase.co, sin comillas ni espacios.")
     return create_client(url, key)
 
 

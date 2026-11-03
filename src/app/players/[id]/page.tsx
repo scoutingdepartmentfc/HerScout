@@ -14,6 +14,7 @@ import { TemporadasOpta, CoberturaBadges, claveTemporada } from "@/components/sc
 import { notaClases } from "@/lib/notaColor";
 import { Bandera } from "@/components/scouting/Bandera";
 import { EscudoEquipo } from "@/components/scouting/EscudoEquipo";
+import { CamisetaDorsal } from "@/components/scouting/CamisetaDorsal";
 import { MarketValueChart } from "@/components/scouting/MarketValueChart";
 import { TransferTimeline } from "@/components/scouting/TransferTimeline";
 import { NationalTeamGrid } from "@/components/scouting/NationalTeamGrid";
@@ -235,9 +236,14 @@ export default function PlayerProfilePage() {
           <div className="space-y-6 w-full">
             {/* Player Name and Club/League Header */}
             <div>
-              <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight text-white">
-                {p.matchName || p.name}
-              </h1>
+              <div className="flex items-center gap-3">
+                {p.shirtNumber && (
+                  <CamisetaDorsal number={p.shirtNumber} size="md" />
+                )}
+                <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight text-white">
+                  {p.matchName || p.name}
+                </h1>
+              </div>
               {p.matchName && p.matchName !== p.name && (
                 <p className="text-sm font-medium text-slate-400 mt-1 tracking-wide">
                   {p.name}

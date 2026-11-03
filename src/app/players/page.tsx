@@ -15,6 +15,7 @@ import { Search, SlidersHorizontal, Bookmark, Eye, X, Check } from "lucide-react
 import { notaClases } from "@/lib/notaColor";
 import { getPositionBadge } from "@/lib/positions";
 import { OptaLogo } from "@/components/scouting/OptaLogo";
+import { CamisetaDorsal } from "@/components/scouting/CamisetaDorsal";
 
 interface PlayerRow {
   id: string;
@@ -24,6 +25,7 @@ interface PlayerRow {
   photoUrl?: string;
   position: string;
   grupoDemarcacion: string;
+  shirtNumber?: number | string | null;
   height?: number;
   weight?: number;
   teamId?: string;
@@ -515,11 +517,16 @@ function PlayersDirectoryContent() {
                           )}
                         </div>
                         <div>
-                          <div
-                            className="font-semibold text-white group-hover:text-primary transition-colors leading-tight"
-                            title={player.name !== player.matchName ? player.name : undefined}
-                          >
-                            {player.matchName || player.name}
+                          <div className="flex items-center gap-2">
+                            {player.shirtNumber && (
+                              <CamisetaDorsal number={player.shirtNumber} size="xs" />
+                            )}
+                            <span
+                              className="font-semibold text-white group-hover:text-primary transition-colors leading-tight"
+                              title={player.name !== player.matchName ? player.name : undefined}
+                            >
+                              {player.matchName || player.name}
+                            </span>
                           </div>
                           <div className="flex items-center gap-1.5 mt-0.5">
                             <Bandera country={player.country} size="xs" />

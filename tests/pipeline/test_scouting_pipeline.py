@@ -228,6 +228,43 @@ class TestScoring(unittest.TestCase):
         # Sin métricas de construcción en los datos: categoría sin datos, no 0
         self.assertNotIn('_cat_construccion', met)
 
+    def test_ea_no_empareja_solo_por_nombre_de_pila(self):
+        """EA "Laura Sieger" (GK, 2000-02-18) no es "Laura Navajas Marín" (2000-02-21) aunque compartan nombre
+        de pila y mes de nacimiento."""
+        from pipeline.fm_fisico import emparejar
+        navajas = {"id": "x", "name": "Laura Navajas Marín", "match_name": "Laura Navajas", "first_name": "Laura",
+                   "last_name": "Navajas Marín", "birth_date": "2000-02-21", "fm_team_name": None, "teams": None}
+        fila = {"fm_name": "Laura Sieger", "fm_club": "Hamburger SV", "fm_birth_date": "2000-02-18", "fm_age": None}
+        j, _, metodo = emparejar(fila, [navajas], {"2000-02-21": [navajas]})
+        self.assertIsNone(j, metodo)
+        por_fecha = {"2000-02-21": [navajas]}
+        # Con certeza: misma fecha exacta y nombre completo
+        ok = {"fm_name": "Laura Navajas", "fm_club": "Otro", "fm_birth_date": "2000-02-21", "fm_age": None}
+        self.assertEqual(emparejar(ok, [navajas], por_fecha)[0], navajas)
+        # Nombre completo con la fecha con errata: solo si además es del mismo club
+        casi = {**ok, "fm_birth_date": "2000-02-20"}
+        self.assertIsNone(emparejar(casi, [navajas], por_fecha)[0])
+        con_club = {**navajas, "teams": {"name": "Real Sociedad"}}
+        self.assertEqual(emparejar({**casi, "fm_club": "Real Sociedad"}, [con_club], por_fecha)[0], con_club)
+        # Misma fecha exacta y apellido en común ("Laura Navajas" → "Navajas")
+        self.assertEqual(emparejar({**ok, "fm_name": "Navajas"}, [navajas], por_fecha)[0], navajas)
+        self.assertEqual(emparejar({**ok, "fm_name": "Lau Navajas"}, [navajas], por_fecha)[0], navajas)
+        # Gemela: misma fecha y apellido, otro nombre de pila
+        self.assertIsNone(emparejar({**ok, "fm_name": "Lucía Navajas"}, [navajas], por_fecha)[0])
+        # Sin fecha (FM con edad): nombre completo + mismo club
+        sin_fecha = {"fm_name": "Laura Navajas", "fm_club": "Real Sociedad", "fm_birth_date": None, "fm_age": None}
+        sin_f = {**navajas, "birth_date": None, "teams": {"name": "Real Sociedad Femenino"}}
+        self.assertEqual(emparejar(sin_fecha, [sin_f], {})[0], sin_f)
+        self.assertIsNone(emparejar({**sin_fecha, "fm_club": "Athletic"}, [sin_f], {})[0])
+
+    def test_ea_ritmo_fisico_porteras(self):
+        """Frohms (GK, EA FC 27): la carta trae Estirada 78 / Colocación 85 en pace/physicality."""
+        from pipeline.ea_fc import ritmo_fisico
+        r = ritmo_fisico({"acceleration": 42, "sprint_speed": 59, "jumping": 66, "stamina": 27,
+                          "strength": 70, "aggression": 20})
+        self.assertEqual(r, {"pace": 51, "physicality": 49})
+        self.assertIsNone(ritmo_fisico({"acceleration": 42})["pace"])
+
     def test_rating_partido_por_posicion_y_minutos(self):
         """Rating por partido: media 6.5 en cada grupo de demarcación (una central no se mide en ataque con las
         delanteras) y quien juega pocos minutos queda cerca de la media."""

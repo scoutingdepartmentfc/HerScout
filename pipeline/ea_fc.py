@@ -8,6 +8,11 @@ resistencia, fuerza, agresividad) desde el dataset público de Kaggle mikedpad/e
 Licencia del dataset: los datos y nombres pertenecen a Electronic Arts; es una instantánea no oficial y
 no comercial (ver su README).
 
+Porteras: en el CSV de EA sus columnas pace/physicality son las de su carta de portera (pace = Estirada,
+physicality = Colocación), no Ritmo ni Físico. Se recalculan con la fórmula de EA para jugadoras de campo
+(comprobada con todas ellas, ±1): Ritmo = 45% aceleración + 55% velocidad punta; Físico = 5% salto +
+25% resistencia + 50% fuerza + 20% agresividad.
+
 Emparejamiento: el mismo que pipeline/fm_fisico.py (misma fecha de nacimiento y nombre parecido, o nombre casi
 igual y mismo club o edad). EA da la fecha de nacimiento de todas. Las filas sin pareja se guardan en
 .cache/ea_fc_sin_pareja.csv.
@@ -57,6 +62,16 @@ def _int(v: Any):
     return int(v) if pd.notna(v) else None
 
 
+def ritmo_fisico(a: Dict[str, Any]) -> Dict[str, Any]:
+    """Ritmo y Físico de EA a partir de sus atributos (para porteras, cuya carta no los trae)."""
+    def media(pesos: Dict[str, float]):
+        if any(a.get(k) is None for k in pesos):
+            return None
+        return int(round(sum(a[k] * w for k, w in pesos.items())))
+    return {"pace": media({"acceleration": 0.45, "sprint_speed": 0.55}),
+            "physicality": media({"jumping": 0.05, "stamina": 0.25, "strength": 0.50, "aggression": 0.20})}
+
+
 def leer_jugadoras(ruta: Path) -> List[Dict[str, Any]]:
     """Filas del CSV de EA (solo fútbol femenino) en el formato que espera fm_fisico.emparejar."""
     df = pd.read_csv(ruta)
@@ -64,6 +79,9 @@ def leer_jugadoras(ruta: Path) -> List[Dict[str, Any]]:
     filas = []
     for r in df.itertuples(index=False):
         r = r._asdict()
+        atributos = {dst: _int(r.get(src)) for src, dst in ATRIBUTOS.items()}
+        if r.get("position") == "GK":
+            atributos.update(ritmo_fisico(atributos))
         completo = f"{r.get('first_name') or ''} {r.get('last_name') or ''}".strip()
         filas.append({
             # common_name ("Alexia Putellas") es el nombre conocido; si no hay, nombre y apellidos
@@ -75,7 +93,7 @@ def leer_jugadoras(ruta: Path) -> List[Dict[str, Any]]:
             "ea_player_id": _int(r.get("player_id")),
             "edition": str(r.get("edition") or ""),
             "snapshot_date": str(r["snapshot_date"])[:10] if pd.notna(r.get("snapshot_date")) else None,
-            **{dst: _int(r.get(src)) for src, dst in ATRIBUTOS.items()},
+            **atributos,
         })
     return filas
 
@@ -145,6 +163,11 @@ def main():
         return
     store.upsert("player_ea_ratings", [{k: v for k, v in r.items() if k != "_jugadora"} for r in elegidas.values()],
                  on_conflict="player_id")
+    # Emparejamientos de importaciones anteriores que ya no se dan (regla más estricta o jugadora que ya no está)
+    viejas = [r["player_id"] for r in store.select_all("player_ea_ratings", "player_id") if r["player_id"] not in elegidas]
+    if viejas:
+        store.delete_in("player_ea_ratings", "player_id", viejas)
+        logger.info(f"  Borradas {len(viejas)} valoraciones EA de emparejamientos que ya no son válidos")
     logger.info(f"✓ Guardadas las valoraciones EA de {len(elegidas)} jugadoras")
 
 

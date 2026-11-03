@@ -37,7 +37,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from rapidfuzz import fuzz
 
 from .config import LOCAL_CACHE_DIR
-from .photos import misma_fecha, normalizar, normalizar_club, sim_nombre
+from .photos import misma_fecha, normalizar, normalizar_club, sim_nombre, variantes_nombre
 from .storage import Store, get_supabase_client
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -208,34 +208,85 @@ def _edad(nacimiento: Optional[str]) -> Optional[int]:
     return hoy.year - n.year - ((hoy.month, hoy.day) < (n.month, n.day))
 
 
+def nombre_fiable(j: Dict[str, Any], nombre: Any) -> bool:
+    """Nombre casi igual de verdad: no basta con el nombre de pila. token_set_ratio da 100 a "Laura Sieger" vs
+    "Laura Navajas Marín" (solo comparten "Laura"); aquí hacen falta dos palabras en común o el nombre completo
+    casi igual (también para mononimos: "Cheza")."""
+    n = normalizar(nombre)
+    palabras = set(n.split())
+    for v in variantes_nombre(j):
+        nv = normalizar(v)
+        if not nv:
+            continue
+        if fuzz.token_sort_ratio(nv, n) >= 90:
+            return True
+        if len(palabras & set(nv.split())) >= 2 and fuzz.token_set_ratio(nv, n) >= 92:
+            return True
+    return False
+
+
+def _apellido_comun(j: Dict[str, Any], nombre: Any) -> bool:
+    """Comparten un apellido (palabra de 3+ letras que no sea el nombre de pila de ninguna de las dos) y el nombre
+    de pila es compatible: "Ari Mingueza" / "Ariadna Mingueza García", "Landaluze" / "Naia Landaluze Marquínez"."""
+    otro = normalizar(nombre).split()
+    pila = {otro[0]} if len(otro) > 1 else set()
+    for v in variantes_nombre(j):
+        pv = normalizar(v).split()
+        if not pv:
+            continue
+        # El nombre de pila no puede contradecirse: "Ari"/"Ariadna" sí, "Natalia"/"Noelia" no (gemelas Ramos)
+        if len(pv) > 1 and len(otro) > 1 and not (pv[0].startswith(otro[0]) or otro[0].startswith(pv[0])):
+            continue
+        comunes = (set(pv) & set(otro)) - pila - ({pv[0]} if len(pv) > 1 else set())
+        if any(len(w) >= 3 for w in comunes):
+            return True
+    return False
+
+
+def _mismo_club(fila: Dict[str, Any], j: Dict[str, Any]) -> bool:
+    club = normalizar_club(fila.get("fm_club"))
+    clubs_j = [normalizar_club(j.get("fm_team_name")), normalizar_club((j.get("teams") or {}).get("name"))]
+    return bool(club) and any(c and fuzz.token_set_ratio(club, c) >= 85 for c in clubs_j)
+
+
 def emparejar(fila: Dict[str, Any], jugadoras: List[Dict[str, Any]],
               por_fecha: Dict[str, List[Dict[str, Any]]]) -> Tuple[Optional[Dict[str, Any]], float, str]:
-    """(jugadora, parecido de nombre, método) o (None, mejor parecido, motivo)."""
+    """(jugadora, parecido de nombre, método) o (None, mejor parecido, motivo). Solo con certeza: hacen falta
+    DOS confirmaciones independientes; ante la duda, sin pareja (mejor sin datos físicos que con los de otra).
+      fecha+nombre     misma fecha exacta y nombre completo casi igual o un apellido en común
+      fecha+club       misma fecha exacta y mismo club (apodos: "Marisa" / "María Luisa García")
+      nombre+club      nombre completo casi igual y mismo club; si las dos tienen fecha, solo se tolera una
+                       errata (misma_fecha: pocos días, día/mes invertidos...) y si hay edad, ±1 año
+    El nombre de pila solo nunca cuenta ("Laura Sieger" no es "Laura Navajas"). Dos candidatas = sin pareja."""
     nombre = fila["fm_name"]
-    if fila.get("fm_birth_date"):
-        mismas = [(sim_nombre(j, nombre), j) for j in por_fecha.get(fila["fm_birth_date"], [])]
-        mismas = sorted((x for x in mismas if x[0] >= 70), key=lambda x: -x[0])
-        if mismas:
-            return mismas[0][1], mismas[0][0], "fecha+nombre"
-
-    club = normalizar_club(fila.get("fm_club"))
-    casi = sorted(((sim_nombre(j, nombre), j) for j in jugadoras), key=lambda x: -x[0])
-    # Con fecha en las dos fichas y distinta no es la misma jugadora aunque el nombre encaje
-    # (token_set_ratio da 100 si solo coincide el nombre de pila: "Ainhoa Alguacil" vs "Ainhoa Doménech")
     fecha = fila.get("fm_birth_date")
-    buenos = [(s, j) for s, j in casi if s >= 92
-              and not (fecha and j.get("birth_date") and not misma_fecha(fecha, str(j["birth_date"])[:10]))]
-    for s, j in buenos:
-        clubs_j = [normalizar_club(j.get("fm_team_name")), normalizar_club((j.get("teams") or {}).get("name"))]
-        if club and any(c and fuzz.token_set_ratio(club, c) >= 85 for c in clubs_j):
-            return j, s, "nombre+club"
-        edad_fm = fila.get("fm_age") or _edad(fila.get("fm_birth_date"))
+    if fecha:
+        misma = por_fecha.get(fecha, [])
+        for metodo, ok in (("fecha+nombre", lambda j: nombre_fiable(j, nombre) or _apellido_comun(j, nombre)),
+                           ("fecha+club", lambda j: _mismo_club(fila, j))):
+            cands = [j for j in misma if ok(j)]
+            if len(cands) == 1:
+                return cands[0], sim_nombre(cands[0], nombre), metodo
+            if len(cands) > 1:
+                return None, 100.0, "ambigua"
+
+    edad_fm = fila.get("fm_age") or _edad(fecha)
+    cands = []
+    for j in jugadoras:
+        if not nombre_fiable(j, nombre) or not _mismo_club(fila, j):
+            continue
+        if fecha and j.get("birth_date") and not misma_fecha(fecha, str(j["birth_date"])[:10]):
+            continue
         edad_j = _edad(j.get("birth_date"))
-        if edad_fm and edad_j and abs(edad_fm - edad_j) <= 1:
-            return j, s, "nombre+edad"
-    if len(buenos) == 1 and not fila.get("fm_birth_date"):
-        return buenos[0][1], buenos[0][0], "nombre-unico"
-    return None, (casi[0][0] if casi else 0), "sin pareja"
+        if edad_fm and edad_j and abs(edad_fm - edad_j) > 1:
+            continue
+        cands.append(j)
+    if len(cands) == 1:
+        return cands[0], sim_nombre(cands[0], nombre), "nombre+club"
+    if len(cands) > 1:
+        return None, 100.0, "ambigua"
+    mejor = max((sim_nombre(j, nombre) for j in jugadoras), default=0)
+    return None, mejor, "sin pareja"
 
 
 def main():

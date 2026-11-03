@@ -3,7 +3,6 @@
 import React, { useState } from "react";
 import { useThemeContext, DEFAULT_THEME, UserRole } from "@/context/ThemeContext";
 import {
-  Search,
   Bell,
   Menu,
   ChevronDown,
@@ -36,24 +35,14 @@ export const Navbar: React.FC<NavbarProps> = ({ onMobileMenuOpen }) => {
 
   return (
     <header className="sticky top-0 z-30 flex h-16 w-full items-center justify-between border-b border-border/80 bg-navy-950/80 px-4 backdrop-blur-md">
-      {/* Left: Mobile Menu + Search */}
-      <div className="flex items-center gap-3 flex-1 max-w-xl">
+      {/* Left: Mobile Menu */}
+      <div className="flex items-center gap-3">
         <button
           onClick={onMobileMenuOpen}
           className="md:hidden rounded p-1.5 text-muted-foreground hover:bg-white/5 hover:text-white"
         >
           <Menu className="w-5 h-5" />
         </button>
-
-        {/* Global Search Input */}
-        <div className="relative w-full max-w-md">
-          <Search className="w-4 h-4 text-muted-foreground absolute left-3 top-2.5" />
-          <input
-            type="text"
-            placeholder="Search players, clubs, matches, or reports... (Cmd + K)"
-            className="h-9 w-full rounded-md border border-border/70 bg-navy-900/60 pl-9 pr-4 text-xs text-foreground placeholder:text-muted-foreground/60 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary transition-all"
-          />
-        </div>
       </div>
 
       {/* Right: Club Switcher, Notifications, Role Simulator & Profile */}

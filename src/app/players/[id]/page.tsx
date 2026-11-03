@@ -224,7 +224,7 @@ export default function PlayerProfilePage() {
                 league_logo_url: p.leagueLogoUrl,
                 country: p.country,
                 demarcacion: primaryEnglishPos,
-                score_general: stats?.nota_global ? stats.nota_global / 10 : 8.2,
+                score_general: stats?.nota_global != null ? Math.round(stats.nota_global) : (stats?.score_general ? Math.round(stats.score_general * 10) : 75),
                 demarcacionesSecundarias: secondaryPositionsList,
               }}
               size="md"

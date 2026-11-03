@@ -84,8 +84,11 @@ export const CromoJugador: React.FC<CromoPlayerProps> = ({
     .filter((code) => Boolean(code) && code !== demInfo.code)
     .slice(0, 2);
 
-  const rawScore = j.score_general ? Number(j.score_general) : 7.5;
-  const ovr = Math.min(99, Math.max(50, Math.round(48 + rawScore * 4.6)));
+  const rawScore = j.score_general != null ? Number(j.score_general) : null;
+  // If score is already on 0-100 scale (e.g. 61, 85), use it directly. If on 0-10 scale (e.g. 7.5), scale to 100.
+  const ovr = rawScore != null
+    ? (rawScore > 10 ? Math.min(99, Math.max(1, Math.round(rawScore))) : Math.min(99, Math.max(1, Math.round(rawScore * 10))))
+    : 75;
 
   const getClubColors = (name?: string) => {
     const n = (name || "").toLowerCase();

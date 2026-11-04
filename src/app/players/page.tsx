@@ -55,6 +55,7 @@ function PlayersDirectoryContent() {
   const [positionFilter, setPositionFilter] = useState(searchParams.get("position") || "all");
   const [teamFilter, setTeamFilter] = useState(searchParams.get("team") || "all");
   const [leagueFilter, setLeagueFilter] = useState(searchParams.get("league") || "all");
+  const [seasonFilter, setSeasonFilter] = useState(searchParams.get("season") || "all");
   const [minRatingFilter, setMinRatingFilter] = useState<string>(searchParams.get("minRating") || "all");
   const [sortBy, setSortBy] = useState<string>(searchParams.get("sortBy") || "nota_global");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">((searchParams.get("order") as "asc" | "desc") || "desc");
@@ -62,12 +63,14 @@ function PlayersDirectoryContent() {
   const [players, setPlayers] = useState<PlayerRow[]>([]);
   const [availableTeams, setAvailableTeams] = useState<string[]>([]);
   const [availableLeagues, setAvailableLeagues] = useState<string[]>([]);
+  const [availableSeasons, setAvailableSeasons] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(() => {
     // If any advanced filter is populated, keep drawer open
     return (
       (searchParams.get("team") && searchParams.get("team") !== "all") ||
       (searchParams.get("league") && searchParams.get("league") !== "all") ||
+      (searchParams.get("season") && searchParams.get("season") !== "all") ||
       (searchParams.get("minRating") && searchParams.get("minRating") !== "all") ||
       false
     );
@@ -80,12 +83,14 @@ function PlayersDirectoryContent() {
     setPositionFilter(searchParams.get("position") || "all");
     setTeamFilter(searchParams.get("team") || "all");
     setLeagueFilter(searchParams.get("league") || "all");
+    setSeasonFilter(searchParams.get("season") || "all");
     setMinRatingFilter(searchParams.get("minRating") || "all");
     setSortBy(searchParams.get("sortBy") || "nota_global");
     setSortOrder((searchParams.get("order") as "asc" | "desc") || "desc");
     if (
       (searchParams.get("team") && searchParams.get("team") !== "all") ||
       (searchParams.get("league") && searchParams.get("league") !== "all") ||
+      (searchParams.get("season") && searchParams.get("season") !== "all") ||
       (searchParams.get("minRating") && searchParams.get("minRating") !== "all")
     ) {
       setShowAdvancedFilters(true);
@@ -116,6 +121,7 @@ function PlayersDirectoryContent() {
           position: positionFilter,
           team: teamFilter,
           league: leagueFilter,
+          season: seasonFilter,
           sortBy,
           order: sortOrder,
         });
@@ -129,6 +135,7 @@ function PlayersDirectoryContent() {
         if (json.filters) {
           if (json.filters.teams?.length) setAvailableTeams(json.filters.teams);
           if (json.filters.leagues?.length) setAvailableLeagues(json.filters.leagues);
+          if (json.filters.seasons?.length) setAvailableSeasons(json.filters.seasons);
         }
       } catch (err) {
         console.error("Failed to fetch players:", err);
@@ -144,6 +151,7 @@ function PlayersDirectoryContent() {
         position: positionFilter,
         team: teamFilter,
         league: leagueFilter,
+        season: seasonFilter,
         minRating: minRatingFilter,
         sortBy,
         order: sortOrder,
@@ -151,7 +159,7 @@ function PlayersDirectoryContent() {
     }, 250);
 
     return () => clearTimeout(timer);
-  }, [searchTerm, positionFilter, teamFilter, leagueFilter, minRatingFilter, sortBy, sortOrder]);
+  }, [searchTerm, positionFilter, teamFilter, leagueFilter, seasonFilter, minRatingFilter, sortBy, sortOrder]);
 
   const toggleWatchlist = (id: string) => {
     setSavedWatchlist((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -171,6 +179,7 @@ function PlayersDirectoryContent() {
     setPositionFilter("all");
     setTeamFilter("all");
     setLeagueFilter("all");
+    setSeasonFilter("all");
     setMinRatingFilter("all");
     setSortBy("nota_global");
     setSortOrder("desc");
@@ -179,6 +188,7 @@ function PlayersDirectoryContent() {
       position: "all",
       team: "all",
       league: "all",
+      season: "all",
       minRating: "all",
       sortBy: "nota_global",
       order: "desc",
@@ -189,6 +199,7 @@ function PlayersDirectoryContent() {
     (positionFilter !== "all" ? 1 : 0) +
     (teamFilter !== "all" ? 1 : 0) +
     (leagueFilter !== "all" ? 1 : 0) +
+    (seasonFilter !== "all" ? 1 : 0) +
     (minRatingFilter !== "all" ? 1 : 0) +
     (searchTerm.trim() ? 1 : 0);
 
@@ -323,7 +334,26 @@ function PlayersDirectoryContent() {
 
           {/* Collapsible Advanced Filters Drawer */}
           {showAdvancedFilters && (
-            <div className="pt-2.5 pb-1 border-t border-border/40 grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+            <div className="pt-2.5 pb-1 border-t border-border/40 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5">
+              {/* Season Filter (Default: All seasons / Acumulado) */}
+              <div>
+                <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider block mb-1">
+                  Season / Temporada
+                </label>
+                <Select
+                  value={seasonFilter}
+                  onChange={(e) => setSeasonFilter(e.target.value)}
+                  className="bg-navy-950 h-8 text-xs font-semibold"
+                >
+                  <option value="all">⚡ All Seasons (Acumulado)</option>
+                  {availableSeasons.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+
               {/* Club / Team */}
               <div>
                 <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider block mb-1">
@@ -566,11 +596,11 @@ function PlayersDirectoryContent() {
                               <span className="truncate">{player.leagueName}</span>
                             </div>
                           )}
-                          {/* No stats yet this season: ratings are from her latest season */}
-                          {player.seasonName && player.isCurrentSeason === false && (
+                          {/* Season Indicator Pill */}
+                          {player.seasonName && (
                             <div
-                              className="mt-0.5 inline-flex rounded border border-amber-500/30 bg-amber-500/10 px-1 text-[9px] font-semibold text-amber-300"
-                              title="Not enough minutes this season yet: ratings from this season"
+                              className="mt-0.5 inline-flex rounded border border-white/10 bg-white/5 px-1 text-[9px] font-semibold text-slate-300"
+                              title={player.isAccumulated ? "Promedio acumulado de todas las temporadas" : `Temporada ${player.seasonName}`}
                             >
                               {player.seasonName}
                             </div>

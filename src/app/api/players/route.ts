@@ -7,18 +7,19 @@ export async function GET(req: NextRequest) {
   const position = url.searchParams.get("position") || "all";
   const team = url.searchParams.get("team") || "all";
   const league = url.searchParams.get("league") || "all";
+  // season: "all" (accumulated by default) | season name e.g. "2026/2027", "2025/2026"
+  const season = url.searchParams.get("season") || "all";
   const minRating = url.searchParams.get("minRating") ? Number(url.searchParams.get("minRating")) : null;
   const sortBy = url.searchParams.get("sortBy") || "nota_global";
   const order = url.searchParams.get("order") === "asc" ? "asc" : "desc";
 
   if (!supabaseAdmin) {
-    return NextResponse.json({ players: [], filters: { teams: [], leagues: [] } });
+    return NextResponse.json({ players: [], filters: { teams: [], leagues: [], seasons: [] } });
   }
 
   try {
     const db = supabaseAdmin as any;
 
-    // Si ordenamos por una columna de notas de temporada o físico
     const validScores = [
       "nota_global",
       "nota_ataque",
@@ -29,10 +30,9 @@ export async function GET(req: NextRequest) {
       "nota_fisico",
     ];
 
-    // One row per player and season in player_season_stats: read them all (PostgREST pages of 1000)
-    const selectStats = () => db
-      .from("player_season_stats")
-      .select(`
+    // Read all rows from player_season_stats
+    const selectStats = () =>
+      db.from("player_season_stats").select(`
         player_id,
         season_id,
         seasons:season_id ( name, is_active, start_date ),
@@ -77,19 +77,31 @@ export async function GET(req: NextRequest) {
       if (!data || data.length < 1000) break;
     }
 
-    // A player with several seasons appears once: the current season (is_active) or, if she has no stats
-    // there yet, her most recent one
-    const rank = (r: any) => `${r.seasons?.is_active ? 1 : 0}|${r.seasons?.start_date || ""}`;
-    const byPlayer = new Map<string, any>();
+    // Extract available season names from all rows for the filter dropdown
+    const availableSeasons = Array.from(
+      new Set(rows.map((r: any) => r.seasons?.name).filter(Boolean))
+    ).sort().reverse();
+
+    // Group rows by player
+    const rowsByPlayer = new Map<string, any[]>();
     for (const r of rows) {
       if (!r.players) continue;
-      const prev = byPlayer.get(r.player_id);
-      if (!prev || rank(r) > rank(prev)) byPlayer.set(r.player_id, r);
+      const arr = rowsByPlayer.get(r.player_id) || [];
+      arr.push(r);
+      rowsByPlayer.set(r.player_id, arr);
     }
 
-    let list = Array.from(byPlayer.values())
-      .map((row: any) => {
-        const p = row.players;
+    let list: any[] = [];
+
+    if (season === "all") {
+      // ACCUMULATED MODE (Default): Weighted average across all seasons
+      for (const [playerId, playerRows] of rowsByPlayer.entries()) {
+        const latestRow = [...playerRows].sort((a, b) =>
+          String(b.seasons?.start_date || "").localeCompare(String(a.seasons?.start_date || "")) ||
+          (b.minutes_played || 0) - (a.minutes_played || 0)
+        )[0];
+        const p = latestRow.players;
+
         const ea = Array.isArray(p.player_ea_ratings) ? p.player_ea_ratings[0] : p.player_ea_ratings;
         const notaFisico = (() => {
           if (ea?.pace != null && ea?.physicality != null) {
@@ -98,15 +110,44 @@ export async function GET(req: NextRequest) {
           return ea?.pace != null ? Number(ea.pace) : ea?.physicality != null ? Number(ea.physicality) : null;
         })();
 
-        return {
+        // Calculate weighted averages across all seasons with stats
+        let totalMins = 0;
+        let totalMatches = 0;
+        const sumWeighted: Record<string, { sum: number; mins: number }> = {
+          nota_global: { sum: 0, mins: 0 },
+          nota_ataque: { sum: 0, mins: 0 },
+          nota_construccion: { sum: 0, mins: 0 },
+          nota_defensa: { sum: 0, mins: 0 },
+          nota_balon_parado: { sum: 0, mins: 0 },
+          nota_disponibilidad: { sum: 0, mins: 0 },
+        };
+
+        for (const r of playerRows) {
+          const m = Number(r.minutes_played) || 0;
+          totalMins += m;
+          totalMatches += Number(r.matches_played) || 0;
+          for (const k of Object.keys(sumWeighted)) {
+            if (r[k] != null) {
+              sumWeighted[k].sum += Number(r[k]) * m;
+              sumWeighted[k].mins += m;
+            }
+          }
+        }
+
+        const getWeightedVal = (k: string) => {
+          const item = sumWeighted[k];
+          return item.mins > 0 ? item.sum / item.mins : null;
+        };
+
+        list.push({
           id: p.id,
           name: p.name,
           matchName: p.match_name || p.name,
           country: p.country,
           birthDate: p.birth_date,
           photoUrl: p.photo_url,
-          position: row.demarcacion || p.primary_position || "Centrocampista",
-          grupoDemarcacion: row.grupo_demarcacion || p.grupo_demarcacion || "General",
+          position: latestRow.demarcacion || p.primary_position || "Centrocampista",
+          grupoDemarcacion: latestRow.grupo_demarcacion || p.grupo_demarcacion || "General",
           shirtNumber: p.shirt_number,
           height: p.height,
           weight: p.weight,
@@ -116,20 +157,66 @@ export async function GET(req: NextRequest) {
           badgeUrl: (p.fm_team_name ? p.fm_team_badge_url : null) || p.teams?.badge_url,
           leagueName: p.current_league_name || p.teams?.league_name || "Primera División Femenina",
           leagueLogoUrl: p.current_league_logo_url || p.teams?.league_logo_url,
-          seasonId: row.season_id,
-          seasonName: row.seasons?.name || null,
-          isCurrentSeason: !!row.seasons?.is_active,
-          minutesPlayed: row.minutes_played,
-          matchesPlayed: row.matches_played,
-          notaGlobal: row.nota_global,
-          notaAtaque: row.nota_ataque,
-          notaConstruccion: row.nota_construccion,
-          notaDefensa: row.nota_defensa,
-          notaBalonParado: row.nota_balon_parado,
-          notaDisponibilidad: row.nota_disponibilidad,
+          seasonName: playerRows.length > 1 ? `All seasons (${playerRows.length})` : playerRows[0]?.seasons?.name || null,
+          isAccumulated: playerRows.length > 1,
+          minutesPlayed: totalMins,
+          matchesPlayed: totalMatches,
+          notaGlobal: getWeightedVal("nota_global"),
+          notaAtaque: getWeightedVal("nota_ataque"),
+          notaConstruccion: getWeightedVal("nota_construccion"),
+          notaDefensa: getWeightedVal("nota_defensa"),
+          notaBalonParado: getWeightedVal("nota_balon_parado"),
+          notaDisponibilidad: getWeightedVal("nota_disponibilidad"),
           notaFisico,
-        };
-      });
+        });
+      }
+    } else {
+      // SPECIFIC SEASON FILTER: Only show stats for the selected season
+      for (const [playerId, playerRows] of rowsByPlayer.entries()) {
+        const matchingRow = playerRows.find((r) => r.seasons?.name === season);
+        if (!matchingRow) continue;
+
+        const p = matchingRow.players;
+        const ea = Array.isArray(p.player_ea_ratings) ? p.player_ea_ratings[0] : p.player_ea_ratings;
+        const notaFisico = (() => {
+          if (ea?.pace != null && ea?.physicality != null) {
+            return Math.round(Number(ea.pace) * 0.45 + Number(ea.physicality) * 0.55);
+          }
+          return ea?.pace != null ? Number(ea.pace) : ea?.physicality != null ? Number(ea.physicality) : null;
+        })();
+
+        list.push({
+          id: p.id,
+          name: p.name,
+          matchName: p.match_name || p.name,
+          country: p.country,
+          birthDate: p.birth_date,
+          photoUrl: p.photo_url,
+          position: matchingRow.demarcacion || p.primary_position || "Centrocampista",
+          grupoDemarcacion: matchingRow.grupo_demarcacion || p.grupo_demarcacion || "General",
+          shirtNumber: p.shirt_number,
+          height: p.height,
+          weight: p.weight,
+          marketValue: p.market_value,
+          teamId: p.teams?.id,
+          teamName: p.fm_team_name || p.teams?.name || "Unattached",
+          badgeUrl: (p.fm_team_name ? p.fm_team_badge_url : null) || p.teams?.badge_url,
+          leagueName: p.current_league_name || p.teams?.league_name || "Primera División Femenina",
+          leagueLogoUrl: p.current_league_logo_url || p.teams?.league_logo_url,
+          seasonName: matchingRow.seasons?.name || null,
+          isAccumulated: false,
+          minutesPlayed: matchingRow.minutes_played,
+          matchesPlayed: matchingRow.matches_played,
+          notaGlobal: matchingRow.nota_global,
+          notaAtaque: matchingRow.nota_ataque,
+          notaConstruccion: matchingRow.nota_construccion,
+          notaDefensa: matchingRow.nota_defensa,
+          notaBalonParado: matchingRow.nota_balon_parado,
+          notaDisponibilidad: matchingRow.nota_disponibilidad,
+          notaFisico,
+        });
+      }
+    }
 
     // Available filter options extracted from all data
     const availableTeams = Array.from(new Set(list.map((p: any) => p.teamName).filter(Boolean))).sort();
@@ -163,8 +250,12 @@ export async function GET(req: NextRequest) {
 
     // Sorting (nulls last)
     const key: Record<string, string> = {
-      nota_global: "notaGlobal", nota_ataque: "notaAtaque", nota_construccion: "notaConstruccion",
-      nota_defensa: "notaDefensa", nota_balon_parado: "notaBalonParado", nota_disponibilidad: "notaDisponibilidad",
+      nota_global: "notaGlobal",
+      nota_ataque: "notaAtaque",
+      notaConstruccion: "notaConstruccion",
+      notaDefensa: "notaDefensa",
+      nota_balon_parado: "notaBalonParado",
+      notaDisponibilidad: "notaDisponibilidad",
       nota_fisico: "notaFisico",
     };
     const field = key[validScores.includes(sortBy) ? sortBy : "nota_global"];
@@ -180,10 +271,10 @@ export async function GET(req: NextRequest) {
       filters: {
         teams: availableTeams,
         leagues: availableLeagues,
+        seasons: availableSeasons,
       },
     });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
-

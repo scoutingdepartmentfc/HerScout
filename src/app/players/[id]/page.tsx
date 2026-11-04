@@ -441,14 +441,8 @@ export default function PlayerProfilePage() {
                   })()}
                 </div>
 
-                <div className="p-2.5 rounded-lg bg-navy-950/70 border border-border/40">
-                  <div className="text-[10px] text-muted-foreground">At the club since</div>
-                  <div className="font-medium text-white text-xs mt-1">
-                    {p.joinedOn ? new Date(p.joinedOn).getFullYear() : "—"}
-                  </div>
-                </div>
-
-                <div className="p-2.5 rounded-lg bg-navy-950/70 border border-border/40">
+                {/* Contract until takes the 2 remaining columns in a 6-col grid */}
+                <div className="col-span-2 p-2.5 rounded-lg bg-navy-950/70 border border-border/40">
                   <div className="text-[10px] text-muted-foreground">Contract until</div>
                   <div className="font-medium text-white text-xs mt-1 font-mono">
                     {fmtDate(p.contractUntil)}

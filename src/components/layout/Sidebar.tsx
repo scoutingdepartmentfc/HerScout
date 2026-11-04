@@ -14,8 +14,6 @@ import {
   Shield,
   ChevronLeft,
   ChevronRight,
-  LogOut,
-  X,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -64,56 +62,47 @@ export const Sidebar: React.FC<SidebarProps> = ({
             : "-translate-x-full md:translate-x-0"
         }`}
       >
-        {/* Brand / Logo Header */}
-        <div className="flex h-20 items-center justify-between border-b border-border/80 px-3.5 bg-gradient-to-b from-white/[0.03] to-transparent">
+        {/* Brand Header */}
+        <div className="relative border-b border-border/80 p-3 bg-gradient-to-b from-white/[0.04] to-transparent">
+          {/* Collapse button on desktop (top right corner) */}
+          <button
+            onClick={onToggle}
+            className="hidden md:flex absolute top-3 right-2.5 z-20 h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:bg-white/10 hover:text-white transition-colors"
+            title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            {isCollapsed ? (
+              <ChevronRight className="h-3.5 w-3.5" />
+            ) : (
+              <ChevronLeft className="h-3.5 w-3.5" />
+            )}
+          </button>
+
           <Link
             href="/hub"
-            className="flex items-center gap-3 overflow-hidden group min-w-0"
+            className="flex flex-col items-center group select-none"
             onClick={onMobileClose}
           >
-            {/* Primary Isotype / App Icon (logo1) */}
-            <div className="relative flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-white/10 to-white/5 border border-white/15 p-1 shadow-md shadow-black/40 overflow-hidden group-hover:border-primary/50 transition-all">
+            {/* Top: Logo1 spanning wide */}
+            <div className={`w-full flex items-center justify-center overflow-hidden rounded-xl bg-white/[0.06] border border-white/10 shadow-lg shadow-black/30 p-1.5 transition-all duration-300 group-hover:border-primary/40 ${isCollapsed ? "h-12" : "h-20"}`}>
               <img
                 src="/logo1.png"
                 alt="SPONDA"
-                className="h-full w-full object-contain filter drop-shadow-sm transition-transform duration-200 group-hover:scale-105"
+                className="w-full h-full object-contain filter drop-shadow-md transition-transform duration-300 group-hover:scale-105"
               />
             </div>
 
+            {/* Below Logo1: SPONDA Modern Typography */}
             {!isCollapsed && (
-              <div className="flex flex-col min-w-0">
-                {/* Secondary Brand Logo (logo2 / logo-brand) with PRO pill */}
-                <div className="flex items-center gap-1.5">
-                  <div className="h-7 max-w-[120px] flex items-center overflow-hidden">
-                    <img
-                      src="/logo-brand.png"
-                      alt="SPONDA"
-                      className="h-full w-auto object-contain filter drop-shadow-sm"
-                    />
-                  </div>
-                  <span className="text-[9px] font-black tracking-wider uppercase px-1.5 py-0.5 rounded bg-primary/20 text-sky-300 border border-primary/30 shrink-0">
-                    PRO
-                  </span>
-                </div>
-                <span className="text-[10px] font-medium text-slate-400 truncate max-w-[140px] mt-0.5">
-                  {currentClub.shortName}
+              <div className="mt-2.5 flex items-center justify-center gap-2 w-full">
+                <span className="text-lg font-black tracking-[0.22em] text-transparent bg-clip-text bg-gradient-to-r from-white via-slate-100 to-sky-300 drop-shadow-[0_2px_8px_rgba(56,189,248,0.3)]">
+                  SPONDA
+                </span>
+                <span className="text-[9px] font-black tracking-wider uppercase px-1.5 py-0.5 rounded-full bg-sky-500/15 text-sky-300 border border-sky-400/30">
+                  PRO
                 </span>
               </div>
             )}
           </Link>
-
-          {/* Collapse button on desktop */}
-          <button
-            onClick={onToggle}
-            className="hidden md:flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-white/5 hover:text-white transition-colors"
-            title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-          >
-            {isCollapsed ? (
-              <ChevronRight className="h-4 w-4" />
-            ) : (
-              <ChevronLeft className="h-4 w-4" />
-            )}
-          </button>
         </div>
 
         {/* Navigation Items */}
@@ -162,33 +151,44 @@ export const Sidebar: React.FC<SidebarProps> = ({
           })}
         </div>
 
-        {/* Club Active Badge Footer */}
-        {!isCollapsed ? (
-          <div className="border-t border-border/80 p-3 bg-navy-900/40">
-            <div className="flex items-center gap-2.5">
-              <div
-                className="w-2.5 h-2.5 rounded-full flex-shrink-0 animate-pulse"
-                style={{ backgroundColor: `hsl(${currentClub.primaryColor})` }}
-              />
-              <div className="flex flex-col min-w-0">
-                <span className="text-[11px] font-semibold text-white truncate">
-                  {currentClub.name}
-                </span>
-                <span className="text-[10px] text-muted-foreground truncate">
-                  Multi-tenant Isolation: Active
+        {/* Bottom of Sidebar: Logo2 prominently displayed */}
+        <div className="border-t border-border/80 p-3 bg-navy-900/60">
+          {!isCollapsed ? (
+            <div className="flex flex-col items-center gap-2">
+              <div className="w-full h-16 rounded-xl bg-black/40 border border-white/10 p-2 flex items-center justify-center overflow-hidden shadow-inner group hover:border-white/20 transition-all">
+                <img
+                  src="/logo2.png"
+                  alt="SPONDA"
+                  className="w-full h-full object-contain filter drop-shadow-md transition-transform duration-200 group-hover:scale-105"
+                />
+              </div>
+              <div className="flex items-center gap-2 w-full justify-center">
+                <div
+                  className="w-2 h-2 rounded-full animate-pulse"
+                  style={{ backgroundColor: `hsl(${currentClub.primaryColor})` }}
+                />
+                <span className="text-[10px] font-semibold text-slate-300 truncate">
+                  {currentClub.shortName} Workspace
                 </span>
               </div>
             </div>
-          </div>
-        ) : (
-          <div className="border-t border-border/80 p-2 flex justify-center">
-            <div
-              className="w-2.5 h-2.5 rounded-full animate-pulse"
-              style={{ backgroundColor: `hsl(${currentClub.primaryColor})` }}
-              title={currentClub.name}
-            />
-          </div>
-        )}
+          ) : (
+            <div className="flex flex-col items-center justify-center py-1 gap-2">
+              <div className="w-10 h-10 rounded-lg bg-black/40 border border-white/10 p-1 flex items-center justify-center overflow-hidden">
+                <img
+                  src="/logo2.png"
+                  alt="SPONDA"
+                  className="w-full h-full object-contain"
+                />
+              </div>
+              <div
+                className="w-2 h-2 rounded-full animate-pulse"
+                style={{ backgroundColor: `hsl(${currentClub.primaryColor})` }}
+                title={currentClub.name}
+              />
+            </div>
+          )}
+        </div>
       </aside>
     </>
   );

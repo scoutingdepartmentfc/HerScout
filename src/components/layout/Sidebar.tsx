@@ -82,13 +82,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
             {!isCollapsed && (
               <div className="flex flex-col min-w-0">
-                {/* Secondary Brand Logo (logo2) with PRO pill */}
+                {/* Secondary Brand Logo (logo2 / logo-brand) with PRO pill */}
                 <div className="flex items-center gap-1.5">
-                  <div className="h-6 max-w-[110px] flex items-center overflow-hidden">
+                  <div className="h-7 max-w-[120px] flex items-center overflow-hidden">
                     <img
-                      src="/logo2.png"
+                      src="/logo-brand.png"
                       alt="SPONDA"
-                      className="h-full w-auto object-contain filter brightness-110 drop-shadow-xs"
+                      className="h-full w-auto object-contain filter drop-shadow-sm"
                     />
                   </div>
                   <span className="text-[9px] font-black tracking-wider uppercase px-1.5 py-0.5 rounded bg-primary/20 text-sky-300 border border-primary/30 shrink-0">

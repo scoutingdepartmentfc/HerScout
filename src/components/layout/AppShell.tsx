@@ -26,9 +26,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       />
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0 min-h-screen">
+      <div className="flex-1 flex flex-col min-w-0 min-h-screen relative overflow-hidden">
+        {/* Subtle Brand Watermark Logo behind page headers */}
+        <div className="pointer-events-none absolute top-4 right-6 sm:right-12 z-0 opacity-[0.06] select-none">
+          <img
+            src="/logo-brand.png"
+            alt=""
+            className="w-72 sm:w-96 max-h-48 object-contain filter drop-shadow-2xl"
+          />
+        </div>
+
         <Navbar onMobileMenuOpen={() => setIsMobileOpen(true)} />
-        <main className="flex-1 p-4 md:p-6 overflow-y-auto">
+        <main className="flex-1 p-4 md:p-6 overflow-y-auto relative z-10">
           <div className="max-w-7xl mx-auto space-y-6">
             {children}
           </div>

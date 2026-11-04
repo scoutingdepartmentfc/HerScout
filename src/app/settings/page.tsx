@@ -80,7 +80,7 @@ export default function SettingsPage() {
             onClick={handleResetToDefault}
             leftIcon={<RotateCcw className="w-3.5 h-3.5" />}
           >
-            Reset to HerScout Default
+            Reset to SPONDA Default
           </Button>
           <Button
             size="sm"
@@ -192,7 +192,7 @@ export default function SettingsPage() {
             <CardTitle>Branding & Color Theme</CardTitle>
           </div>
           <CardDescription>
-            Configure your club&apos;s custom palette without affecting other tenants on HerScout.
+            Configure your club&apos;s custom palette without affecting other tenants on SPONDA.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">

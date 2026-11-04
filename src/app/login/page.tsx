@@ -61,7 +61,7 @@ function LoginForm() {
                 <ShieldAlert className="w-6 h-6 text-sky-400" />
               </div>
               <h1 className="text-xl font-black tracking-tight text-white drop-shadow-md">
-                HerScout <span className="text-sky-300 text-xs font-semibold px-2 py-0.5 rounded-full bg-white/15 border border-white/25 ml-1">PRO</span>
+                SPONDA <span className="text-sky-300 text-xs font-semibold px-2 py-0.5 rounded-full bg-white/15 border border-white/25 ml-1">PRO</span>
               </h1>
               <p className="text-xs text-white/80 mt-1 font-medium drop-shadow">
                 Elite Women&apos;s Football Intelligence Platform

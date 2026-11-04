@@ -70,7 +70,7 @@ export default function HubPage() {
   };
 
   if (isLoading) {
-    return <LoadingState message="Aggregating HerScout hub intelligence..." />;
+    return <LoadingState message="Aggregating SPONDA hub intelligence..." />;
   }
 
   if (error) {

@@ -4,7 +4,7 @@ import { ThemeProvider } from "@/context/ThemeContext";
 import { AppShell } from "@/components/layout/AppShell";
 
 export const metadata: Metadata = {
-  title: "HerScout | Premium Women's Football Scouting & Intelligence",
+  title: "SPONDA | Premium Women's Football Scouting & Intelligence",
   description: "Multi-tenant scouting and player intelligence platform for professional football clubs.",
 };
 

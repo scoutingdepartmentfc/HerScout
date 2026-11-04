@@ -13,9 +13,9 @@ export type ClubTheme = {
 };
 
 export const DEFAULT_THEME: ClubTheme = {
-  id: "herscout-default",
-  name: "HerScout Elite Intelligence",
-  shortName: "HerScout",
+  id: "sponda-default",
+  name: "SPONDA Elite Intelligence",
+  shortName: "SPONDA",
   primaryColor: "217 91% 60%", // Electric scouting blue
   secondaryColor: "215 28% 17%",
   accentColor: "160 84% 39%", // Pitch emerald

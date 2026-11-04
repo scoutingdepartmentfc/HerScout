@@ -82,7 +82,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             {!isCollapsed && (
               <div className="flex flex-col">
                 <span className="text-sm font-bold tracking-tight text-white flex items-center gap-1.5">
-                  HerScout
+                  SPONDA
                   <span className="text-[10px] font-semibold uppercase px-1.5 py-0.2 rounded bg-primary/20 text-primary border border-primary/30">
                     PRO
                   </span>

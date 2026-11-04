@@ -62,10 +62,12 @@ export default function PlayerProfilePage() {
 
   const p = data.player;
   // Seasons with Opta data (latest first); the selected one drives ratings, metrics and match log
-  // Default: all seasons accumulated (when there is more than one); any single season can be selected
+  // Default: the latest active season (matching the Player Database table), or allSeasons if preferred
   const seasons: any[] = data.seasonStats || [];
   const options: any[] = data.allSeasons ? [data.allSeasons, ...seasons] : seasons;
-  const selected = options.find((s) => claveTemporada(s) === seasonKey) || options[0] || null;
+  // Pick active current season with stats first by default to match the table, or the first valid option
+  const defaultSeason = seasons.find((s) => s.seasons?.is_active && !s.sinNotas) || seasons.find((s) => !s.sinNotas) || options[0] || null;
+  const selected = (seasonKey ? options.find((s) => claveTemporada(s) === seasonKey) : defaultSeason) || options[0] || null;
   const selectedKey = selected ? claveTemporada(selected) : null;
   const stats = selected && !selected.sinNotas ? selected : null;
   const metricas = stats?.radar_data?.metricas || {};

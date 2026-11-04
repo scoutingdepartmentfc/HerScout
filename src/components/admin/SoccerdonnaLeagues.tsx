@@ -21,6 +21,14 @@ interface SdLeague {
   last_download_at: string | null;
 }
 
+// Soccerdonna country → Opta catalog country, when they differ (same map as pipeline/traducciones.py)
+const PAISES_OPTA: Record<string, string> = {
+  "United States": "USA", "Turkey": "Türkiye", "Czech Republic": "Czechia", "China": "China PR",
+  "Chinese Taipei (Taiwan)": "Chinese Taipei", "Färöer": "Faroe Islands", "Republik Korea (Südkorea)": "Korea Republic",
+  "South Korea": "Korea Republic", "Saudi Arabien": "Saudi Arabia", "Indonesien": "Indonesia",
+  "Bosnia-Herzegovina": "Bosnia and Herzegovina", "Ireland": "Republic of Ireland",
+};
+
 interface OptaCompetition {
   competition_id: string;
   competition_name: string;
@@ -155,8 +163,11 @@ export function SoccerdonnaLeagues() {
 
   const displayed = useMemo(() => filtered.slice(0, displayLimit), [filtered, displayLimit]);
 
-  const optaFor = (country: string | null) =>
-    opta.filter((c) => !country || (c.country || "").toLowerCase() === country.toLowerCase());
+  // Opta and Soccerdonna spell some countries differently ("USA" vs "United States")
+  const optaFor = (country: string | null) => {
+    const target = (PAISES_OPTA[country || ""] || country || "").toLowerCase();
+    return opta.filter((c) => !target || (c.country || "").toLowerCase() === target);
+  };
 
   return (
     <Card className="border-border/80 bg-[#070c18] shadow-2xl">

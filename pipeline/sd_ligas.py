@@ -55,21 +55,58 @@ def _txt(html: str) -> str:
     return unescape(re.sub(r"<[^>]+>", " ", html)).replace("\xa0", " ").strip()
 
 
+SECCIONES_INT = {"Internationaler Vereinspokal": "International club cup", "Nationalmannschaft": "National team",
+                 "Juniorennationalmannschaft": "Youth national team", "Nationalmannschaft Quali": "National team qualifiers"}
+
+
+def region_internacional(nombre: str) -> str:
+    """Región del catálogo Opta ("Europe", "Asia"...) de una competición internacional de Soccerdonna."""
+    n = nombre.lower()
+    for claves, region in ((("uefa", " em ", "europa", "europameister", "em qualifikation", "all island"), "Europe"),
+                           (("afc", "asia", "asien"), "Asia"), (("caf", "africa"), "Africa"),
+                           (("concacaf", "shebelieves"), "N/C America"), (("conmebol",), "South America")):
+        if any(c in f" {n} " for c in claves):
+            return region
+    return "World"
+
+
+def parecido_liga(sd_nombre: str, opta_nombre: str) -> float:
+    """Parecido entre el nombre de Soccerdonna y el de Opta; reconoce las siglas
+    ("National Women's Soccer League" ↔ "NWSL")."""
+    a, b = normalizar(sd_nombre), normalizar(opta_nombre)
+    siglas = "".join(w[0] for w in re.split(r"[\s'’-]+", a) if w and w not in {"s"})
+    if b.replace(" ", "") and b.replace(" ", "") == siglas:
+        return 100.0
+    return fuzz.token_set_ratio(a, b)
+
+
 def catalogo(store: Store, sd: SDClient):
     html = sd.get(CATALOGO) or ""
-    ligas, pais = {}, None
+    ligas, pais, seccion = {}, None, None
     for fila in re.findall(r"<tr[^>]*>(.*?)</tr>", html, re.S):
         cab = re.search(r'<td class="al fb" colspan="2">.*?title="([^"]+)"', fila, re.S)
         if cab:
-            pais = en.PAISES.get(cab.group(1), cab.group(1))
+            pais, seccion = en.PAISES.get(cab.group(1), cab.group(1)), None
+            continue
+        # Secciones internacionales (sin bandera): no tienen columna de nivel
+        sec = re.search(r'<td class="al fb" colspan="2">\s*([^<]+?)\s*</td>', fila)
+        if sec and "wettbewerb_" not in fila:
+            seccion = SECCIONES_INT.get(sec.group(1), sec.group(1))
             continue
         m = re.search(r'href="/(?:de|en)/([^/]+)/startseite/wettbewerb_([A-Z0-9]+)\.html"[^>]*title="([^"]+)"', fila)
         if not m or m.group(2) in ligas:
             continue
         celdas = [_txt(c) for c in re.findall(r"<td[^>]*>(.*?)</td>", fila, re.S)]
         num = lambda i: int(re.sub(r"\D", "", celdas[i]) or 0) if len(celdas) > i else None
-        ligas[m.group(2)] = {"code": m.group(2), "name": unescape(m.group(3)).strip(), "country": pais,
-                             "level": re.sub(r"^(\d)\. Liga$", r"Tier \1", celdas[2]) if len(celdas) > 2 else None, "teams": num(3), "players": num(4),
+        nombre = unescape(m.group(3)).strip()
+        if seccion:
+            nivel, equipos, jugadoras = seccion, num(2), num(3)
+            pais_liga = region_internacional(nombre)
+        else:
+            nivel = re.sub(r"^(\d)\. Liga$", r"Tier \1", celdas[2]) if len(celdas) > 2 else None
+            equipos, jugadoras, pais_liga = num(3), num(4), pais
+        ligas[m.group(2)] = {"code": m.group(2), "name": nombre, "country": pais_liga,
+                             "level": nivel, "teams": equipos, "players": jugadoras,
                              "url": f"/en/{m.group(1)}/startseite/wettbewerb_{m.group(2)}.html", "updated_at": now_iso()}
     # Competición Opta sugerida: mismo país y nombre parecido (solo si aún no tiene una)
     actuales = {l["code"]: l for l in store.select_all("sd_leagues", "code,opta_competition_id")}
@@ -80,9 +117,12 @@ def catalogo(store: Store, sd: SDClient):
     for l in ligas.values():
         if actuales.get(l["code"], {}).get("opta_competition_id"):
             continue
-        mejor = max(((fuzz.token_set_ratio(normalizar(l["name"]), normalizar(c["competition_name"])), c)
-                     for c in opta.values() if normalizar(c["country"]) == normalizar(l["country"])),
-                    key=lambda t: t[0], default=(0, None))
+        pais = normalizar(en.pais_opta(l["country"]))
+        # Empate (p. ej. "NWSL" y "NWSL Challenge Cup" para la Challenge Cup): gana el nombre más parecido entero
+        mejor = max(((parecido_liga(l["name"], c["competition_name"]), c)
+                     for c in opta.values() if normalizar(c["country"]) == pais),
+                    key=lambda t: (t[0], fuzz.ratio(normalizar(l["name"]), normalizar(t[1]["competition_name"]))),
+                    default=(0, None))
         if mejor[1] and mejor[0] >= 60:
             l["opta_competition_id"] = mejor[1]["competition_id"]
     for grupo in _homogeneo(list(ligas.values())):
@@ -319,6 +359,14 @@ def vincular(store: Store, liga_code: Optional[str]):
                                                               "league_name,league_logo_url")}
     jugadoras = store.select_all("players", "id,name,first_name,last_name,match_name,birth_date,current_team_id,"
                                             "sd_league_code,opta_id," + ",".join(SD_CAMPOS))
+    # Uniones que se quedaron a medias (fallo entre mover sd_id y borrar la "sd-"): se terminan
+    por_sd = {p["sd_id"]: p for p in jugadoras if p.get("sd_id") and not p["id"].startswith("sd-")}
+    for p in [p for p in jugadoras if p["id"].startswith("sd-") and not p.get("sd_id")]:
+        o = por_sd.get(int(p["id"][3:])) if p["id"][3:].isdigit() else None
+        if o:
+            _unir(store, p, o)
+            jugadoras.remove(p)
+            logger.info(f"Vincular: terminada la unión a medias de {p['name']} ({p['id']} → {o['id']})")
     unidas, unidas_ids, opta_unidas = 0, set(), set()
     for liga in ligas:
         # Equipos Opta de la liga: escudo y liga del club de Soccerdonna con el nombre más parecido
@@ -377,8 +425,13 @@ def _unir(store: Store, s_: Dict[str, Any], mejor: Dict[str, Any], club_de_socce
         datos["current_team_id"] = s_["current_team_id"]
     store.update("players", {"sd_id": None}, id=s_["id"])  # sd_id es único: se libera antes de moverlo
     store.update("players", {**datos, "opta_id": mejor["id"]}, id=mejor["id"])
-    for tabla in ("player_market_values", "player_transfers", "player_injuries", "player_national_teams"):
-        store.update(tabla, {"player_id": mejor["id"]}, player_id=s_["id"])
+    # La fila Opta puede tener ya algunas de estas filas (de una unión anterior): se mueven con upsert por la
+    # clave primaria (gana la de Soccerdonna, la más reciente) en vez de un UPDATE que chocaría con ella
+    for tabla, clave in PK:
+        filas = store.select_all(tabla, "*", player_id=s_["id"])
+        if filas:
+            store.upsert(tabla, [{**f, "player_id": mejor["id"]} for f in filas], on_conflict=clave)
+            store.delete(tabla, player_id=s_["id"])
     store.delete("players", id=s_["id"])
 
 

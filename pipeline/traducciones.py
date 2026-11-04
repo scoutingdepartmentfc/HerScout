@@ -32,6 +32,20 @@ PAISES = {
     "Malawi": "Malawi", "Kenia": "Kenya", "Tansania": "Tanzania", "Mali": "Mali",
 }
 
+# País de Soccerdonna → país del catálogo Opta, cuando se escriben distinto (para vincular cada liga con Opta)
+PAISES_OPTA = {
+    "United States": "USA", "Vereinigte Staaten": "USA", "Turkey": "Türkiye", "Türkei": "Türkiye",
+    "Czech Republic": "Czechia", "Tschechien": "Czechia", "China": "China PR",
+    "Chinese Taipei (Taiwan)": "Chinese Taipei", "Färöer": "Faroe Islands", "Republik Korea (Südkorea)": "Korea Republic",
+    "South Korea": "Korea Republic", "Südkorea": "Korea Republic", "Saudi Arabien": "Saudi Arabia",
+    "Indonesien": "Indonesia", "Bosnia-Herzegovina": "Bosnia and Herzegovina", "Ireland": "Republic of Ireland",
+}
+
+
+def pais_opta(pais: Optional[str]) -> Optional[str]:
+    return PAISES_OPTA.get((pais or "").strip(), pais)
+
+
 LESIONES = {
     "kreuzbandriss": "Cruciate ligament rupture", "teilriss des kreuzbandes": "Partial cruciate ligament tear",
     "innenbandriss": "Medial collateral ligament tear", "außenbandriss": "Lateral ligament tear",

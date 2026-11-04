@@ -6,6 +6,15 @@ import { AppShell } from "@/components/layout/AppShell";
 export const metadata: Metadata = {
   title: "SPONDA | Premium Women's Football Scouting & Intelligence",
   description: "Multi-tenant scouting and player intelligence platform for professional football clubs.",
+  icons: {
+    icon: [
+      { url: "/logo1.png", type: "image/png" },
+    ],
+    shortcut: "/logo1.png",
+    apple: [
+      { url: "/logo1.png", sizes: "180x180", type: "image/png" },
+    ],
+  },
 };
 
 export default function RootLayout({

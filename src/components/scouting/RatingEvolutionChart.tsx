@@ -459,3 +459,4 @@ export const RatingEvolutionChart: React.FC<RatingEvolutionChartProps> = ({
     </Card>
   );
 };
+

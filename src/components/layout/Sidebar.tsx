@@ -3,19 +3,19 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { cn } from "@/lib/utils";
 import { useThemeContext } from "@/context/ThemeContext";
 import {
   LayoutDashboard,
   Users,
-  FileSpreadsheet,
-  CalendarDays,
+  FileText,
+  Calendar,
   Bookmark,
   Settings,
-  ShieldAlert,
+  Shield,
   ChevronLeft,
   ChevronRight,
-  Sparkles,
+  LogOut,
+  X,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -32,62 +32,70 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onMobileClose,
 }) => {
   const pathname = usePathname();
-  const { currentClub, isPlatformAdmin } = useThemeContext();
+  const { currentClub } = useThemeContext();
 
-  const navItems = [
+  const navigation = [
     { name: "The Hub", href: "/hub", icon: LayoutDashboard },
     { name: "Player Database", href: "/players", icon: Users },
-    { name: "Reports & Analysis", href: "/reports", icon: FileSpreadsheet },
-    { name: "Matches", href: "/matches", icon: CalendarDays },
+    { name: "Reports & Analysis", href: "/reports", icon: FileText },
+    { name: "Matches", href: "/matches", icon: Calendar },
     { name: "Watchlist", href: "/watchlist", icon: Bookmark },
     { name: "Settings", href: "/settings", icon: Settings },
+    { name: "Administration", href: "/admin", icon: Shield },
   ];
-
-  if (isPlatformAdmin) {
-    navItems.push({
-      name: "Administration",
-      href: "/admin",
-      icon: ShieldAlert,
-    });
-  }
 
   return (
     <>
       {/* Mobile Backdrop */}
       {isMobileOpen && (
         <div
-          className="fixed inset-0 z-40 bg-black/80 md:hidden backdrop-blur-sm"
+          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-xs md:hidden"
           onClick={onMobileClose}
         />
       )}
 
       {/* Sidebar Container */}
       <aside
-        className={cn(
-          "fixed top-0 bottom-0 left-0 z-40 flex flex-col border-r border-border/80 bg-navy-950/95 backdrop-blur-md transition-all duration-300 md:static",
-          isCollapsed ? "w-16" : "w-64",
-          isMobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
-        )}
+        className={`fixed inset-y-0 left-0 z-50 flex flex-col border-r border-border/80 bg-navy-950 transition-all duration-300 md:static ${
+          isCollapsed ? "w-20" : "w-64"
+        } ${
+          isMobileOpen
+            ? "translate-x-0"
+            : "-translate-x-full md:translate-x-0"
+        }`}
       >
-        {/* Brand / Club Header */}
-        <div className="flex h-16 items-center justify-between border-b border-border/80 px-4">
+        {/* Brand / Logo Header */}
+        <div className="flex h-20 items-center justify-between border-b border-border/80 px-3.5 bg-gradient-to-b from-white/[0.03] to-transparent">
           <Link
             href="/hub"
-            className="flex items-center gap-3 overflow-hidden"
+            className="flex items-center gap-3 overflow-hidden group min-w-0"
             onClick={onMobileClose}
           >
-            <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-primary/20 border border-primary/40 text-primary">
-              <Sparkles className="h-5 w-5" />
+            {/* Primary Isotype / App Icon (logo1) */}
+            <div className="relative flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-white/10 to-white/5 border border-white/15 p-1 shadow-md shadow-black/40 overflow-hidden group-hover:border-primary/50 transition-all">
+              <img
+                src="/logo1.png"
+                alt="SPONDA"
+                className="h-full w-full object-contain filter drop-shadow-sm transition-transform duration-200 group-hover:scale-105"
+              />
             </div>
+
             {!isCollapsed && (
-              <div className="flex flex-col">
-                <span className="text-sm font-bold tracking-tight text-white flex items-center gap-1.5">
-                  SPONDA
-                  <span className="text-[10px] font-semibold uppercase px-1.5 py-0.2 rounded bg-primary/20 text-primary border border-primary/30">
+              <div className="flex flex-col min-w-0">
+                {/* Secondary Brand Logo (logo2) with PRO pill */}
+                <div className="flex items-center gap-1.5">
+                  <div className="h-6 max-w-[110px] flex items-center overflow-hidden">
+                    <img
+                      src="/logo2.png"
+                      alt="SPONDA"
+                      className="h-full w-auto object-contain filter brightness-110 drop-shadow-xs"
+                    />
+                  </div>
+                  <span className="text-[9px] font-black tracking-wider uppercase px-1.5 py-0.5 rounded bg-primary/20 text-sky-300 border border-primary/30 shrink-0">
                     PRO
                   </span>
-                </span>
-                <span className="text-[11px] text-muted-foreground truncate max-w-[150px]">
+                </div>
+                <span className="text-[10px] font-medium text-slate-400 truncate max-w-[140px] mt-0.5">
                   {currentClub.shortName}
                 </span>
               </div>
@@ -118,30 +126,32 @@ export const Sidebar: React.FC<SidebarProps> = ({
             )}
           </div>
 
-          {navItems.map((item) => {
-            const Icon = item.icon;
+          {navigation.map((item) => {
             const isActive = pathname === item.href || (item.href !== "/hub" && pathname.startsWith(item.href));
+            const Icon = item.icon;
 
             return (
               <Link
                 key={item.name}
                 href={item.href}
                 onClick={onMobileClose}
-                className={cn(
-                  "flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium transition-all group relative",
+                className={`relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all group ${
                   isActive
-                    ? "bg-primary/15 text-primary border border-primary/30"
+                    ? "bg-primary/15 text-white font-semibold"
                     : "text-muted-foreground hover:bg-white/5 hover:text-white"
-                )}
+                }`}
                 title={isCollapsed ? item.name : undefined}
               >
                 <Icon
-                  className={cn(
-                    "h-4 w-4 flex-shrink-0 transition-colors",
-                    isActive ? "text-primary" : "text-muted-foreground group-hover:text-white"
-                  )}
+                  className={`h-5 w-5 flex-shrink-0 transition-colors ${
+                    isActive
+                      ? "text-primary"
+                      : "text-muted-foreground group-hover:text-white"
+                  }`}
                 />
-                {!isCollapsed && <span className="truncate">{item.name}</span>}
+                {!isCollapsed && (
+                  <span className="truncate">{item.name}</span>
+                )}
 
                 {/* Active Indicator Bar */}
                 {isActive && (
@@ -183,4 +193,3 @@ export const Sidebar: React.FC<SidebarProps> = ({
     </>
   );
 };
-

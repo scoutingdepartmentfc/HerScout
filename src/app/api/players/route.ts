@@ -95,7 +95,7 @@ export async function GET(req: NextRequest) {
 
     if (season === "all") {
       // ACCUMULATED MODE (Default): Weighted average across all seasons
-      for (const [playerId, playerRows] of rowsByPlayer.entries()) {
+      Array.from(rowsByPlayer.entries()).forEach(([playerId, playerRows]) => {
         const latestRow = [...playerRows].sort((a, b) =>
           String(b.seasons?.start_date || "").localeCompare(String(a.seasons?.start_date || "")) ||
           (b.minutes_played || 0) - (a.minutes_played || 0)
@@ -169,12 +169,12 @@ export async function GET(req: NextRequest) {
           notaDisponibilidad: getWeightedVal("nota_disponibilidad"),
           notaFisico,
         });
-      }
+      });
     } else {
       // SPECIFIC SEASON FILTER: Only show stats for the selected season
-      for (const [playerId, playerRows] of rowsByPlayer.entries()) {
-        const matchingRow = playerRows.find((r) => r.seasons?.name === season);
-        if (!matchingRow) continue;
+      Array.from(rowsByPlayer.entries()).forEach(([playerId, playerRows]) => {
+        const matchingRow = playerRows.find((r: any) => r.seasons?.name === season);
+        if (!matchingRow) return;
 
         const p = matchingRow.players;
         const ea = Array.isArray(p.player_ea_ratings) ? p.player_ea_ratings[0] : p.player_ea_ratings;
@@ -215,7 +215,7 @@ export async function GET(req: NextRequest) {
           notaDisponibilidad: matchingRow.nota_disponibilidad,
           notaFisico,
         });
-      }
+      });
     }
 
     // Available filter options extracted from all data

@@ -19,6 +19,7 @@ import { MarketValueChart } from "@/components/scouting/MarketValueChart";
 import { TransferTimeline } from "@/components/scouting/TransferTimeline";
 import { NationalTeamGrid } from "@/components/scouting/NationalTeamGrid";
 import { InjuryAnatomy } from "@/components/scouting/InjuryAnatomy";
+import { RatingEvolutionChart } from "@/components/scouting/RatingEvolutionChart";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -452,6 +453,12 @@ export default function PlayerProfilePage() {
             </div>
           </div>
         </div>
+
+        {/* Dynamic Performance Rating Evolution Chart (Last 3 Months / Range Filterable) */}
+        <RatingEvolutionChart
+          matches={data.matchLog || []}
+          playerName={p.matchName || p.name}
+        />
 
         {/* Seasons with Opta data and what data each one has */}
         <TemporadasOpta seasons={options} selected={selectedKey} onSelect={setSeasonKey} />

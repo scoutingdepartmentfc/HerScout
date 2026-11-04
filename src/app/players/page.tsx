@@ -35,6 +35,7 @@ interface PlayerRow {
   leagueLogoUrl?: string;
   seasonName?: string | null;
   isCurrentSeason?: boolean;
+  isAccumulated?: boolean;
   minutesPlayed?: number;
   matchesPlayed?: number;
   notaGlobal?: number | null;

@@ -455,7 +455,8 @@ class IngestionPipeline:
         for f in filas:
             f['radar_data'] = {**(f.get('radar_data') or {}), 'similares': similares.get(f['player_id'], [])}
             f.pop('id', None)
-        self.store.upsert('player_season_stats', filas, on_conflict='player_id,season_id,demarcacion', batch=200)
+        # Lotes pequeños: cada fila lleva radar_data completo y 200 ya agotan el statement timeout de Supabase
+        self.store.upsert('player_season_stats', filas, on_conflict='player_id,season_id,demarcacion', batch=50)
         logger.info(f"Similares: {len(filas)} jugadores")
 
     def cargar_objetivos(self) -> List[Dict[str, Any]]:

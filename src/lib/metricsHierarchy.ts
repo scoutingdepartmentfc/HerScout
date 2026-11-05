@@ -1,6 +1,6 @@
 // Categories, sub-categories and metrics. Same ids and keys as pipeline/categorias.py (single source of truth).
-// Notes 0-100 are computed by the pipeline relative to the league average of the position group
-// (average player ≈ 62; percentile corrected by minutes, then standardised)
+// Notes 0-100 are computed by the pipeline and are comparable across leagues: standing within the position group
+// of the league (percentile corrected by minutes, then standardised) on top of the league level (NIVEL_LIGA)
 // and arrive in radar_data.metricas as `_cat_<id>` and `_sub_<id>`: [note0_100, note0_10].
 // Every metric arrives as `<key>`: [value (per 90 or %), note0_10].
 

@@ -42,7 +42,7 @@ except ImportError:
 import pandas as pd
 
 from .adapter import OptaSDAPIAdapter
-from .config import MAX_WORKERS_DESCARGA
+from .config import MAX_WORKERS_DESCARGA, NIVEL_LIGA, NIVEL_LIGA_DEFECTO
 from .events import match_metadata
 from .metrics_engine import MetricsEngine
 from .fotos_jugadoras import sincronizar_fotos_jugadoras
@@ -301,7 +301,9 @@ class IngestionPipeline:
         """Ratings por partido y tabla de temporada desde la caché. Sin `actualizar_jugadoras` no se tocan las
         fichas (nombre y demarcación principal): para recalcular sin plantillas de Opta."""
         cid, sid = comp['id'], comp['season_id']
-        df_sp, df_temp = calcular_temporada(cache)
+        if cid not in NIVEL_LIGA:
+            logger.warning(f"  {comp['name']} sin nivel en NIVEL_LIGA: se usa {NIVEL_LIGA_DEFECTO}")
+        df_sp, df_temp = calcular_temporada(cache, NIVEL_LIGA.get(cid, NIVEL_LIGA_DEFECTO))
         if df_temp.empty:
             logger.info("  Temporada: sin jugadores con minutos suficientes todavía")
             return

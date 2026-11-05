@@ -34,11 +34,29 @@ MIN_MINUTOS_TEMPORADA = 90
 # Corrección por minutos de las notas 0-100: cada métrica p90 se acerca a la media de su grupo de demarcación
 # como si la jugadora tuviera K minutos más jugados a ritmo medio. Más K = más castigo a quien juega poco.
 K_MINUTOS_CONFIANZA = int(os.environ.get("SCOUTING_K_MINUTOS", "900"))
-# Escala de las notas 0-100 (subcategoría, categoría y global): relativas a la media de su grupo en la liga.
-# La jugadora media saca NOTA_MEDIA_LIGA y cada desviación típica suma/resta NOTA_DESVIACION puntos.
-# Con 62/14: ~28% >= 70 (verde), ~53% entre 50 y 70 (naranja), ~19% < 50 (rojo).
+# Escala de las notas 0-100 (métrica, subcategoría, categoría y global), comparable entre ligas:
+# nota = nivel de la liga + NOTA_DESVIACION * desviaciones típicas frente a su grupo de demarcación en la liga.
+# Por encima de NOTA_TECHO_INICIO la escala se comprime hacia NOTA_TECHO: un 90+ es excepcional.
 NOTA_MEDIA_LIGA = 62.0
-NOTA_DESVIACION = 14.0
+NOTA_DESVIACION = 11.0
+NOTA_TECHO_INICIO = 80.0
+NOTA_TECHO = 99.0
+# Nivel de cada liga = nota de su jugadora media. La fuerza no sale de las métricas brutas (en ligas flojas
+# también son más altas): se calibra con la nota de las mismas jugadoras al cambiar de liga y el valor de mercado.
+NIVEL_LIGA = {
+    '6vq8j5p3av14nr3iuyi4okhjt': 66.0,  # Women's Super League
+    '5k620c7y6dlbmcm88dt3eb7t': 62.0,   # Liga F
+    '2z7257m7hj58zuxcjrsg4erzc': 61.0,  # Frauen Bundesliga
+    '2aso72utuctat2ecs6nahjss6': 60.0,  # Première Ligue
+    '81txfenlgw75nq3u2nfdkj92o': 57.0,  # Serie A Women
+    '1dvti26ywxhu6eafhupc3f2pe': 57.0,  # Coppa Italia Women
+    '7ut48s80k421xixh6ev5i6h62': 54.0,  # Liga MX Femenil
+    '9q5tcfz0w9ku2xq49c0df48b8': 52.0,  # Northern Super League
+    '9p3nnxhdjahfn8qswpzy8oyc3': 52.0,  # A-League Women
+    'cydr5rltozch9qnzjurt1r7d9': 52.0,  # SWPL 1
+    '2fhhxvyhwkxd6gpgg9nbb2p2i': 42.0,  # Segunda Federación Femenina
+}
+NIVEL_LIGA_DEFECTO = 52.0  # Ligas nuevas de /admin hasta darles nivel aquí
 # Grupos de demarcación con menos jugadoras que esto se comparan con toda la liga
 MIN_JUGADORAS_GRUPO = 5
 

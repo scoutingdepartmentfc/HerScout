@@ -463,7 +463,7 @@ export default function PlayerProfilePage() {
         {/* Seasons with Opta data and what data each one has */}
         <TemporadasOpta seasons={options} selected={selectedKey} onSelect={setSeasonKey} />
 
-        {/* Section 2: Overall + category ratings (relative to the league average) */}
+        {/* Section 2: Overall + category ratings (comparable across leagues) */}
         {selected?.sinNotas ? (
           <div className="rounded-xl border border-border/60 bg-[#070e1e] p-4 text-xs text-muted-foreground">
             Not enough minutes this season for a season rating ({selected.minutes_played}&apos; played).

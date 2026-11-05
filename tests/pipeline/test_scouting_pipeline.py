@@ -316,6 +316,53 @@ class TestScoring(unittest.TestCase):
         self.assertGreater(t.at['titular', 'nota_defensa'], t.at['suplente', 'nota_defensa'])
         self.assertGreater(t.at['titular', 'nota_global'], t.at['suplente', 'nota_global'])
 
+    def _liga_sintetica(self):
+        filas = []
+        for m in range(10):
+            for p in range(20):
+                filas.append({
+                    'match_id': f'm{m}', 'player_id': f'p{p}', 'team_id': 't', 'player_name': f'P{p}',
+                    'match_date': f'2026-10-{m + 10}T16:00:00Z', 'demarcacion': 'Delantero',
+                    'grupo_demarcacion': 'Delanteros', 'minutes_played': 90, 'is_starter': True,
+                    **{c: 0 for c in ['goals', 'assists', 'xg', 'xa', 'xca', 'passes_completed', 'passes_total',
+                                      'progressive_passes', 'takeons_successful', 'takeons_total', 'tackles_won',
+                                      'tackles_total', 'interceptions', 'recoveries', 'aerials_won', 'aerials_total']},
+                    'of_goles_p90': 0.1 + p / 10, 'def_entradas_p90': p / 5, 'comp_minutos': 90.0,
+                })
+        return pd.DataFrame(filas)
+
+    def test_nivel_de_liga_desplaza_las_notas(self):
+        """La misma actuación vale menos en una liga de menor nivel, en global y en cada métrica."""
+        _, elite = calcular_temporada(self._liga_sintetica(), 66.0)
+        _, menor = calcular_temporada(self._liga_sintetica(), 42.0)
+        self.assertAlmostEqual(elite['nota_global'].mean() - menor['nota_global'].mean(), 24, delta=2)
+        self.assertGreater(elite['nota_global'].max(), menor['nota_global'].max() + 10)
+        top = lambda t: t.sort_values('nota_global').iloc[-1]['radar_data']['metricas']['of_goles_p90'][1]
+        self.assertGreater(top(elite), top(menor))
+        self.assertLess(menor['nota_global'].max(), 80)
+
+    def test_techo_suave_de_la_escala(self):
+        """Cada punto cuesta más arriba, sin llegar a 99; por debajo del umbral la escala es lineal."""
+        from pipeline.config import NOTA_TECHO, NOTA_TECHO_INICIO
+        from pipeline.scoring import _nota_desde_z
+        n = _nota_desde_z(pd.Series([0.0, 1.0, 2.0, 3.0, 4.0, 10.0]), 62.0)
+        self.assertEqual(n[0], 62.0)
+        self.assertEqual(n[1], 73.0)
+        self.assertLessEqual(n[1], NOTA_TECHO_INICIO)
+        self.assertTrue(n.is_monotonic_increasing)
+        self.assertLess(n[4] - n[3], n[3] - n[2])
+        self.assertLess(n[5], NOTA_TECHO)
+
+    def test_similares_ignoran_el_nivel_de_liga(self):
+        """Dos perfiles iguales en ligas de distinto nivel se parecen más que uno distinto de su misma liga."""
+        from pipeline.scoring import calcular_similares
+        fila = lambda pid, comp, *notas: {'player_id': pid, 'competition_id': comp, 'radar_data': {
+            'metricas': {f'm{i}': [0, n] for i, n in enumerate(notas)}}}
+        filas = [fila('a', 'elite', 8, 5, 5, 5), fila('b', 'elite', 5, 8, 5, 5), fila('c', 'elite', 5, 5, 8, 5),
+                 fila('x', 'menor', 6, 3, 3, 3), fila('y', 'menor', 3, 6, 3, 3), fila('z', 'menor', 3, 3, 6, 3)]
+        out = calcular_similares(filas, top=2)
+        self.assertEqual(out['a'][0]['player_id'], 'x')
+
     def test_goalkeeper_matchstats_metrics(self):
         from pipeline.metrics_engine import metricas_matchstats
         gk_stats = {

@@ -10,7 +10,7 @@ import {
 } from "@/lib/metricsHierarchy";
 import { notaClases } from "@/lib/notaColor";
 
-// >= 70 green, 50-70 orange, < 50 red (ratings relative to the league average)
+// >= 70 green, 50-70 orange, < 50 red (ratings comparable across leagues)
 const noteColor = (note: number) => notaClases(note);
 
 function NoteBadge({ note, size = "md" }: { note: number | null; size?: "sm" | "md" | "lg" }) {

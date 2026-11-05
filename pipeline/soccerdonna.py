@@ -48,6 +48,7 @@ SD_BADGE = SD_BASE + "/static/bilder_sd/wappen/{id}.png"
 SD_CACHE_DIR = Path(LOCAL_CACHE_DIR) / "soccerdonna"
 PAUSA = float(os.environ.get("SD_PAUSA", "1.2"))  # segundos entre peticiones reales
 MAX_CANDIDATAS = 3  # fichas que se abren por jugadora hasta confirmar la buena
+SD_CLUB_RETIRADA = 440  # "club" de Soccerdonna para las retiradas
 
 
 def _homogeneo(rows: List[Dict[str, Any]]) -> List[List[Dict[str, Any]]]:
@@ -221,7 +222,11 @@ class SDClient:
         m_club = re.search(r'verein_(\d+)\.html"[^>]*title="([^"]+)"', html)
         club_actual_id = int(m_club.group(1)) if m_club else None
         club_actual_nombre = unescape(m_club.group(2)) if m_club else None
-        
+        # Retirada: la ficha pone "End of career" y el club que aparezca es el último, no el actual
+        retirada = re.search(r"<td>\s*End of career\s*</td>", html) is not None
+        if retirada:
+            club_actual_id, club_actual_nombre = SD_CLUB_RETIRADA, en.RETIRADA
+
         # Escudo del club: primero mediumfotos/{id}.jpg, fallback a wappen/{id}.png
         m_escudo_med = re.search(r'src="([^"]+mediumfotos/(\d+)\.jpg)"', html)
         if m_escudo_med and club_actual_id and int(m_escudo_med.group(2)) == club_actual_id:
@@ -289,7 +294,7 @@ class SDClient:
                 "selecciones": selecciones,
                 "valores": valores, "lesiones": lesiones,
                 "club_actual_id": club_actual_id, "club_actual_nombre": club_actual_nombre,
-                "club_actual_badge": club_actual_badge,
+                "club_actual_badge": club_actual_badge, "retirada": retirada,
                 "liga_actual_nombre": liga_actual_nombre, "liga_actual_codigo": liga_actual_codigo,
                 "liga_actual_logo": liga_actual_logo}
 
@@ -555,7 +560,8 @@ class SoccerdonnaSync:
             self._flush()
             logger.info(f"  {self.totales['emparejadas']} jugadoras guardadas ({self.sd.peticiones} peticiones)")
 
-    def run(self, comp_id: Optional[str] = None):
+    def run(self, comp_id: Optional[str] = None, solo_fichas: bool = False):
+        """`solo_fichas`: busca las jugadoras sin ficha de Soccerdonna, sin sincronizar escudos ni logos."""
         comps = competiciones_objetivo(self.store)
         comp_ids = {c["id"] for c in comps if not comp_id or c["id"] == comp_id}
         equipos = {t["id"]: t["name"] for t in self.store.select_all("teams", "id,name,competition_id")
@@ -591,6 +597,9 @@ class SoccerdonnaSync:
             except Exception as e:
                 logger.exception(f"  Error con {p['name']}: {e}")
         self._flush()
+        if solo_fichas:
+            logger.info(f"Soccerdonna (fichas): {self.totales} ({self.sd.peticiones} peticiones)")
+            return
 
         # Sincronización de escudos de equipos desde Soccerdonna
         for tid, tname in equipos.items():

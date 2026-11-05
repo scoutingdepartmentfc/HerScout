@@ -71,7 +71,8 @@ TRASPASOS = {
     "-": None, "": None,
 }
 
-CLUBES = {"vereinslos": "Without club", "karriereende": "Retired", "unbekannt": "Unknown",
+RETIRADA = "Retired"  # players.fm_team_name de quien ha dejado el fútbol: no sale en las listas de la app
+CLUBES = {"vereinslos": "Without club", "karriereende": RETIRADA, "unbekannt": "Unknown",
           "karrierepause": "Career break"}
 
 _EDAD = re.compile(r"\s*U-?\s?(\d{2})$")

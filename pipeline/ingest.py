@@ -390,8 +390,8 @@ class IngestionPipeline:
         logger.info(f"  Fotos: {res} y {escudos} escudos subidos a Storage")
         # Liga del equipo actual (FotMob) con su logo; requiere la migración de ligas
         try:
-            previas = {r['id']: r for r in self.store.select_all('players', 'id,fotmob_id,league_id')}
-            jugadoras = [{**p, **{k: (previas.get(p['id']) or {}).get(k) for k in ('fotmob_id', 'league_id')}}
+            previas = {r['id']: r for r in self.store.select_all('players', 'id,fotmob_id,league_id,fm_team_name')}
+            jugadoras = [{**p, **{k: (previas.get(p['id']) or {}).get(k) for k in ('fotmob_id', 'league_id', 'fm_team_name')}}
                          for p in jugadoras]
             logger.info(f"  Ligas: {sincronizar_ligas(self.store, self.fotmob, jugadoras, clubes, comp.get('fotmob_id'))}")
         except Exception as e:

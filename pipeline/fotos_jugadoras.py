@@ -22,6 +22,7 @@ try:
 except ImportError:
     pass
 
+from . import fotos_365
 from .config import BUCKET_PLAYER_PHOTOS, COMPETITIONS_CONFIG, FOTMOB_PLAYER_IMG
 from .photos import FotMobClient
 from .soccerdonna import SDClient, buscar_jugadora
@@ -46,7 +47,7 @@ def sincronizar_fotos_jugadoras(store: Store, fotmob: FotMobClient, sd: SDClient
     """`jugadoras`: filas de players (id, name, match_name, first_name, last_name, birth_date, photo_url, current_team_id).
     `clubes`: {team_id: nombre}. Sin `refrescar` solo se buscan las que no tienen foto de FotMob.
     `solo_fotmob`: sin foto en FotMob la jugadora se queda sin foto (no se usa Soccerdonna ni Opta)."""
-    totales = {"soccerdonna": 0, "fotmob": 0, "opta": 0, "sin_foto": 0}
+    totales = {"soccerdonna": 0, "fotmob": 0, "365scores": 0, "opta": 0, "sin_foto": 0}
     filas: List[Dict[str, Any]] = []
     for n, p in enumerate(jugadoras, 1):
         actual = p.get("photo_url")
@@ -64,6 +65,8 @@ def sincronizar_fotos_jugadoras(store: Store, fotmob: FotMobClient, sd: SDClient
         # Sin FotMob: se conserva la de Soccerdonna/Opta que ya tuviera
         if not url and actual and not refrescar:
             continue
+        if not url:
+            url, fuente = fotos_365.subir_foto(store, p, club), "365scores"
         if not url and solo_fotmob:
             totales["sin_foto"] += 1
             continue

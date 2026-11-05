@@ -54,7 +54,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Sidebar Container */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex flex-col border-r border-border/80 bg-navy-950 transition-all duration-300 md:static ${
+        className={`fixed inset-y-0 left-0 z-50 flex flex-col h-screen border-r border-border/80 bg-navy-950 transition-all duration-300 md:sticky md:top-0 shrink-0 select-none ${
           isCollapsed ? "w-20" : "w-64"
         } ${
           isMobileOpen
@@ -151,18 +151,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
           })}
         </div>
 
-        {/* Bottom of Sidebar: Logo2 prominently displayed */}
-        <div className="border-t border-border/80 p-3 bg-navy-900/60">
+        {/* Bottom of Sidebar: Logo2 spanning full width of the menu column */}
+        <div className="border-t border-border/80 p-0 bg-navy-950 overflow-hidden">
           {!isCollapsed ? (
-            <div className="flex flex-col items-center gap-2">
-              <div className="w-full h-16 rounded-xl bg-black/40 border border-white/10 p-2 flex items-center justify-center overflow-hidden shadow-inner group hover:border-white/20 transition-all">
+            <div className="w-full flex flex-col items-center">
+              <div className="w-full flex items-center justify-center overflow-hidden bg-black/60 group">
                 <img
                   src="/logo2.png"
                   alt="SPONDA"
-                  className="w-full h-full object-contain filter drop-shadow-md transition-transform duration-200 group-hover:scale-105"
+                  className="w-full h-auto max-h-28 object-cover object-center filter drop-shadow-md transition-transform duration-300 group-hover:scale-105"
                 />
               </div>
-              <div className="flex items-center gap-2 w-full justify-center">
+              <div className="flex items-center gap-2 w-full justify-center py-2 px-3 bg-navy-900/60 border-t border-white/5">
                 <div
                   className="w-2 h-2 rounded-full animate-pulse"
                   style={{ backgroundColor: `hsl(${currentClub.primaryColor})` }}
@@ -173,12 +173,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </div>
             </div>
           ) : (
-            <div className="flex flex-col items-center justify-center py-1 gap-2">
-              <div className="w-10 h-10 rounded-lg bg-black/40 border border-white/10 p-1 flex items-center justify-center overflow-hidden">
+            <div className="flex flex-col items-center justify-center p-2 gap-2">
+              <div className="w-full aspect-square rounded-lg bg-black/40 border border-white/10 p-1 flex items-center justify-center overflow-hidden">
                 <img
                   src="/logo2.png"
                   alt="SPONDA"
-                  className="w-full h-full object-contain"
+                  className="w-full h-full object-cover"
                 />
               </div>
               <div

@@ -22,6 +22,7 @@ try:
 except ImportError:
     pass
 
+from . import traducciones as en
 from .config import BUCKET_TEAM_BADGES, COMPETITIONS_CONFIG, FOTMOB_LEAGUE_IMG, FOTMOB_TEAM_IMG
 from .photos import FotMobClient
 from .storage import Store, get_supabase_client
@@ -98,6 +99,9 @@ def sincronizar_ligas(store: Store, fotmob: FotMobClient, jugadoras: List[Dict[s
         fila = {"id": p["id"], "name": p["name"], "league_updated_at": ts}
         if fm_id:
             fila["fotmob_id"] = int(fm_id)
+        # FotMob tarda en enterarse de una retirada: manda lo que diga Soccerdonna
+        if p.get("fm_team_name") == en.RETIRADA:
+            equipo = None
         if equipo and equipo.get("teamName"):
             fila["fm_team_name"] = equipo["teamName"]
         if equipo and equipo.get("teamId"):
@@ -148,7 +152,7 @@ def main():
             ultimo[r["player_id"]] = r["team_id"]
     jugadoras = []
     for p in store.select_all("players", "id,name,match_name,first_name,last_name,birth_date,current_team_id,"
-                                         "fotmob_id,league_id"):
+                                         "fotmob_id,league_id,fm_team_name"):
         p["en_plantilla"] = p.get("current_team_id") in clubes
         p["current_team_id"] = p.get("current_team_id") if p["en_plantilla"] else ultimo.get(p["id"])
         if p["current_team_id"] in clubes:

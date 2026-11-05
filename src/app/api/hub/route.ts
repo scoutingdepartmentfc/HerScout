@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
+import { isRetired } from "@/lib/utils";
 
 // Minimum minutes for the season leaderboard (fewer minutes = notes pulled towards the group average)
 const MIN_MINUTES_TRENDING = 450;
@@ -25,14 +26,14 @@ export async function GET(req: NextRequest) {
         grupo_demarcacion,
         minutes_played,
         teams ( name, badge_url ),
-        players ( name, country, photo_url ),
+        players ( name, country, photo_url, fm_team_name ),
         seasons ( name ),
         competitions ( name )
       `)
       .not("nota_global", "is", null)
       .gte("minutes_played", MIN_MINUTES_TRENDING)
       .order("nota_global", { ascending: false })
-      .limit(6),
+      .limit(30),
     // 2. Latest results
     db
       .from("matches")
@@ -87,7 +88,7 @@ export async function GET(req: NextRequest) {
     if (res.error) console.error("Hub query failed:", res.error.message);
   }
 
-  const trendingPlayers = (statsRes.data || []).map((item: any) => ({
+  const trendingPlayers = (statsRes.data || []).filter((item: any) => !isRetired(item.players)).slice(0, 6).map((item: any) => ({
     id: item.player_id,
     name: item.players?.name,
     country: item.players?.country,

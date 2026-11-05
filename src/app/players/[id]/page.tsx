@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useThemeContext } from "@/context/ThemeContext";
 import { CromoJugador } from "@/components/scouting/CromoJugador";
-import { PosicionesVertical } from "@/components/scouting/PosicionesVertical";
 import { MarcadorEstadio } from "@/components/scouting/MarcadorEstadio";
 import { MetricsAccordion } from "@/components/scouting/MetricsAccordion";
 import { NotasResumen } from "@/components/scouting/NotasResumen";
@@ -87,11 +86,6 @@ export default function PlayerProfilePage() {
   const fmtValue = (v: number | null | undefined) =>
     v ? (v >= 1_000_000 ? `€${(v / 1_000_000).toFixed(2)}m` : `€${Math.round(v / 1000)}k`) : "—";
   const peakValue = Math.max(0, ...(data.marketValues || []).map((m: any) => m.market_value || 0)) || p.marketValue;
-
-  // Tactical distribution
-  const positionsMap: Record<string, { min: number }> = {
-    ...(p.primaryPosition && stats?.minutes_played ? { [p.primaryPosition]: { min: stats.minutes_played } } : {}),
-  };
 
   // Marcador de estadio cells (0-100 scale exact match from Scouting_jugadores)
   const marcadorCeldas = [
@@ -187,6 +181,42 @@ export default function PlayerProfilePage() {
   const primaryEnglishPos = translatePosition(p.primaryPosition);
   const secondaryPositionsList = (p.otherPositions || []).slice(0, 2);
 
+  // Evolución en el último mes según las valoraciones (match ratings)
+  const rawMatches = data.matchLog || [];
+  const validMatches = rawMatches
+    .filter((m: any) => m.rating != null && !isNaN(Number(m.rating)) && m.date)
+    .sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+  let playerTrend: "up" | "neutral" | "down" | null = null;
+  if (validMatches.length > 0) {
+    const lastDate = new Date(validMatches[validMatches.length - 1].date);
+    const oneMonthAgo = new Date(lastDate);
+    oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+
+    const monthMatches = validMatches.filter((m: any) => new Date(m.date) >= oneMonthAgo);
+    const sample = monthMatches.length >= 2 ? monthMatches : validMatches.slice(-4);
+
+    if (sample.length > 0) {
+      const ratings: number[] = sample.map((m: any) => Number(m.rating));
+      const avg = ratings.reduce((acc, curr) => acc + curr, 0) / ratings.length;
+
+      const half = Math.max(1, Math.floor(ratings.length / 2));
+      const firstHalf = ratings.slice(0, half);
+      const secondHalf = ratings.slice(-half);
+      const firstAvg = firstHalf.reduce((a, b) => a + b, 0) / firstHalf.length;
+      const secondAvg = secondHalf.reduce((a, b) => a + b, 0) / secondHalf.length;
+      const diff = secondAvg - firstAvg;
+
+      if (diff >= 0.3 || avg >= 7.3) {
+        playerTrend = "up";
+      } else if (diff <= -0.3 || avg <= 5.8) {
+        playerTrend = "down";
+      } else {
+        playerTrend = "neutral";
+      }
+    }
+  }
+
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
       {/* Top Bar */}
@@ -228,6 +258,7 @@ export default function PlayerProfilePage() {
                 demarcacion: primaryEnglishPos,
                 score_general: stats?.nota_global != null ? Math.round(stats.nota_global) : (stats?.score_general ? Math.round(stats.score_general * 10) : 75),
                 demarcacionesSecundarias: secondaryPositionsList,
+                trend: playerTrend,
               }}
               size="md"
             />
@@ -571,71 +602,57 @@ export default function PlayerProfilePage() {
         />
       </Card>
 
-      {/* Positional Pitch & Season Breakdown */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Tactical Pitch Map */}
-        <Card className="bg-[#0b1329]">
-          <CardHeader className="py-3">
-            <CardTitle className="text-sm">Tactical Field Distribution</CardTitle>
-            <CardDescription>Demarcation presence across official matches</CardDescription>
-          </CardHeader>
-          <CardContent className="p-4 flex justify-center">
-            <PosicionesVertical positions={positionsMap} />
-          </CardContent>
-        </Card>
-
-        {/* Season Performance Breakdown Table */}
-        <Card className="lg:col-span-2 bg-[#0b1329]">
-          <CardHeader className="py-3">
-            <CardTitle className="text-sm">Season History & Competition Log</CardTitle>
-            <CardDescription>Verified Opta performances per tournament</CardDescription>
-          </CardHeader>
-          <CardContent className="p-4 space-y-3">
-            {seasons.length === 0 ? (
-              <p className="text-xs text-muted-foreground">No season log available for this profile.</p>
-            ) : (
-              <div className="divide-y divide-border/40 text-xs">
-                {seasons.map((s: any) => (
-                  <button
-                    type="button"
-                    key={claveTemporada(s)}
-                    onClick={() => setSeasonKey(claveTemporada(s))}
-                    className={`w-full py-3 px-2 -mx-2 rounded flex items-center justify-between text-left hover:bg-white/[0.03] ${
-                      claveTemporada(s) === selectedKey ? "bg-primary/5" : ""
-                    }`}
-                  >
-                    <div className="space-y-1">
-                      <div className="font-semibold text-white">
-                        {s.competitions?.name || "—"}
-                      </div>
-                      <div className="text-[11px] text-muted-foreground">
-                        {s.seasons?.name || "—"}{s.grupo_demarcacion ? ` • ${s.grupo_demarcacion}` : ""}
-                      </div>
-                      <CoberturaBadges c={s.coverage} />
+      {/* Season Breakdown */}
+      <Card className="bg-[#0b1329]">
+        <CardHeader className="py-3">
+          <CardTitle className="text-sm">Season History & Competition Log</CardTitle>
+          <CardDescription>Verified Opta performances per tournament</CardDescription>
+        </CardHeader>
+        <CardContent className="p-4 space-y-3">
+          {seasons.length === 0 ? (
+            <p className="text-xs text-muted-foreground">No season log available for this profile.</p>
+          ) : (
+            <div className="divide-y divide-border/40 text-xs">
+              {seasons.map((s: any) => (
+                <button
+                  type="button"
+                  key={claveTemporada(s)}
+                  onClick={() => setSeasonKey(claveTemporada(s))}
+                  className={`w-full py-3 px-2 -mx-2 rounded flex items-center justify-between text-left hover:bg-white/[0.03] ${
+                    claveTemporada(s) === selectedKey ? "bg-primary/5" : ""
+                  }`}
+                >
+                  <div className="space-y-1">
+                    <div className="font-semibold text-white">
+                      {s.competitions?.name || "—"}
                     </div>
-                    <div className="flex items-center gap-6 text-right">
-                      <div>
-                        <div className="text-muted-foreground text-[10px]">Minutes</div>
-                        <div className="font-mono font-semibold text-white">{s.minutes_played}&apos;</div>
-                      </div>
-                      <div>
-                        <div className="text-muted-foreground text-[10px]">Matches</div>
-                        <div className="font-mono font-semibold text-white">{s.matches_played}</div>
-                      </div>
-                      <div>
-                        <div className="text-muted-foreground text-[10px]">Rating</div>
-                        <div className={`font-bold text-sm ${notaClases(s.nota_global).text}`}>
-                          {s.nota_global != null ? Math.round(s.nota_global) : "—"}
-                        </div>
+                    <div className="text-[11px] text-muted-foreground">
+                      {s.seasons?.name || "—"}{s.grupo_demarcacion ? ` • ${s.grupo_demarcacion}` : ""}
+                    </div>
+                    <CoberturaBadges c={s.coverage} />
+                  </div>
+                  <div className="flex items-center gap-6 text-right">
+                    <div>
+                      <div className="text-muted-foreground text-[10px]">Minutes</div>
+                      <div className="font-mono font-semibold text-white">{s.minutes_played}&apos;</div>
+                    </div>
+                    <div>
+                      <div className="text-muted-foreground text-[10px]">Matches</div>
+                      <div className="font-mono font-semibold text-white">{s.matches_played}</div>
+                    </div>
+                    <div>
+                      <div className="text-muted-foreground text-[10px]">Rating</div>
+                      <div className={`font-bold text-sm ${notaClases(s.nota_global).text}`}>
+                        {s.nota_global != null ? Math.round(s.nota_global) : "—"}
                       </div>
                     </div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

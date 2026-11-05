@@ -467,6 +467,61 @@ class TestFMFisico(unittest.TestCase):
         self.assertIsNone(emparejar(fila2, [j, otra], {})[0])
 
 
+class TestRetiradas(unittest.TestCase):
+    FICHA = """<h1 style="color:#fff;"> Ana Ruiz</h1></td></tr>
+        <tr><td>{estado}</td></tr>
+        <tr><td>Last club: <a href="/en/chelsea/startseite/verein_87.html" title="Chelsea LFC">Chelsea LFC</a></td></tr>"""
+
+    def _perfil(self, estado):
+        from unittest import mock
+        from pipeline.soccerdonna import SDClient
+        sd = SDClient()
+        with mock.patch.object(sd, 'get', return_value=self.FICHA.format(estado=estado)):
+            return sd.perfil('ana-ruiz', 1)
+
+    def test_end_of_career_cambia_el_club_a_retirada(self):
+        from pipeline.soccerdonna import filas_jugadora
+        ficha = self._perfil('End of career')
+        self.assertTrue(ficha['retirada'])
+        fila = filas_jugadora({'id': 'x', 'name': 'Ana'}, {'sd_id': 1, 'slug': 'ana-ruiz'}, ficha, [], 'ts')['players'][0]
+        self.assertEqual(fila['fm_team_name'], 'Retired')
+        self.assertTrue(fila['fm_team_badge_url'].endswith('/440.jpg'))
+
+    def test_sin_end_of_career_sigue_en_su_club(self):
+        ficha = self._perfil('Career break')
+        self.assertFalse(ficha['retirada'])
+        self.assertEqual(ficha['club_actual_nombre'], 'Chelsea LFC')
+
+    def test_sin_vincular_exige_fecha_de_nacimiento_real(self):
+        from unittest import mock
+        from pipeline import sd_ligas
+        ficha = {'datos': {'Date of birth': '21.08.1993'}, 'retirada': True}
+        sd = mock.Mock()
+        sd.perfil.return_value = ficha
+        candidata = [{'slug': 'a', 'sd_id': 1}]
+        with mock.patch.object(sd_ligas, 'candidatas_jugadora', return_value=iter(candidata)):
+            self.assertIs(sd_ligas.ficha_de_retiro(sd, {'birth_date': '1993-08-21'}, 'C', 25), ficha)
+        with mock.patch.object(sd_ligas, 'candidatas_jugadora', return_value=iter(candidata)):
+            self.assertIsNone(sd_ligas.ficha_de_retiro(sd, {'birth_date': '1994-08-21'}, 'C', 25))
+        with mock.patch.object(sd_ligas, 'candidatas_jugadora', return_value=iter(candidata)):
+            self.assertIsNone(sd_ligas.ficha_de_retiro(sd, {'birth_date': None}, 'C', 25))
+
+
+class TestFotos365(unittest.TestCase):
+    def test_confirma_mujer_nombre_y_edad_o_club(self):
+        from datetime import date
+        from pipeline.fotos_365 import es_candidata
+        p = {'name': 'Irene Guerrero', 'birth_date': f'{date.today().year - 29}-01-01'}
+        sin_fecha = {'name': 'Irene Guerrero'}
+        ok = {'name': 'Irene Guerrero', 'gender': 2, 'age': 29, 'clubName': 'Club America (W)'}
+        self.assertTrue(es_candidata(p, None, ok))
+        self.assertFalse(es_candidata(p, None, {**ok, 'gender': 1}))
+        self.assertFalse(es_candidata(p, None, {**ok, 'age': 40}))
+        self.assertFalse(es_candidata(p, None, {**ok, 'name': 'Marta Vega'}))
+        self.assertTrue(es_candidata(sin_fecha, 'Club América', {**ok, 'age': None}))
+        self.assertFalse(es_candidata(sin_fecha, 'Real Madrid', {**ok, 'age': None}))
+
+
 class TestVincularEntreLigas(unittest.TestCase):
     def test_une_por_nombre_y_fecha_sin_mirar_liga(self):
         from pipeline.sd_ligas import emparejar_entre_ligas

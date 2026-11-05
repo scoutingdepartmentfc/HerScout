@@ -15,8 +15,11 @@ Jugadoras desde Soccerdonna, por ligas elegidas en /admin (tabla sd_leagues):
 Descargas automáticas (GitHub Action):
   actualizar-opta         Martes. Ligas nuevas (nunca descargadas): Soccerdonna completo + escudos. Opta: solo la
                           última temporada de cada liga (plantillas, partidos nuevos y calendario con horarios) y las
-                          temporadas elegidas que aún no tienen ningún partido en BD → vincular → fotos
-  actualizar-soccerdonna  Mensual. descargar (fichas con más de --refresco-dias) → vincular → escudos → fotos
+                          temporadas elegidas que aún no tienen ningún partido en BD → vincular → completar → fotos
+  actualizar-soccerdonna  Mensual. descargar (fichas con más de --refresco-dias) → vincular → completar → retiradas →
+                          escudos → fotos
+  completar               Inverso: jugadoras de la API sin ficha → busca en Soccerdonna y foto (FotMob, luego 365scores)
+  retiradas               Revisa si se han retirado las jugadoras con estadísticas que no están en ninguna plantilla
   recalcular              Ratings por partido y notas de temporada desde la caché de partidos (sin descargar nada):
                           tras cambiar la fórmula en pipeline/scoring.py
 
@@ -31,16 +34,18 @@ import argparse
 import logging
 import re
 import time
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from html import unescape
 from typing import Any, Dict, List, Optional
 
 from rapidfuzz import fuzz
 
 from . import traducciones as en
+from . import fotos_365
 from .config import BUCKET_PLAYER_PHOTOS, BUCKET_TEAM_BADGES, FOTMOB_PLAYER_IMG, FOTMOB_TEAM_IMG
 from .photos import FotMobClient, misma_fecha, normalizar, normalizar_club, sim_nombre, variantes_nombre
-from .soccerdonna import SD_BASE, SDClient, _homogeneo, filas_jugadora, now_iso
+from .soccerdonna import (MAX_CANDIDATAS, SD_BASE, SDClient, SoccerdonnaSync, _fecha, _homogeneo, candidatas_jugadora,
+                          fecha_relleno, filas_jugadora, now_iso)
 from .storage import Store, get_supabase_client
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -435,6 +440,76 @@ def _unir(store: Store, s_: Dict[str, Any], mejor: Dict[str, Any], club_de_socce
     store.delete("players", id=s_["id"])
 
 
+def completar(store: Store, comp_id: Optional[str] = None, limit: Optional[int] = None):
+    """Jugadoras con datos de la API que no llegaron por ninguna plantilla de Soccerdonna: se buscan a la inversa."""
+    SoccerdonnaSync(limit=limit, fotos=False).run(comp_id, solo_fichas=True)
+    equipos = {t["id"]: t["name"] for t in store.select_all("teams", "id,name")}
+    clubes = {r["player_id"]: equipos.get(r["team_id"]) for r in store.select_all("player_season_stats", "player_id,team_id")}
+    sin_foto = [p for p in store.select_all("players", "id,name,first_name,last_name,match_name,birth_date,country,photo_url")
+                if p["id"] in clubes and not p.get("photo_url")][:limit]
+    fotmob, tot = FotMobClient(), {"fotmob": 0, "365scores": 0, "sin_foto": 0}
+    for n, p in enumerate(sin_foto, 1):
+        club = clubes[p["id"]]
+        m = fotmob.buscar_jugador(p, club)
+        img = fotmob.image(FOTMOB_PLAYER_IMG.format(id=m["id"])) if m else None
+        url = store.upload(BUCKET_PLAYER_PHOTOS, f"{p['id']}.png", img, "image/png") if img else None
+        fuente = "fotmob"
+        if not url:
+            url, fuente = fotos_365.subir_foto(store, p, club), "365scores"
+        if url:
+            store.update("players", {"photo_url": f"{url}?v={int(time.time())}", "photo_updated_at": now_iso()}, id=p["id"])
+        tot[fuente if url else "sin_foto"] += 1
+        if n % 25 == 0:
+            logger.info(f"  Fotos sin plantilla: {n}/{len(sin_foto)} {tot}")
+    logger.info(f"Completar: {len(sin_foto)} sin foto → {tot}")
+
+
+def ficha_de_retiro(sd: SDClient, p: Dict[str, Any], club: Optional[str], refresco_dias: int) -> Optional[Dict[str, Any]]:
+    """Ficha de Soccerdonna de una jugadora de Opta. Sin vincular se busca por nombre y solo vale con la misma fecha
+    de nacimiento real: ocultar por error a una jugadora en activo es peor que dejar a una retirada."""
+    m = re.search(r"/en/([^/]+)/profil/spieler_(\d+)", p.get("sd_url") or "")
+    if m:
+        return sd.perfil(m.group(1), int(m.group(2)), refresco_dias)
+    nacida = str(p.get("birth_date") or "")[:10]
+    if not nacida or fecha_relleno(nacida):
+        return None
+    for n, c in enumerate(candidatas_jugadora(sd, p, club)):
+        if n >= MAX_CANDIDATAS:
+            break
+        ficha = sd.perfil(c["slug"], c["sd_id"])
+        if ficha and _fechas_iguales(_fecha(ficha["datos"].get("Date of birth")), nacida):
+            return ficha
+    return None
+
+
+def marcar_retiradas(store: Store, sd: SDClient, refresco_dias: int = REFRESCO_DIAS) -> int:
+    """Una retirada sale de las plantillas, así que `descargar` deja de leer su ficha: aquí se revisan las jugadoras
+    con estadísticas sin ficha reciente. El club pasa a "Retired" (o vuelve al suyo si reaparece)."""
+    equipos = {t["id"]: t["name"] for t in store.select_all("teams", "id,name")}
+    clubes = {r["player_id"]: equipos.get(r["team_id"]) for r in store.select_all("player_season_stats", "player_id,team_id")}
+    limite = (datetime.now(timezone.utc) - timedelta(days=refresco_dias)).isoformat()
+    jugadoras = [p for p in store.select_all("players", "id,name,first_name,last_name,match_name,birth_date,sd_url,"
+                                                         "sd_updated_at,fm_team_name")
+                 if p["id"] in clubes and (p.get("fm_team_name") == en.RETIRADA or (p.get("sd_updated_at") or "") < limite)]
+    logger.info(f"Retiradas: {len(jugadoras)} jugadoras por revisar")
+    cambios = 0
+    for n, p in enumerate(jugadoras, 1):
+        try:
+            ficha = ficha_de_retiro(sd, p, clubes[p["id"]], refresco_dias)
+            era_retirada = p.get("fm_team_name") == en.RETIRADA
+            if ficha and ficha["retirada"] != era_retirada and ficha.get("club_actual_nombre"):
+                store.update("players", {"fm_team_name": ficha["club_actual_nombre"],
+                                         "fm_team_badge_url": ficha.get("club_actual_badge")}, id=p["id"])
+                cambios += 1
+                logger.info(f"  {p['name']}: {'retirada' if ficha['retirada'] else 'vuelve a ' + ficha['club_actual_nombre']}")
+        except Exception as e:
+            logger.warning(f"  Retiradas, error con {p['name']}: {e}")
+        if n % 100 == 0:
+            logger.info(f"  Retiradas: {n}/{len(jugadoras)} revisadas, {cambios} cambios")
+    logger.info(f"Retiradas: {cambios} cambios en {len(jugadoras)} jugadoras")
+    return cambios
+
+
 def _fechas_iguales(a: Any, b: Any) -> bool:
     """Misma fecha de nacimiento, o con día y mes invertidos (errata típica). Más estricta que misma_fecha:
     entre ligas no hay club que confirme."""
@@ -578,13 +653,15 @@ def fotos(store: Store, liga_code: Optional[str], limit: Optional[int] = None):
                     if p.get("current_team_id") in clubes and not p.get("photo_url")]
         if limit:
             sin_foto = sin_foto[:limit]
-        tot = {"fotmob": 0, "opta": 0, "sin_foto": 0}
+        tot = {"fotmob": 0, "365scores": 0, "opta": 0, "sin_foto": 0}
         for n, p in enumerate(sin_foto, 1):
             club = clubes[p["current_team_id"]]
             m = fotmob.buscar_jugador(p, club, liga_fm)
             img = fotmob.image(FOTMOB_PLAYER_IMG.format(id=m["id"])) if m else None
             url = store.upload(BUCKET_PLAYER_PHOTOS, f"{p['id']}.png", img, "image/png") if img else None
             fuente = "fotmob"
+            if not url:
+                url, fuente = fotos_365.subir_foto(store, p, club), "365scores"
             if not url and not p["id"].startswith("sd-"):
                 url, fuente = fotmob.subir_foto_opta(store, p["id"], (p["current_team_id"],)), "opta"
             if url:
@@ -600,7 +677,7 @@ def fotos(store: Store, liga_code: Optional[str], limit: Optional[int] = None):
 def main():
     parser = argparse.ArgumentParser(description="Jugadoras desde las ligas de Soccerdonna elegidas en /admin")
     parser.add_argument("accion", choices=["catalogo", "descargar", "opta", "vincular", "escudos", "fotos", "todo",
-                                           "actualizar-opta", "actualizar-soccerdonna", "recalcular"])
+                                           "actualizar-opta", "actualizar-soccerdonna", "recalcular", "retiradas", "completar"])
     parser.add_argument("--max-matches", type=int, help="Opta: máximo de partidos nuevos por temporada (pruebas)")
     parser.add_argument("--refresco-dias", type=int, default=REFRESCO_DIAS,
                         help="Volver a leer la ficha de las ya guardadas cada N días (0 = todas)")
@@ -622,13 +699,20 @@ def main():
             descargar(store, sd, code, args.limit, args.refresco_dias)
         opta(store, args.liga, args.max_matches, solo_ultima=not args.todas_temporadas)
         vincular(store, args.liga)
+        completar(store, limit=args.limit)
         for code in nuevas:
             escudos(store, code)
         fotos(store, args.liga, args.limit)
         return
+    if args.accion == "completar":
+        return completar(store, limit=args.limit)
+    if args.accion == "retiradas":
+        return marcar_retiradas(store, sd, args.refresco_dias)
     if args.accion == "actualizar-soccerdonna":
         descargar(store, sd, args.liga, args.limit, args.refresco_dias)
         vincular(store, args.liga)
+        completar(store, limit=args.limit)
+        marcar_retiradas(store, sd, args.refresco_dias)
         escudos(store, args.liga)
         fotos(store, args.liga, args.limit)
         return

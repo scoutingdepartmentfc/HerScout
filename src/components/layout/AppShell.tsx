@@ -16,7 +16,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="min-h-screen bg-background flex flex-col md:flex-row antialiased selection:bg-primary/30">
+    <div className="h-screen bg-background flex flex-col md:flex-row antialiased selection:bg-primary/30 overflow-hidden">
       {/* Sidebar Navigation */}
       <Sidebar
         isCollapsed={isCollapsed}
@@ -26,7 +26,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       />
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0 min-h-screen relative overflow-hidden">
+      <div className="flex-1 flex flex-col min-w-0 h-screen relative overflow-hidden">
         {/* Subtle Brand Watermark Logo behind page headers */}
         <div className="pointer-events-none absolute top-4 right-6 sm:right-12 z-0 opacity-[0.06] select-none">
           <img

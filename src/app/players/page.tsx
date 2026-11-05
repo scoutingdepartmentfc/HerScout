@@ -11,7 +11,7 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@
 import { EmptyState, LoadingState } from "@/components/ui/StatusStates";
 import { EscudoEquipo } from "@/components/scouting/EscudoEquipo";
 import { Bandera } from "@/components/scouting/Bandera";
-import { Search, SlidersHorizontal, Bookmark, Eye, X, Check } from "lucide-react";
+import { Search, SlidersHorizontal, Bookmark, Eye, X, Check, ChevronDown, TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { notaClases } from "@/lib/notaColor";
 import { getPositionBadge } from "@/lib/positions";
 import { OptaLogo } from "@/components/scouting/OptaLogo";
@@ -23,6 +23,7 @@ interface PlayerRow {
   matchName?: string;
   country?: string;
   photoUrl?: string;
+  birthDate?: string | null;
   position: string;
   grupoDemarcacion: string;
   shirtNumber?: number | string | null;
@@ -33,6 +34,7 @@ interface PlayerRow {
   badgeUrl?: string;
   leagueName?: string;
   leagueLogoUrl?: string;
+  leagueCountry?: string | null;
   seasonName?: string | null;
   isCurrentSeason?: boolean;
   isAccumulated?: boolean;
@@ -45,6 +47,180 @@ interface PlayerRow {
   notaBalonParado?: number | null;
   notaDisponibilidad?: number | null;
   notaFisico?: number | null;
+  trend?: "up" | "neutral" | "down" | null;
+}
+
+function guessLeagueCountry(leagueName?: string | null): string | null {
+  if (!leagueName) return null;
+  const lower = leagueName.toLowerCase();
+  if (lower.includes("liga f") || lower.includes("primera división") || lower.includes("copa de la reina") || lower.includes("spain") || lower.includes("españa")) return "Spain";
+  if (lower.includes("super league") || lower.includes("wsl") || lower.includes("england") || lower.includes("inglaterra") || lower.includes("championship")) return "England";
+  if (lower.includes("bundesliga") || lower.includes("germany") || lower.includes("alemania") || lower.includes("dfb")) return "Germany";
+  if (lower.includes("première ligue") || lower.includes("premiere ligue") || lower.includes("division 1") || lower.includes("france") || lower.includes("francia")) return "France";
+  if (lower.includes("serie a") || lower.includes("italy") || lower.includes("italia") || lower.includes("coppa italia")) return "Italy";
+  if (lower.includes("liga mx") || lower.includes("mexico") || lower.includes("méxico")) return "Mexico";
+  if (lower.includes("nwsl") || lower.includes("usa") || lower.includes("united states") || lower.includes("estados unidos") || lower.includes("usl")) return "USA";
+  if (lower.includes("a-league") || lower.includes("australia")) return "Australia";
+  if (lower.includes("swpl") || lower.includes("scotland") || lower.includes("escocia")) return "Scotland";
+  if (lower.includes("damallsvenskan") || lower.includes("sweden") || lower.includes("suecia")) return "Sweden";
+  if (lower.includes("toppserien") || lower.includes("norway") || lower.includes("noruega")) return "Norway";
+  if (lower.includes("eredivisie") || lower.includes("netherlands") || lower.includes("holanda") || lower.includes("holland")) return "Netherlands";
+  if (lower.includes("northern super league") || lower.includes("canada") || lower.includes("canadá")) return "Canada";
+  if (lower.includes("brasileir") || lower.includes("brazil") || lower.includes("brasil")) return "Brazil";
+  if (lower.includes("we league") || lower.includes("nadeshiko") || lower.includes("japan") || lower.includes("japón")) return "Japan";
+  if (lower.includes("superliga") || lower.includes("portugal")) return "Portugal";
+  return null;
+}
+
+function MultiSelectDropdown<T extends { id: string; name: string; badgeUrl?: string | null; country?: string | null; teamId?: string | null }>({
+  label,
+  options,
+  selectedIds,
+  onChange,
+  placeholder = "Select...",
+  renderIcon,
+}: {
+  label: string;
+  options: T[];
+  selectedIds: string[];
+  onChange: (ids: string[]) => void;
+  placeholder?: string;
+  renderIcon?: (item: T) => React.ReactNode;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const dropdownRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const filteredOptions = React.useMemo(() => {
+    if (!search.trim()) return options;
+    const s = search.toLowerCase();
+    return options.filter((o) => o.name.toLowerCase().includes(s));
+  }, [options, search]);
+
+  const toggleOption = (id: string) => {
+    if (selectedIds.includes(id)) {
+      onChange(selectedIds.filter((item) => item !== id));
+    } else {
+      onChange([...selectedIds, id]);
+    }
+  };
+
+  const clearAll = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onChange([]);
+  };
+
+  return (
+    <div className="relative" ref={dropdownRef}>
+      <label className="text-[10px] font-semibold text-slate-300 uppercase tracking-wider block mb-1">
+        {label}
+      </label>
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full h-9 px-3 rounded-lg border border-white/10 bg-navy-950/90 text-xs flex items-center justify-between gap-2 hover:border-emerald-500/50 hover:bg-navy-900 transition-all text-left shadow-sm"
+      >
+        <div className="flex items-center gap-1.5 truncate">
+          {selectedIds.length === 0 ? (
+            <span className="text-muted-foreground">{placeholder}</span>
+          ) : (
+            <span className="font-semibold text-emerald-400">
+              {selectedIds.length === 1 ? selectedIds[0] : `${selectedIds.length} seleccionados`}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-1.5 shrink-0">
+          {selectedIds.length > 0 && (
+            <span
+              onClick={clearAll}
+              className="p-1 rounded-full hover:bg-white/20 text-muted-foreground hover:text-white transition-colors"
+              title="Limpiar filtro"
+            >
+              <X className="w-3 h-3" />
+            </span>
+          )}
+          <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`} />
+        </div>
+      </button>
+
+      {isOpen && (
+        <div className="absolute left-0 top-full mt-1.5 w-72 rounded-xl border border-white/15 bg-[#0a1224]/95 backdrop-blur-xl shadow-2xl z-50 flex flex-col overflow-hidden animate-in fade-in-0 zoom-in-95 duration-150">
+          <div className="p-2.5 border-b border-white/10 bg-navy-950/60">
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 text-muted-foreground absolute left-2.5 top-2.5 pointer-events-none" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Buscar..."
+                className="w-full h-8 pl-8 pr-2.5 rounded-lg bg-navy-900/90 text-xs text-white border border-white/10 focus:outline-none focus:border-emerald-500 placeholder:text-muted-foreground/60 transition-colors"
+                autoFocus
+              />
+            </div>
+          </div>
+          <div className="max-h-60 overflow-y-auto p-1.5 space-y-0.5 divide-y divide-white/5">
+            {filteredOptions.length === 0 ? (
+              <div className="py-5 text-center text-xs text-muted-foreground">
+                No se encontraron resultados
+              </div>
+            ) : (
+              filteredOptions.map((opt) => {
+                const isSelected = selectedIds.includes(opt.id);
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => toggleOption(opt.id)}
+                    className={`w-full py-2 px-2.5 rounded-lg flex items-center justify-between text-left text-xs transition-colors ${
+                      isSelected
+                        ? "bg-emerald-500/15 text-emerald-300 font-semibold border border-emerald-500/30"
+                        : "text-slate-300 hover:bg-white/5 border border-transparent"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 truncate pr-2">
+                      {renderIcon && renderIcon(opt)}
+                      <span className="truncate">{opt.name}</span>
+                    </div>
+                    <div
+                      className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors ${
+                        isSelected
+                          ? "bg-emerald-500 border-emerald-400 text-gray-950 font-black"
+                          : "border-white/20 bg-navy-950"
+                      }`}
+                    >
+                      {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                    </div>
+                  </button>
+                );
+              })
+            )}
+          </div>
+          {selectedIds.length > 0 && (
+            <div className="p-2 border-t border-white/10 bg-navy-950/90 flex justify-between items-center text-[11px] px-3">
+              <span className="text-muted-foreground">{selectedIds.length} seleccionados</span>
+              <button
+                type="button"
+                onClick={() => onChange([])}
+                className="text-emerald-400 hover:text-emerald-300 font-semibold transition-colors"
+              >
+                Deseleccionar todos
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function PlayersDirectoryContent() {
@@ -54,48 +230,61 @@ function PlayersDirectoryContent() {
   // Read initial states from URL search parameters to preserve them across browser back/forward
   const [searchTerm, setSearchTerm] = useState(searchParams.get("search") || "");
   const [positionFilter, setPositionFilter] = useState(searchParams.get("position") || "all");
-  const [teamFilter, setTeamFilter] = useState(searchParams.get("team") || "all");
-  const [leagueFilter, setLeagueFilter] = useState(searchParams.get("league") || "all");
+  const [selectedTeams, setSelectedTeams] = useState<string[]>(() => {
+    const teams = searchParams.get("teams") || searchParams.get("team");
+    return teams && teams !== "all" ? teams.split(",").map((t) => t.trim()).filter(Boolean) : [];
+  });
+  const [selectedLeagues, setSelectedLeagues] = useState<string[]>(() => {
+    const leagues = searchParams.get("leagues") || searchParams.get("league");
+    return leagues && leagues !== "all" ? leagues.split(",").map((l) => l.trim()).filter(Boolean) : [];
+  });
   const [seasonFilter, setSeasonFilter] = useState(searchParams.get("season") || "all");
   const [minRatingFilter, setMinRatingFilter] = useState<string>(searchParams.get("minRating") || "all");
+  const [minAge, setMinAge] = useState<number>(() => {
+    const a = searchParams.get("minAge");
+    return a ? Number(a) : 15;
+  });
+  const [maxAge, setMaxAge] = useState<number>(() => {
+    const a = searchParams.get("maxAge");
+    return a ? Number(a) : 42;
+  });
   const [sortBy, setSortBy] = useState<string>(searchParams.get("sortBy") || "nota_global");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">((searchParams.get("order") as "asc" | "desc") || "desc");
 
   const [players, setPlayers] = useState<PlayerRow[]>([]);
-  const [availableTeams, setAvailableTeams] = useState<string[]>([]);
-  const [availableLeagues, setAvailableLeagues] = useState<string[]>([]);
+  const [evaluatedPeriod, setEvaluatedPeriod] = useState<string>("TREND (LAST 3M)");
+  const [availableTeams, setAvailableTeams] = useState<{ id: string; name: string; teamId?: string | null; badgeUrl?: string | null }[]>([]);
+  const [availableLeagues, setAvailableLeagues] = useState<{ id: string; name: string; logoUrl?: string | null; country?: string | null }[]>([]);
   const [availableSeasons, setAvailableSeasons] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(() => {
-    // If any advanced filter is populated, keep drawer open
     return (
-      (searchParams.get("team") && searchParams.get("team") !== "all") ||
-      (searchParams.get("league") && searchParams.get("league") !== "all") ||
+      Boolean(searchParams.get("teams") || (searchParams.get("team") && searchParams.get("team") !== "all")) ||
+      Boolean(searchParams.get("leagues") || (searchParams.get("league") && searchParams.get("league") !== "all")) ||
       (searchParams.get("season") && searchParams.get("season") !== "all") ||
       (searchParams.get("minRating") && searchParams.get("minRating") !== "all") ||
+      Boolean(searchParams.get("minAge") || searchParams.get("maxAge")) ||
       false
     );
   });
   const [savedWatchlist, setSavedWatchlist] = useState<Record<string, boolean>>({});
 
-  // Synchronize filter states whenever URL searchParams change (e.g. back button clicked)
+  // Synchronize filter states whenever URL searchParams change
   useEffect(() => {
     setSearchTerm(searchParams.get("search") || "");
     setPositionFilter(searchParams.get("position") || "all");
-    setTeamFilter(searchParams.get("team") || "all");
-    setLeagueFilter(searchParams.get("league") || "all");
+    const teams = searchParams.get("teams") || searchParams.get("team");
+    setSelectedTeams(teams && teams !== "all" ? teams.split(",").map((t) => t.trim()).filter(Boolean) : []);
+    const leagues = searchParams.get("leagues") || searchParams.get("league");
+    setSelectedLeagues(leagues && leagues !== "all" ? leagues.split(",").map((l) => l.trim()).filter(Boolean) : []);
     setSeasonFilter(searchParams.get("season") || "all");
     setMinRatingFilter(searchParams.get("minRating") || "all");
+    const pMinAge = searchParams.get("minAge");
+    const pMaxAge = searchParams.get("maxAge");
+    setMinAge(pMinAge ? Number(pMinAge) : 15);
+    setMaxAge(pMaxAge ? Number(pMaxAge) : 42);
     setSortBy(searchParams.get("sortBy") || "nota_global");
     setSortOrder((searchParams.get("order") as "asc" | "desc") || "desc");
-    if (
-      (searchParams.get("team") && searchParams.get("team") !== "all") ||
-      (searchParams.get("league") && searchParams.get("league") !== "all") ||
-      (searchParams.get("season") && searchParams.get("season") !== "all") ||
-      (searchParams.get("minRating") && searchParams.get("minRating") !== "all")
-    ) {
-      setShowAdvancedFilters(true);
-    }
   }, [searchParams]);
 
   // Update browser URL query string without reloading the page
@@ -120,8 +309,8 @@ function PlayersDirectoryContent() {
         const params = new URLSearchParams({
           search: searchTerm,
           position: positionFilter,
-          team: teamFilter,
-          league: leagueFilter,
+          teams: selectedTeams.join(","),
+          leagues: selectedLeagues.join(","),
           season: seasonFilter,
           sortBy,
           order: sortOrder,
@@ -129,13 +318,45 @@ function PlayersDirectoryContent() {
         if (minRatingFilter !== "all") {
           params.append("minRating", minRatingFilter);
         }
+        if (minAge > 15) {
+          params.append("minAge", String(minAge));
+        }
+        if (maxAge < 42) {
+          params.append("maxAge", String(maxAge));
+        }
 
         const res = await fetch(`/api/players?${params.toString()}`);
         const json = await res.json();
         setPlayers(json.players || []);
+        if (json.evaluatedPeriod) {
+          setEvaluatedPeriod(json.evaluatedPeriod);
+        }
         if (json.filters) {
-          if (json.filters.teams?.length) setAvailableTeams(json.filters.teams);
-          if (json.filters.leagues?.length) setAvailableLeagues(json.filters.leagues);
+          if (json.filters.teamsDetailed?.length) {
+            setAvailableTeams(json.filters.teamsDetailed.map((t: any) => ({ id: t.name, name: t.name, teamId: t.teamId, badgeUrl: t.badgeUrl })));
+          } else if (json.filters.teams?.length) {
+            setAvailableTeams(json.filters.teams.map((t: string) => ({ id: t, name: t })));
+          }
+
+          if (json.filters.leaguesDetailed?.length) {
+            setAvailableLeagues(
+              json.filters.leaguesDetailed.map((l: any) => ({
+                id: l.name,
+                name: l.name,
+                logoUrl: l.logoUrl,
+                country: l.country || guessLeagueCountry(l.name),
+              }))
+            );
+          } else if (json.filters.leagues?.length) {
+            setAvailableLeagues(
+              json.filters.leagues.map((l: string) => ({
+                id: l,
+                name: l,
+                country: guessLeagueCountry(l),
+              }))
+            );
+          }
+
           if (json.filters.seasons?.length) setAvailableSeasons(json.filters.seasons);
         }
       } catch (err) {
@@ -150,17 +371,19 @@ function PlayersDirectoryContent() {
       updateUrlParams({
         search: searchTerm,
         position: positionFilter,
-        team: teamFilter,
-        league: leagueFilter,
+        teams: selectedTeams.join(","),
+        leagues: selectedLeagues.join(","),
         season: seasonFilter,
         minRating: minRatingFilter,
+        minAge: minAge > 15 ? String(minAge) : "",
+        maxAge: maxAge < 42 ? String(maxAge) : "",
         sortBy,
         order: sortOrder,
       });
     }, 250);
 
     return () => clearTimeout(timer);
-  }, [searchTerm, positionFilter, teamFilter, leagueFilter, seasonFilter, minRatingFilter, sortBy, sortOrder]);
+  }, [searchTerm, positionFilter, selectedTeams, selectedLeagues, seasonFilter, minRatingFilter, minAge, maxAge, sortBy, sortOrder]);
 
   const toggleWatchlist = (id: string) => {
     setSavedWatchlist((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -178,19 +401,23 @@ function PlayersDirectoryContent() {
   const resetAllFilters = () => {
     setSearchTerm("");
     setPositionFilter("all");
-    setTeamFilter("all");
-    setLeagueFilter("all");
+    setSelectedTeams([]);
+    setSelectedLeagues([]);
     setSeasonFilter("all");
     setMinRatingFilter("all");
+    setMinAge(15);
+    setMaxAge(42);
     setSortBy("nota_global");
     setSortOrder("desc");
     updateUrlParams({
       search: "",
       position: "all",
-      team: "all",
-      league: "all",
+      teams: "",
+      leagues: "",
       season: "all",
       minRating: "all",
+      minAge: "",
+      maxAge: "",
       sortBy: "nota_global",
       order: "desc",
     });
@@ -198,10 +425,11 @@ function PlayersDirectoryContent() {
 
   const activeFiltersCount =
     (positionFilter !== "all" ? 1 : 0) +
-    (teamFilter !== "all" ? 1 : 0) +
-    (leagueFilter !== "all" ? 1 : 0) +
+    (selectedTeams.length > 0 ? 1 : 0) +
+    (selectedLeagues.length > 0 ? 1 : 0) +
     (seasonFilter !== "all" ? 1 : 0) +
     (minRatingFilter !== "all" ? 1 : 0) +
+    (minAge > 15 || maxAge < 42 ? 1 : 0) +
     (searchTerm.trim() ? 1 : 0);
 
   const getScoreBadge = (score: number | null | undefined, isGeneral: boolean = false) => {
@@ -258,8 +486,8 @@ function PlayersDirectoryContent() {
       </div>
 
       {/* Modern Compact Filter Bar */}
-      <Card className="bg-[#070c18] border-border/80 shadow-xl">
-        <CardContent className="p-3 space-y-3">
+      <Card className="bg-[#070c18] border-border/80 shadow-xl relative z-30 overflow-visible">
+        <CardContent className="p-3 space-y-3 overflow-visible">
           {/* Main Search Row */}
           <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5 items-center">
             {/* Search Input */}
@@ -335,16 +563,16 @@ function PlayersDirectoryContent() {
 
           {/* Collapsible Advanced Filters Drawer */}
           {showAdvancedFilters && (
-            <div className="pt-2.5 pb-1 border-t border-border/40 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5">
+            <div className="pt-2.5 pb-1 border-t border-border/40 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 items-end">
               {/* Season Filter (Default: All seasons / Acumulado) */}
               <div>
-                <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider block mb-1">
+                <label className="text-[10px] font-semibold text-slate-300 uppercase tracking-wider block mb-1">
                   Season / Temporada
                 </label>
                 <Select
                   value={seasonFilter}
                   onChange={(e) => setSeasonFilter(e.target.value)}
-                  className="bg-navy-950 h-8 text-xs font-semibold"
+                  className="bg-navy-950/90 border-white/10 h-9 text-xs font-semibold rounded-lg"
                 >
                   <option value="all">⚡ All Seasons (Acumulado)</option>
                   {availableSeasons.map((s) => (
@@ -355,53 +583,55 @@ function PlayersDirectoryContent() {
                 </Select>
               </div>
 
-              {/* Club / Team */}
+              {/* Club / Team (Multi-select with Badge) */}
               <div>
-                <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider block mb-1">
-                  Club / Team
-                </label>
-                <Select
-                  value={teamFilter}
-                  onChange={(e) => setTeamFilter(e.target.value)}
-                  className="bg-navy-950 h-8 text-xs"
-                >
-                  <option value="all">All Teams</option>
-                  {availableTeams.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  ))}
-                </Select>
+                <MultiSelectDropdown
+                  label="Clubs / Equipos"
+                  options={availableTeams}
+                  selectedIds={selectedTeams}
+                  onChange={setSelectedTeams}
+                  placeholder="Todos los equipos"
+                  renderIcon={(opt) => (
+                    <EscudoEquipo
+                      teamId={opt.teamId}
+                      badgeUrl={opt.badgeUrl}
+                      name={opt.name}
+                      size={18}
+                      className="shrink-0"
+                    />
+                  )}
+                />
               </div>
 
-              {/* Competition / League */}
+              {/* Competition / League (Multi-select with Flag/Logo) */}
               <div>
-                <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider block mb-1">
-                  Competition
-                </label>
-                <Select
-                  value={leagueFilter}
-                  onChange={(e) => setLeagueFilter(e.target.value)}
-                  className="bg-navy-950 h-8 text-xs"
-                >
-                  <option value="all">All Competitions</option>
-                  {availableLeagues.map((l) => (
-                    <option key={l} value={l}>
-                      {l}
-                    </option>
-                  ))}
-                </Select>
+                <MultiSelectDropdown
+                  label="Ligas / Competiciones"
+                  options={availableLeagues}
+                  selectedIds={selectedLeagues}
+                  onChange={setSelectedLeagues}
+                  placeholder="Todas las ligas"
+                  renderIcon={(opt) => (
+                    <div className="flex items-center gap-1 shrink-0">
+                      {opt.country ? (
+                        <Bandera country={opt.country} size="xs" />
+                      ) : (
+                        <span className="text-[10px]">🏆</span>
+                      )}
+                    </div>
+                  )}
+                />
               </div>
 
               {/* Rating Threshold (Min OVR) */}
               <div>
-                <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider block mb-1">
+                <label className="text-[10px] font-semibold text-slate-300 uppercase tracking-wider block mb-1">
                   Min Rating (OVR)
                 </label>
                 <Select
                   value={minRatingFilter}
                   onChange={(e) => setMinRatingFilter(e.target.value)}
-                  className="bg-navy-950 h-8 text-xs"
+                  className="bg-navy-950/90 border-white/10 h-9 text-xs rounded-lg"
                 >
                   <option value="all">All Ratings (0+)</option>
                   <option value="85">⭐ Elite 85+ OVR</option>
@@ -411,45 +641,73 @@ function PlayersDirectoryContent() {
                   <option value="60">60+ OVR</option>
                 </Select>
               </div>
+
+              {/* Age Range Slider / Barra de Edad con Mayor y Menor */}
+              <div className="space-y-1.5 bg-navy-950/60 p-2 rounded-lg border border-white/10">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="font-semibold text-slate-300 uppercase tracking-wider text-[10px]">
+                    Rango Edad
+                  </span>
+                  <div className="flex items-center gap-1.5 font-mono text-[11px]">
+                    <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-bold border border-emerald-500/30">
+                      ≥ {minAge}
+                    </span>
+                    <span className="text-slate-500">–</span>
+                    <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-bold border border-emerald-500/30">
+                      ≤ {maxAge}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Modern Dual-Thumb Range Track */}
+                <div className="relative flex items-center h-6 select-none">
+                  {/* Background Track */}
+                  <div className="absolute w-full h-1.5 bg-slate-800 rounded-full overflow-hidden pointer-events-none">
+                    <div
+                      className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 rounded-full"
+                      style={{
+                        left: `${((minAge - 15) / (42 - 15)) * 100}%`,
+                        width: `${((maxAge - minAge) / (42 - 15)) * 100}%`,
+                        position: "absolute",
+                      }}
+                    />
+                  </div>
+                  {/* Slider Min (Menor) */}
+                  <input
+                    type="range"
+                    min={15}
+                    max={42}
+                    value={minAge}
+                    onChange={(e) => {
+                      const v = Number(e.target.value);
+                      if (v <= maxAge) setMinAge(v);
+                    }}
+                    className="range-slider-thumb absolute w-full h-1.5 appearance-none bg-transparent pointer-events-none accent-emerald-400"
+                    style={{ zIndex: minAge > 35 ? 20 : 10 }}
+                  />
+                  {/* Slider Max (Mayor) */}
+                  <input
+                    type="range"
+                    min={15}
+                    max={42}
+                    value={maxAge}
+                    onChange={(e) => {
+                      const v = Number(e.target.value);
+                      if (v >= minAge) setMaxAge(v);
+                    }}
+                    className="range-slider-thumb absolute w-full h-1.5 appearance-none bg-transparent pointer-events-none accent-teal-400"
+                    style={{ zIndex: 15 }}
+                  />
+                </div>
+              </div>
             </div>
           )}
-
-          {/* Quick Score Ordering Pills */}
-          <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-border/40 text-xs">
-            <span className="text-[11px] font-semibold text-muted-foreground mr-1">Sort metric:</span>
-            {[
-              { id: "nota_global", label: "Overall (OVR)" },
-              { id: "nota_ataque", label: "Attacking (ATT)" },
-              { id: "nota_construccion", label: "Build-up (CRE)" },
-              { id: "nota_defensa", label: "Defending (DEF)" },
-              { id: "nota_balon_parado", label: "Set Pieces (SET)" },
-              { id: "nota_disponibilidad", label: "Availability (AVAIL)" },
-              { id: "nota_fisico", label: "Physical (PHY)" },
-            ].map((col) => {
-              const active = sortBy === col.id;
-              return (
-                <button
-                  key={col.id}
-                  type="button"
-                  onClick={() => handleSort(col.id)}
-                  className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-xs transition-colors border ${
-                    active
-                      ? "bg-primary text-white border-primary font-semibold shadow-sm"
-                      : "bg-navy-950 border-border/60 text-muted-foreground hover:text-white hover:border-border"
-                  }`}
-                >
-                  <span>{col.label}</span>
-                  {active && <span className="text-[10px]">{sortOrder === "desc" ? "↓" : "↑"}</span>}
-                </button>
-              );
-            })}
-          </div>
         </CardContent>
       </Card>
 
       {/* Data Table */}
-      <Card className="bg-[#070c18] border-border/80 shadow-2xl overflow-hidden">
-        <CardHeader className="flex flex-row items-center justify-between py-3 px-4 border-b border-border/40">
+      <Card className="bg-[#070c18] border-border/80 shadow-2xl overflow-hidden relative z-10">
+        <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 py-3 px-4 border-b border-border/40">
           <div className="flex items-center gap-2">
             <CardTitle className="text-sm font-bold text-white">Player Registry Results</CardTitle>
             <Badge variant="secondary" size="sm">
@@ -460,6 +718,79 @@ function PlayersDirectoryContent() {
             Normalized 0–100 Rating vs. League Average
           </span>
         </CardHeader>
+
+        {/* Selected Assigned Filters Bar (Badges con Escudos y Banderas) */}
+        {(selectedTeams.length > 0 || selectedLeagues.length > 0) && (
+          <div className="px-4 py-2 border-b border-white/10 bg-navy-950/70 flex flex-wrap items-center gap-2 text-xs">
+            <span className="text-[11px] font-semibold text-muted-foreground">Filtros asignados:</span>
+
+            {/* Assigned Teams Pills */}
+            {selectedTeams.map((teamName) => {
+              const teamInfo = availableTeams.find((t) => t.name.toLowerCase() === teamName.toLowerCase());
+              return (
+                <span
+                  key={teamName}
+                  className="inline-flex items-center gap-1.5 pl-1.5 pr-2 py-1 rounded-full bg-navy-900 border border-white/15 text-white text-xs shadow-sm hover:border-rose-500/40 transition-colors"
+                >
+                  <EscudoEquipo
+                    teamId={teamInfo?.teamId}
+                    badgeUrl={teamInfo?.badgeUrl}
+                    name={teamName}
+                    size={16}
+                    className="shrink-0"
+                  />
+                  <span className="font-medium truncate max-w-[150px]">{teamName}</span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedTeams(selectedTeams.filter((t) => t.toLowerCase() !== teamName.toLowerCase()))}
+                    className="text-slate-400 hover:text-white rounded-full p-0.5 hover:bg-white/10 transition-colors"
+                    title={`Quitar ${teamName}`}
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              );
+            })}
+
+            {/* Assigned Leagues Pills */}
+            {selectedLeagues.map((leagueName) => {
+              const leagueInfo = availableLeagues.find((l) => l.name.toLowerCase() === leagueName.toLowerCase());
+              const country = leagueInfo?.country || guessLeagueCountry(leagueName);
+              return (
+                <span
+                  key={leagueName}
+                  className="inline-flex items-center gap-1.5 pl-2 pr-2 py-1 rounded-full bg-navy-900 border border-white/15 text-white text-xs shadow-sm hover:border-rose-500/40 transition-colors"
+                >
+                  {country ? (
+                    <Bandera country={country} size="xs" className="shrink-0" />
+                  ) : (
+                    <span className="text-[10px]">🏆</span>
+                  )}
+                  <span className="font-medium truncate max-w-[160px]">{leagueName}</span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedLeagues(selectedLeagues.filter((l) => l.toLowerCase() !== leagueName.toLowerCase()))}
+                    className="text-slate-400 hover:text-white rounded-full p-0.5 hover:bg-white/10 transition-colors"
+                    title={`Quitar ${leagueName}`}
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              );
+            })}
+
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedTeams([]);
+                setSelectedLeagues([]);
+              }}
+              className="text-[11px] text-muted-foreground hover:text-rose-400 ml-1 transition-colors underline"
+            >
+              Borrar todos
+            </button>
+          </div>
+        )}
         <CardContent className="p-0 overflow-x-auto">
           {isLoading ? (
             <LoadingState message="Loading player database and metrics..." />
@@ -475,6 +806,16 @@ function PlayersDirectoryContent() {
               <TableHeader>
                 <TableRow className="border-border/60 bg-navy-950/60 text-xs">
                   <TableHead className="font-semibold text-white">Player</TableHead>
+                  <TableHead className="text-center font-semibold text-emerald-400 select-none whitespace-nowrap px-2" title="Performance trend over the last 3 months">
+                    LAST 3M
+                  </TableHead>
+                  <TableHead
+                    onClick={() => handleSort("age")}
+                    className="cursor-pointer text-center font-semibold text-slate-300 hover:text-white select-none whitespace-nowrap"
+                    title="Sort by Age"
+                  >
+                    Age {sortBy === "age" && (sortOrder === "desc" ? "↓" : "↑")}
+                  </TableHead>
                   <TableHead className="font-semibold text-white text-center">POS</TableHead>
                   <TableHead className="font-semibold text-white">Club</TableHead>
                   <TableHead
@@ -569,6 +910,94 @@ function PlayersDirectoryContent() {
                       </Link>
                     </TableCell>
 
+                    {/* Evolución / Trend Arrow Column (Last 3 Months) matching CromoJugador badge style */}
+                    <TableCell className="text-center whitespace-nowrap px-2">
+                      {player.trend === "up" && (
+                        <div
+                          className="inline-flex items-center justify-center w-6 h-6 rounded-full shadow-md border transition-transform duration-150 hover:scale-110"
+                          style={{
+                            background: "linear-gradient(135deg, rgba(16, 185, 129, 0.95) 0%, rgba(5, 150, 105, 0.95) 100%)",
+                            borderColor: "rgba(110, 231, 183, 0.8)",
+                            boxShadow: "0 2px 8px rgba(16, 185, 129, 0.45)",
+                          }}
+                          title="Ascending trend (Last 3 months)"
+                        >
+                          <svg
+                            className="w-3.5 h-3.5 text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="3"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            viewBox="0 0 24 24"
+                          >
+                            <polyline points="18 15 12 9 6 15" />
+                          </svg>
+                        </div>
+                      )}
+                      {player.trend === "neutral" && (
+                        <div
+                          className="inline-flex items-center justify-center w-6 h-6 rounded-full shadow-md border transition-transform duration-150 hover:scale-110"
+                          style={{
+                            background: "linear-gradient(135deg, rgba(234, 179, 8, 0.95) 0%, rgba(202, 138, 4, 0.95) 100%)",
+                            borderColor: "rgba(253, 224, 71, 0.8)",
+                            boxShadow: "0 2px 8px rgba(234, 179, 8, 0.45)",
+                          }}
+                          title="Steady performance (Last 3 months)"
+                        >
+                          <svg
+                            className="w-3.5 h-3.5 text-gray-950 drop-shadow-[0_1px_1px_rgba(255,255,255,0.4)]"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="3.5"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            viewBox="0 0 24 24"
+                          >
+                            <line x1="5" y1="12" x2="19" y2="12" />
+                            <polyline points="14 7 19 12 14 17" />
+                          </svg>
+                        </div>
+                      )}
+                      {player.trend === "down" && (
+                        <div
+                          className="inline-flex items-center justify-center w-6 h-6 rounded-full shadow-md border transition-transform duration-150 hover:scale-110"
+                          style={{
+                            background: "linear-gradient(135deg, rgba(239, 68, 68, 0.95) 0%, rgba(185, 28, 28, 0.95) 100%)",
+                            borderColor: "rgba(252, 165, 165, 0.8)",
+                            boxShadow: "0 2px 8px rgba(239, 68, 68, 0.45)",
+                          }}
+                          title="Descending trend (Last 3 months)"
+                        >
+                          <svg
+                            className="w-3.5 h-3.5 text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="3"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            viewBox="0 0 24 24"
+                          >
+                            <polyline points="6 9 12 15 18 9" />
+                          </svg>
+                        </div>
+                      )}
+                      {player.trend == null && (
+                        <span className="text-muted-foreground/30 font-mono text-xs">—</span>
+                      )}
+                    </TableCell>
+
+                    {/* Age Column */}
+                    <TableCell className="text-center whitespace-nowrap">
+                      {player.birthDate ? (
+                        <span className="font-mono text-xs font-semibold text-slate-200">
+                          {Math.floor((Date.now() - new Date(player.birthDate).getTime()) / (365.25 * 24 * 3600 * 1000))}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground/40 font-mono text-xs">—</span>
+                      )}
+                    </TableCell>
+
                     {/* Abbreviated English Position */}
                     <TableCell className="text-center whitespace-nowrap">
                       {getPositionPill(player.position)}
@@ -595,6 +1024,9 @@ function PlayersDirectoryContent() {
                                 />
                               )}
                               <span className="truncate">{player.leagueName}</span>
+                              {guessLeagueCountry(player.leagueName) && (
+                                <Bandera country={guessLeagueCountry(player.leagueName)} size="xs" className="shrink-0 ml-0.5" />
+                              )}
                             </div>
                           )}
                           {/* Season Indicator Pill */}

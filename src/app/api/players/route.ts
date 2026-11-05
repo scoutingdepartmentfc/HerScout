@@ -1,12 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
+import { isRetired } from "@/lib/utils";
 
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const search = url.searchParams.get("search") || "";
   const position = url.searchParams.get("position") || "all";
   const team = url.searchParams.get("team") || "all";
+  const teamsParam = url.searchParams.get("teams") || "";
   const league = url.searchParams.get("league") || "all";
+  const leaguesParam = url.searchParams.get("leagues") || "";
+  const minAgeParam = url.searchParams.get("minAge");
+  const maxAgeParam = url.searchParams.get("maxAge");
+  const minAge = minAgeParam != null && minAgeParam !== "" ? Number(minAgeParam) : null;
+  const maxAge = maxAgeParam != null && maxAgeParam !== "" ? Number(maxAgeParam) : null;
   // season: "all" (accumulated by default) | season name e.g. "2026/2027", "2025/2026"
   const season = url.searchParams.get("season") || "all";
   const minRating = url.searchParams.get("minRating") ? Number(url.searchParams.get("minRating")) : null;
@@ -64,6 +71,7 @@ export async function GET(req: NextRequest) {
           weight,
           market_value,
           fm_team_name, fm_team_badge_url, current_league_name, current_league_logo_url,
+          sd_league_code,
           teams:current_team_id ( id, name, badge_url, league_name, league_logo_url ),
           player_ea_ratings ( pace, physicality )
         )
@@ -77,6 +85,19 @@ export async function GET(req: NextRequest) {
       if (!data || data.length < 1000) break;
     }
 
+    // Fetch sd_leagues country mapping
+    const leagueCountryByCode = new Map<string, string>();
+    const leagueCountryByName = new Map<string, string>();
+    try {
+      const { data: sdL } = await db.from("sd_leagues").select("code, name, country");
+      for (const item of sdL || []) {
+        if (item.code && item.country) leagueCountryByCode.set(item.code, item.country);
+        if (item.name && item.country) leagueCountryByName.set(item.name.toLowerCase(), item.country);
+      }
+    } catch {
+      // sd_leagues optional
+    }
+
     // Extract available season names from all rows for the filter dropdown
     const availableSeasons = Array.from(
       new Set(rows.map((r: any) => r.seasons?.name).filter(Boolean))
@@ -85,7 +106,7 @@ export async function GET(req: NextRequest) {
     // Group rows by player
     const rowsByPlayer = new Map<string, any[]>();
     for (const r of rows) {
-      if (!r.players) continue;
+      if (!r.players || isRetired(r.players)) continue;
       const arr = rowsByPlayer.get(r.player_id) || [];
       arr.push(r);
       rowsByPlayer.set(r.player_id, arr);
@@ -157,6 +178,9 @@ export async function GET(req: NextRequest) {
           badgeUrl: (p.fm_team_name ? p.fm_team_badge_url : null) || p.teams?.badge_url,
           leagueName: p.current_league_name || p.teams?.league_name || "Primera División Femenina",
           leagueLogoUrl: p.current_league_logo_url || p.teams?.league_logo_url,
+          leagueCountry: (p.sd_league_code ? leagueCountryByCode.get(p.sd_league_code) : null) ||
+            leagueCountryByName.get((p.current_league_name || p.teams?.league_name || "").toLowerCase()) ||
+            null,
           seasonName: playerRows.length > 1 ? `All seasons (${playerRows.length})` : playerRows[0]?.seasons?.name || null,
           isAccumulated: playerRows.length > 1,
           minutesPlayed: totalMins,
@@ -203,6 +227,9 @@ export async function GET(req: NextRequest) {
           badgeUrl: (p.fm_team_name ? p.fm_team_badge_url : null) || p.teams?.badge_url,
           leagueName: p.current_league_name || p.teams?.league_name || "Primera División Femenina",
           leagueLogoUrl: p.current_league_logo_url || p.teams?.league_logo_url,
+          leagueCountry: (p.sd_league_code ? leagueCountryByCode.get(p.sd_league_code) : null) ||
+            leagueCountryByName.get((p.current_league_name || p.teams?.league_name || "").toLowerCase()) ||
+            null,
           seasonName: matchingRow.seasons?.name || null,
           isAccumulated: false,
           minutesPlayed: matchingRow.minutes_played,
@@ -219,8 +246,107 @@ export async function GET(req: NextRequest) {
     }
 
     // Available filter options extracted from all data
-    const availableTeams = Array.from(new Set(list.map((p: any) => p.teamName).filter(Boolean))).sort();
-    const availableLeagues = Array.from(new Set(list.map((p: any) => p.leagueName).filter(Boolean))).sort();
+    const teamsMap = new Map<string, { name: string; teamId?: string | null; badgeUrl?: string | null; leagueName?: string }>();
+    const leaguesMap = new Map<string, { name: string; logoUrl?: string | null; country?: string | null }>();
+
+    for (const p of list) {
+      if (p.teamName && !teamsMap.has(p.teamName)) {
+        teamsMap.set(p.teamName, {
+          name: p.teamName,
+          teamId: p.teamId || null,
+          badgeUrl: p.badgeUrl || null,
+          leagueName: p.leagueName,
+        });
+      }
+      if (p.leagueName && !leaguesMap.has(p.leagueName)) {
+        leaguesMap.set(p.leagueName, {
+          name: p.leagueName,
+          logoUrl: p.leagueLogoUrl || null,
+          country: p.leagueCountry || null,
+        });
+      }
+    }
+
+    const availableTeamsList = Array.from(teamsMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+    const availableLeaguesList = Array.from(leaguesMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+    const availableTeams = availableTeamsList.map((t) => t.name);
+    const availableLeagues = availableLeaguesList.map((l) => l.name);
+
+    // Compute player trends for the last 3 months (Aug - Nov 2026 / latest matches)
+    // Directly query player_match_scores by match_date (which already has player_id, score_general and match_date!)
+    const evaluatedPeriod = "TREND (LAST 3M)";
+    try {
+      const recentScores: Array<{ player_id: string; score_general: number; match_date: string }> = [];
+      for (let from = 0; from < 25000; from += 1000) {
+        const { data, error } = await db
+          .from("player_match_scores")
+          .select("player_id, score_general, match_date")
+          .gte("match_date", "2026-08-01")
+          .order("match_date", { ascending: true })
+          .range(from, from + 999);
+
+        if (error) {
+          console.error("[TREND] Error fetching match scores:", error);
+          break;
+        }
+        if (data && data.length > 0) {
+          recentScores.push(...data);
+        }
+        if (!data || data.length < 1000) break;
+      }
+
+      console.log(`[TREND] Total player_match_scores fetched since 2026-08-01: ${recentScores.length}`);
+
+      // Group scores by player_id
+      const playerMatchesMap = new Map<string, Array<{ date: string; score: number }>>();
+      for (const row of recentScores) {
+        if (row.score_general != null && !isNaN(Number(row.score_general))) {
+          const arr = playerMatchesMap.get(row.player_id) || [];
+          arr.push({ date: row.match_date, score: Number(row.score_general) });
+          playerMatchesMap.set(row.player_id, arr);
+        }
+      }
+
+      console.log(`[TREND] Unique players with scores: ${playerMatchesMap.size}`);
+
+      // Calculate trend for each player in list across the 3 months
+      let withTrendCount = 0;
+      for (const p of list) {
+        const matches = playerMatchesMap.get(p.id);
+        if (!matches || matches.length === 0) {
+          p.trend = null;
+          continue;
+        }
+        withTrendCount++;
+        const sample = matches.slice(-8);
+        const ratings = sample.map((m) => m.score);
+        const avg = ratings.reduce((acc, curr) => acc + curr, 0) / ratings.length;
+
+        if (ratings.length === 1) {
+          p.trend = ratings[0] >= 7.3 ? "up" : ratings[0] <= 5.8 ? "down" : "neutral";
+        } else {
+          const half = Math.max(1, Math.floor(ratings.length / 2));
+          const firstHalf = ratings.slice(0, half);
+          const secondHalf = ratings.slice(-half);
+          const firstAvg = firstHalf.reduce((a, b) => a + b, 0) / firstHalf.length;
+          const secondAvg = secondHalf.reduce((a, b) => a + b, 0) / secondHalf.length;
+          const diff = secondAvg - firstAvg;
+
+          if (diff >= 0.3 || avg >= 7.3) {
+            p.trend = "up";
+          } else if (diff <= -0.3 || avg <= 5.8) {
+            p.trend = "down";
+          } else {
+            p.trend = "neutral";
+          }
+        }
+      }
+      console.log(`[TREND] Players in directory with trend calculated: ${withTrendCount}`);
+      const sampleTop = list.slice(0, 5).map((p: any) => ({ name: p.name, trend: p.trend }));
+      console.log("[TREND] Top 5 players trends:", sampleTop);
+    } catch (trendErr) {
+      console.warn("Could not compute player trends:", trendErr);
+    }
 
     // Filters
     if (search) {
@@ -236,12 +362,42 @@ export async function GET(req: NextRequest) {
       list = list.filter((p: any) => p.position.toLowerCase().includes(pos) || p.grupoDemarcacion.toLowerCase().includes(pos));
     }
 
-    if (team !== "all") {
-      list = list.filter((p: any) => p.teamName.toLowerCase() === team.toLowerCase());
+    // Teams filter (support multiple comma-separated or single)
+    const selectedTeams = teamsParam
+      ? teamsParam.split(",").map((t) => t.trim().toLowerCase()).filter(Boolean)
+      : team !== "all"
+      ? [team.trim().toLowerCase()]
+      : [];
+
+    if (selectedTeams.length > 0) {
+      list = list.filter((p: any) => selectedTeams.includes((p.teamName || "").toLowerCase()));
     }
 
-    if (league !== "all") {
-      list = list.filter((p: any) => p.leagueName.toLowerCase() === league.toLowerCase());
+    // Leagues filter (support multiple comma-separated or single)
+    // Also support partial matching so "Primera División" matches "Primera División Femenina"
+    const selectedLeagues = leaguesParam
+      ? leaguesParam.split(",").map((l) => l.trim().toLowerCase()).filter(Boolean)
+      : league !== "all"
+      ? [league.trim().toLowerCase()]
+      : [];
+
+    if (selectedLeagues.length > 0) {
+      list = list.filter((p: any) => {
+        const playerLeague = (p.leagueName || "").toLowerCase();
+        return selectedLeagues.some((sel) => playerLeague === sel || playerLeague.startsWith(sel) || sel.startsWith(playerLeague));
+      });
+    }
+
+    // Age filter (based on birthDate)
+    const now = Date.now();
+    if (minAge != null || maxAge != null) {
+      list = list.filter((p: any) => {
+        if (!p.birthDate) return false;
+        const playerAge = Math.floor((now - new Date(p.birthDate).getTime()) / (365.25 * 24 * 3600 * 1000));
+        if (minAge != null && playerAge < minAge) return false;
+        if (maxAge != null && playerAge > maxAge) return false;
+        return true;
+      });
     }
 
     if (minRating != null && !isNaN(minRating)) {
@@ -257,9 +413,18 @@ export async function GET(req: NextRequest) {
       nota_balon_parado: "notaBalonParado",
       notaDisponibilidad: "notaDisponibilidad",
       nota_fisico: "notaFisico",
+      age: "birthDate",
     };
-    const field = key[validScores.includes(sortBy) ? sortBy : "nota_global"];
+    const field = key[validScores.includes(sortBy) || sortBy === "age" ? sortBy : "nota_global"];
     list.sort((a: any, b: any) => {
+      if (sortBy === "age") {
+        // Higher birthDate = younger, lower birthDate = older
+        const valA = a.birthDate ? new Date(a.birthDate).getTime() : null;
+        const valB = b.birthDate ? new Date(b.birthDate).getTime() : null;
+        if (valA == null || valB == null) return valA == null ? (valB == null ? 0 : 1) : -1;
+        // order 'desc' means highest age (oldest) first -> lowest birthDate
+        return order === "desc" ? valA - valB : valB - valA;
+      }
       const valA = a[field];
       const valB = b[field];
       if (valA == null || valB == null) return valA == null ? (valB == null ? 0 : 1) : -1;
@@ -268,9 +433,12 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       players: list,
+      evaluatedPeriod,
       filters: {
         teams: availableTeams,
+        teamsDetailed: availableTeamsList,
         leagues: availableLeagues,
+        leaguesDetailed: availableLeaguesList,
         seasons: availableSeasons,
       },
     });

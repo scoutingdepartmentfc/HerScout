@@ -2,6 +2,8 @@ import React from "react";
 import { Bandera } from "./Bandera";
 import { EscudoEquipo } from "./EscudoEquipo";
 
+export type TrendEvolution = "up" | "neutral" | "down" | null;
+
 export interface CromoPlayerProps {
   j: {
     player_id?: string;
@@ -17,6 +19,7 @@ export interface CromoPlayerProps {
     demarcacion?: string | null;
     score_general?: number | null;
     demarcacionesSecundarias?: string[];
+    trend?: TrendEvolution;
   };
   size?: "sm" | "md" | "lg";
   className?: string;
@@ -208,6 +211,81 @@ export const CromoJugador: React.FC<CromoPlayerProps> = ({
           "drop-shadow(0 16px 24px rgba(0, 0, 0, 0.55)) drop-shadow(0 4px 8px rgba(0, 0, 0, 0.4))",
       }}
     >
+      {/* Trend Evolution Indicator (Above Secondary Positions) */}
+      {j.trend && (
+        <div
+          className="absolute -top-1 right-2 z-30 flex items-center justify-center w-7 h-7 rounded-full shadow-lg border backdrop-blur-md transition-transform duration-200 hover:scale-110"
+          style={{
+            background:
+              j.trend === "up"
+                ? "linear-gradient(135deg, rgba(16, 185, 129, 0.95) 0%, rgba(5, 150, 105, 0.95) 100%)"
+                : j.trend === "neutral"
+                ? "linear-gradient(135deg, rgba(234, 179, 8, 0.95) 0%, rgba(202, 138, 4, 0.95) 100%)"
+                : "linear-gradient(135deg, rgba(239, 68, 68, 0.95) 0%, rgba(185, 28, 28, 0.95) 100%)",
+            borderColor:
+              j.trend === "up"
+                ? "rgba(110, 231, 183, 0.8)"
+                : j.trend === "neutral"
+                ? "rgba(253, 224, 71, 0.8)"
+                : "rgba(252, 165, 165, 0.8)",
+            boxShadow:
+              j.trend === "up"
+                ? "0 4px 10px rgba(16, 185, 129, 0.45), 0 0 6px rgba(16, 185, 129, 0.3)"
+                : j.trend === "neutral"
+                ? "0 4px 10px rgba(234, 179, 8, 0.45), 0 0 6px rgba(234, 179, 8, 0.3)"
+                : "0 4px 10px rgba(239, 68, 68, 0.45), 0 0 6px rgba(239, 68, 68, 0.3)",
+          }}
+          title={
+            j.trend === "up"
+              ? "Evolución último mes: Rendimiento alto o en ascenso"
+              : j.trend === "neutral"
+              ? "Evolución último mes: Rendimiento regular o medio"
+              : "Evolución último mes: Rendimiento bajo o en descenso"
+          }
+        >
+          {j.trend === "up" && (
+            <svg
+              className="w-4 h-4 text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="3"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              viewBox="0 0 24 24"
+            >
+              <polyline points="18 15 12 9 6 15" />
+            </svg>
+          )}
+          {j.trend === "neutral" && (
+            <svg
+              className="w-4 h-4 text-gray-900 drop-shadow-[0_1px_1px_rgba(255,255,255,0.4)]"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="3.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              viewBox="0 0 24 24"
+            >
+              <line x1="5" y1="12" x2="19" y2="12" />
+              <polyline points="14 7 19 12 14 17" />
+            </svg>
+          )}
+          {j.trend === "down" && (
+            <svg
+              className="w-4 h-4 text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="3"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              viewBox="0 0 24 24"
+            >
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          )}
+        </div>
+      )}
+
       {/* Secondary Positions Tab (EA FC Style Gold Badge) */}
       {secondaryPositions.length > 0 && (
         <div

@@ -46,14 +46,14 @@ export const RatingEvolutionChart: React.FC<RatingEvolutionChartProps> = ({
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   }, [matches]);
 
-  // Filter based on selected time range
+  // Filter based on selected time range (evaluated from CURRENT DATE: November 2026 / latest date in system)
   const filteredPoints = useMemo(() => {
     if (matchesWithRating.length === 0) return [];
     if (timeRange === "all") return matchesWithRating;
 
-    // Use latest match date as baseline anchor
-    const latestDate = new Date(matchesWithRating[matchesWithRating.length - 1].date);
-    const cutoffDate = new Date(latestDate);
+    // Anchor from CURRENT DATE in the system (~ November 2026, or Date.now())
+    const anchorDate = new Date(); // Current date
+    const cutoffDate = new Date(anchorDate);
 
     if (timeRange === "1m") cutoffDate.setMonth(cutoffDate.getMonth() - 1);
     else if (timeRange === "3m") cutoffDate.setMonth(cutoffDate.getMonth() - 3);
@@ -61,10 +61,6 @@ export const RatingEvolutionChart: React.FC<RatingEvolutionChartProps> = ({
     else if (timeRange === "1y") cutoffDate.setFullYear(cutoffDate.getFullYear() - 1);
 
     const result = matchesWithRating.filter((m) => new Date(m.date) >= cutoffDate);
-    // If cutoff returns fewer than 3 matches, fallback to at least the last 6 matches so chart looks great
-    if (result.length < 3 && matchesWithRating.length >= 3) {
-      return matchesWithRating.slice(-8);
-    }
     return result;
   }, [matchesWithRating, timeRange]);
 
@@ -119,6 +115,67 @@ export const RatingEvolutionChart: React.FC<RatingEvolutionChartProps> = ({
   // Scale: rating is 0 to 10. We frame it between 4.0 and 10.0 (or min - 0.5 and 10)
   const minVal = Math.max(0, Math.min(4.5, (stats.min ?? 5) - 0.5));
   const maxVal = 10.0;
+
+  if (filteredPoints.length === 0) {
+    return (
+      <Card className="bg-[#070e1e]/90 border border-border/60 shadow-2xl overflow-hidden backdrop-blur-md">
+        <CardHeader className="py-3 px-5 border-b border-border/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2.5">
+              <div className="p-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+                <Activity className="w-4 h-4" />
+              </div>
+              <div>
+                <CardTitle className="text-sm font-bold text-white flex items-center gap-2">
+                  Rating Evolution
+                  <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 font-semibold">
+                    Match-by-Match
+                  </span>
+                </CardTitle>
+                <CardDescription className="text-[11px] text-muted-foreground mt-0.5">
+                  Dynamic Opta ratings curve (scale 0–10) across official appearances
+                </CardDescription>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            {/* Time Range Pills: 1M, 3M (Default), 6M, 1Y, All */}
+            <div className="inline-flex items-center p-0.5 rounded-lg bg-navy-950/80 border border-white/10 text-xs">
+              {(
+                [
+                  { id: "1m", label: "1M" },
+                  { id: "3m", label: "3M" },
+                  { id: "6m", label: "6M" },
+                  { id: "1y", label: "1Y" },
+                  { id: "all", label: "All" },
+                ] as { id: TimeRangeOption; label: string }[]
+              ).map((t) => {
+                const active = timeRange === t.id;
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => setTimeRange(t.id)}
+                    className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all ${
+                      active
+                        ? "bg-emerald-500 text-black shadow-sm font-bold"
+                        : "text-muted-foreground hover:text-white"
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="p-8 text-center text-muted-foreground text-xs">
+          No matches played in the selected time range ({timeRange.toUpperCase()} from current date).
+        </CardContent>
+      </Card>
+    );
+  }
 
   const points = filteredPoints.map((d, i) => {
     const x =

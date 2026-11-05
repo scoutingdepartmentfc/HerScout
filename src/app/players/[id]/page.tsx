@@ -181,25 +181,25 @@ export default function PlayerProfilePage() {
   const primaryEnglishPos = translatePosition(p.primaryPosition);
   const secondaryPositionsList = (p.otherPositions || []).slice(0, 2);
 
-  // Evolución en el último mes según las valoraciones (match ratings)
+  // Evolución en los últimos 3 meses desde la FECHA ACTUAL (no desde su último partido jugado)
   const rawMatches = data.matchLog || [];
   const validMatches = rawMatches
     .filter((m: any) => m.rating != null && !isNaN(Number(m.rating)) && m.date)
     .sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
   let playerTrend: "up" | "neutral" | "down" | null = null;
-  if (validMatches.length > 0) {
-    const lastDate = new Date(validMatches[validMatches.length - 1].date);
-    const oneMonthAgo = new Date(lastDate);
-    oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+  const threeMonthsAgo = new Date();
+  threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
 
-    const monthMatches = validMatches.filter((m: any) => new Date(m.date) >= oneMonthAgo);
-    const sample = monthMatches.length >= 2 ? monthMatches : validMatches.slice(-4);
+  const recent3mMatches = validMatches.filter((m: any) => new Date(m.date) >= threeMonthsAgo);
 
-    if (sample.length > 0) {
-      const ratings: number[] = sample.map((m: any) => Number(m.rating));
-      const avg = ratings.reduce((acc, curr) => acc + curr, 0) / ratings.length;
+  if (recent3mMatches.length > 0) {
+    const ratings: number[] = recent3mMatches.map((m: any) => Number(m.rating));
+    const avg = ratings.reduce((acc, curr) => acc + curr, 0) / ratings.length;
 
+    if (ratings.length === 1) {
+      playerTrend = ratings[0] >= 7.3 ? "up" : ratings[0] <= 5.8 ? "down" : "neutral";
+    } else {
       const half = Math.max(1, Math.floor(ratings.length / 2));
       const firstHalf = ratings.slice(0, half);
       const secondHalf = ratings.slice(-half);
@@ -221,11 +221,14 @@ export default function PlayerProfilePage() {
     <div className="space-y-6 max-w-6xl mx-auto">
       {/* Top Bar */}
       <div className="flex items-center justify-between">
-        <Link href="/players">
-          <Button variant="outline" size="sm" leftIcon={<ArrowLeft className="w-3.5 h-3.5" />}>
-            Back to Player Directory
-          </Button>
-        </Link>
+        <button
+          type="button"
+          onClick={() => window.history.back()}
+          className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-lg border border-white/10 bg-navy-900/60 hover:bg-navy-800 text-slate-200 hover:text-white transition-all shadow-sm"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" />
+          Back to Player Directory
+        </button>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" leftIcon={<Bookmark className="w-3.5 h-3.5" />}>
             Add to Watchlist

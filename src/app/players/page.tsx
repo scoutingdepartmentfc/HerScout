@@ -227,29 +227,38 @@ function PlayersDirectoryContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  // Read initial states from URL search parameters to preserve them across browser back/forward
-  const [searchTerm, setSearchTerm] = useState(searchParams.get("search") || "");
-  const [positionFilter, setPositionFilter] = useState(searchParams.get("position") || "all");
+  // Read initial states from URL search parameters, fallback to sessionStorage to remember filters across page visits
+  const getSaved = (key: string) => {
+    if (typeof window === "undefined") return null;
+    try {
+      return sessionStorage.getItem(`players_filter_${key}`);
+    } catch {
+      return null;
+    }
+  };
+
+  const [searchTerm, setSearchTerm] = useState(() => searchParams.get("search") ?? getSaved("search") ?? "");
+  const [positionFilter, setPositionFilter] = useState(() => searchParams.get("position") ?? getSaved("position") ?? "all");
   const [selectedTeams, setSelectedTeams] = useState<string[]>(() => {
-    const teams = searchParams.get("teams") || searchParams.get("team");
+    const teams = searchParams.get("teams") || searchParams.get("team") || getSaved("teams");
     return teams && teams !== "all" ? teams.split(",").map((t) => t.trim()).filter(Boolean) : [];
   });
   const [selectedLeagues, setSelectedLeagues] = useState<string[]>(() => {
-    const leagues = searchParams.get("leagues") || searchParams.get("league");
+    const leagues = searchParams.get("leagues") || searchParams.get("league") || getSaved("leagues");
     return leagues && leagues !== "all" ? leagues.split(",").map((l) => l.trim()).filter(Boolean) : [];
   });
-  const [seasonFilter, setSeasonFilter] = useState(searchParams.get("season") || "all");
-  const [minRatingFilter, setMinRatingFilter] = useState<string>(searchParams.get("minRating") || "all");
+  const [seasonFilter, setSeasonFilter] = useState(() => searchParams.get("season") ?? getSaved("season") ?? "all");
+  const [minRatingFilter, setMinRatingFilter] = useState<string>(() => searchParams.get("minRating") ?? getSaved("minRating") ?? "all");
   const [minAge, setMinAge] = useState<number>(() => {
-    const a = searchParams.get("minAge");
+    const a = searchParams.get("minAge") || getSaved("minAge");
     return a ? Number(a) : 15;
   });
   const [maxAge, setMaxAge] = useState<number>(() => {
-    const a = searchParams.get("maxAge");
+    const a = searchParams.get("maxAge") || getSaved("maxAge");
     return a ? Number(a) : 42;
   });
-  const [sortBy, setSortBy] = useState<string>(searchParams.get("sortBy") || "nota_global");
-  const [sortOrder, setSortOrder] = useState<"asc" | "desc">((searchParams.get("order") as "asc" | "desc") || "desc");
+  const [sortBy, setSortBy] = useState<string>(() => searchParams.get("sortBy") ?? getSaved("sortBy") ?? "nota_global");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">(() => (searchParams.get("order") as "asc" | "desc") ?? (getSaved("order") as "asc" | "desc") ?? "desc");
 
   const [players, setPlayers] = useState<PlayerRow[]>([]);
   const [evaluatedPeriod, setEvaluatedPeriod] = useState<string>("TREND (LAST 3M)");
@@ -287,14 +296,16 @@ function PlayersDirectoryContent() {
     setSortOrder((searchParams.get("order") as "asc" | "desc") || "desc");
   }, [searchParams]);
 
-  // Update browser URL query string without reloading the page
+  // Update browser URL query string and persist in sessionStorage
   const updateUrlParams = (newParams: Record<string, string>) => {
     const params = new URLSearchParams(window.location.search);
     Object.entries(newParams).forEach(([k, v]) => {
       if (!v || v === "all" || (k === "sortBy" && v === "nota_global") || (k === "order" && v === "desc")) {
         params.delete(k);
+        try { sessionStorage.removeItem(`players_filter_${k}`); } catch {}
       } else {
         params.set(k, v);
+        try { sessionStorage.setItem(`players_filter_${k}`, v); } catch {}
       }
     });
     const qs = params.toString();
@@ -399,6 +410,11 @@ function PlayersDirectoryContent() {
   };
 
   const resetAllFilters = () => {
+    try {
+      ["search", "position", "teams", "leagues", "season", "minRating", "minAge", "maxAge", "sortBy", "order"].forEach((k) => {
+        sessionStorage.removeItem(`players_filter_${k}`);
+      });
+    } catch {}
     setSearchTerm("");
     setPositionFilter("all");
     setSelectedTeams([]);

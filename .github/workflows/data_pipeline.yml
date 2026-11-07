@@ -159,3 +159,16 @@ jobs:
           ARGS="--refresh-days 30"
           [ -n "$COMP_ID" ] && ARGS="$ARGS --comp-id $COMP_ID"
           python -m pipeline.soccerdonna $ARGS
+
+      # 4. Coche escoba ceroacero.es: SIEMPRE al final (aunque falle un paso anterior). Solo rellena lo que siga
+      # vacío (foto, nacimiento, nacionalidad, pie, altura, peso, contrato y fichajes si no hay ninguno).
+      # Máximo 60 min por ejecución; continúa en la siguiente (cz_updated_at). Si falla no tumba el pipeline.
+      - name: Coche escoba (ceroacero.es)
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        env:
+          LIMITE: ${{ github.event.inputs.limite }}
+        run: |
+          ARGS="--refresh-days 30 --max-minutos 60"
+          [ -n "$LIMITE" ] && ARGS="$ARGS --limit $LIMITE"
+          python -m pipeline.ceroacero $ARGS

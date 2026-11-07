@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, Suspense } from "react";
+import React, { useEffect, useState, useMemo, useDeferredValue, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
@@ -223,6 +223,38 @@ function MultiSelectDropdown<T extends { id: string; name: string; badgeUrl?: st
   );
 }
 
+// Client cache of /api/players responses per season: survives client-side navigation (memory)
+// and full reloads within the tab (sessionStorage), so revisits render instantly.
+type PlayersResponse = { players: PlayerRow[]; evaluatedPeriod?: string; filters?: any };
+const PLAYERS_CACHE_KEY = "players_data_v1_";
+const memoryPlayersCache = new Map<string, PlayersResponse>();
+
+function readPlayersCache(season: string): PlayersResponse | null {
+  const mem = memoryPlayersCache.get(season);
+  if (mem) return mem;
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = sessionStorage.getItem(PLAYERS_CACHE_KEY + season);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PlayersResponse;
+    memoryPlayersCache.set(season, parsed);
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writePlayersCache(season: string, data: PlayersResponse) {
+  memoryPlayersCache.set(season, data);
+  try {
+    sessionStorage.setItem(PLAYERS_CACHE_KEY + season, JSON.stringify(data));
+  } catch {
+    // quota exceeded or storage blocked: memory cache still works
+  }
+}
+
+const PAGE_SIZE = 60;
+
 function PlayersDirectoryContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -260,7 +292,9 @@ function PlayersDirectoryContent() {
   const [sortBy, setSortBy] = useState<string>(() => searchParams.get("sortBy") ?? getSaved("sortBy") ?? "nota_global");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">(() => (searchParams.get("order") as "asc" | "desc") ?? (getSaved("order") as "asc" | "desc") ?? "desc");
 
-  const [players, setPlayers] = useState<PlayerRow[]>([]);
+  const [allPlayers, setAllPlayers] = useState<PlayerRow[]>([]);
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const loadMoreRef = React.useRef<HTMLDivElement>(null);
   const [evaluatedPeriod, setEvaluatedPeriod] = useState<string>("TREND (LAST 3M)");
   const [availableTeams, setAvailableTeams] = useState<{ id: string; name: string; teamId?: string | null; badgeUrl?: string | null }[]>([]);
   const [availableLeagues, setAvailableLeagues] = useState<{ id: string; name: string; logoUrl?: string | null; country?: string | null }[]>([]);
@@ -313,72 +347,78 @@ function PlayersDirectoryContent() {
     window.history.replaceState(null, "", newPath);
   };
 
+  const applyResponse = (json: PlayersResponse) => {
+    setAllPlayers(json.players || []);
+    if (json.evaluatedPeriod) {
+      setEvaluatedPeriod(json.evaluatedPeriod);
+    }
+    if (json.filters) {
+      if (json.filters.teamsDetailed?.length) {
+        setAvailableTeams(json.filters.teamsDetailed.map((t: any) => ({ id: t.name, name: t.name, teamId: t.teamId, badgeUrl: t.badgeUrl })));
+      } else if (json.filters.teams?.length) {
+        setAvailableTeams(json.filters.teams.map((t: string) => ({ id: t, name: t })));
+      }
+
+      if (json.filters.leaguesDetailed?.length) {
+        setAvailableLeagues(
+          json.filters.leaguesDetailed.map((l: any) => ({
+            id: l.name,
+            name: l.name,
+            logoUrl: l.logoUrl,
+            country: l.country || guessLeagueCountry(l.name),
+          }))
+        );
+      } else if (json.filters.leagues?.length) {
+        setAvailableLeagues(
+          json.filters.leagues.map((l: string) => ({
+            id: l,
+            name: l,
+            country: guessLeagueCountry(l),
+          }))
+        );
+      }
+
+      if (json.filters.seasons?.length) setAvailableSeasons(json.filters.seasons);
+    }
+  };
+
+  // Fetch the full dataset once per season. Every other filter/sort runs client-side.
+  // Cached data (memory/sessionStorage) is shown instantly and refreshed in the background.
   useEffect(() => {
-    async function fetchPlayers() {
+    let cancelled = false;
+    const cached = readPlayersCache(seasonFilter);
+    if (cached) {
+      applyResponse(cached);
+      setIsLoading(false);
+    } else {
+      setAllPlayers([]);
       setIsLoading(true);
+    }
+
+    (async () => {
       try {
-        const params = new URLSearchParams({
-          search: searchTerm,
-          position: positionFilter,
-          teams: selectedTeams.join(","),
-          leagues: selectedLeagues.join(","),
-          season: seasonFilter,
-          sortBy,
-          order: sortOrder,
-        });
-        if (minRatingFilter !== "all") {
-          params.append("minRating", minRatingFilter);
-        }
-        if (minAge > 15) {
-          params.append("minAge", String(minAge));
-        }
-        if (maxAge < 42) {
-          params.append("maxAge", String(maxAge));
-        }
-
-        const res = await fetch(`/api/players?${params.toString()}`);
-        const json = await res.json();
-        setPlayers(json.players || []);
-        if (json.evaluatedPeriod) {
-          setEvaluatedPeriod(json.evaluatedPeriod);
-        }
-        if (json.filters) {
-          if (json.filters.teamsDetailed?.length) {
-            setAvailableTeams(json.filters.teamsDetailed.map((t: any) => ({ id: t.name, name: t.name, teamId: t.teamId, badgeUrl: t.badgeUrl })));
-          } else if (json.filters.teams?.length) {
-            setAvailableTeams(json.filters.teams.map((t: string) => ({ id: t, name: t })));
-          }
-
-          if (json.filters.leaguesDetailed?.length) {
-            setAvailableLeagues(
-              json.filters.leaguesDetailed.map((l: any) => ({
-                id: l.name,
-                name: l.name,
-                logoUrl: l.logoUrl,
-                country: l.country || guessLeagueCountry(l.name),
-              }))
-            );
-          } else if (json.filters.leagues?.length) {
-            setAvailableLeagues(
-              json.filters.leagues.map((l: string) => ({
-                id: l,
-                name: l,
-                country: guessLeagueCountry(l),
-              }))
-            );
-          }
-
-          if (json.filters.seasons?.length) setAvailableSeasons(json.filters.seasons);
-        }
+        const res = await fetch(`/api/players?season=${encodeURIComponent(seasonFilter)}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = (await res.json()) as PlayersResponse;
+        if (cancelled) return;
+        writePlayersCache(seasonFilter, json);
+        applyResponse(json);
       } catch (err) {
         console.error("Failed to fetch players:", err);
       } finally {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
-    }
+    })();
 
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seasonFilter]);
+
+  // Keep URL + sessionStorage in sync with filters (debounced, no network)
+  useEffect(() => {
     const timer = setTimeout(() => {
-      fetchPlayers();
       updateUrlParams({
         search: searchTerm,
         position: positionFilter,
@@ -392,9 +432,110 @@ function PlayersDirectoryContent() {
         order: sortOrder,
       });
     }, 250);
-
     return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchTerm, positionFilter, selectedTeams, selectedLeagues, seasonFilter, minRatingFilter, minAge, maxAge, sortBy, sortOrder]);
+
+  const deferredSearch = useDeferredValue(searchTerm);
+
+  // Client-side filtering + sorting (same semantics as the API)
+  const players = useMemo(() => {
+    const now = Date.now();
+    let list = allPlayers;
+
+    const s = deferredSearch.trim().toLowerCase();
+    if (s) {
+      list = list.filter(
+        (p) => (p.name && p.name.toLowerCase().includes(s)) || (p.matchName && p.matchName.toLowerCase().includes(s))
+      );
+    }
+
+    if (positionFilter !== "all") {
+      const pos = positionFilter.toLowerCase();
+      list = list.filter(
+        (p) => (p.position || "").toLowerCase().includes(pos) || (p.grupoDemarcacion || "").toLowerCase().includes(pos)
+      );
+    }
+
+    if (selectedTeams.length > 0) {
+      const teams = selectedTeams.map((t) => t.toLowerCase());
+      list = list.filter((p) => teams.includes((p.teamName || "").toLowerCase()));
+    }
+
+    if (selectedLeagues.length > 0) {
+      const leagues = selectedLeagues.map((l) => l.toLowerCase());
+      list = list.filter((p) => {
+        const pl = (p.leagueName || "").toLowerCase();
+        return leagues.some((sel) => pl === sel || pl.startsWith(sel) || sel.startsWith(pl));
+      });
+    }
+
+    const minA = minAge > 15 ? minAge : null;
+    const maxA = maxAge < 42 ? maxAge : null;
+    if (minA != null || maxA != null) {
+      list = list.filter((p) => {
+        if (!p.birthDate) return false;
+        const age = Math.floor((now - new Date(p.birthDate).getTime()) / (365.25 * 24 * 3600 * 1000));
+        if (minA != null && age < minA) return false;
+        if (maxA != null && age > maxA) return false;
+        return true;
+      });
+    }
+
+    if (minRatingFilter !== "all") {
+      const minR = Number(minRatingFilter);
+      if (!isNaN(minR)) list = list.filter((p) => (p.notaGlobal || 0) >= minR);
+    }
+
+    const fieldMap: Record<string, keyof PlayerRow> = {
+      nota_global: "notaGlobal",
+      nota_ataque: "notaAtaque",
+      nota_construccion: "notaConstruccion",
+      nota_defensa: "notaDefensa",
+      nota_balon_parado: "notaBalonParado",
+      nota_disponibilidad: "notaDisponibilidad",
+      nota_fisico: "notaFisico",
+    };
+    const sorted = list === allPlayers ? list.slice() : list;
+    if (sortBy === "age") {
+      sorted.sort((a, b) => {
+        const va = a.birthDate ? new Date(a.birthDate).getTime() : null;
+        const vb = b.birthDate ? new Date(b.birthDate).getTime() : null;
+        if (va == null || vb == null) return va == null ? (vb == null ? 0 : 1) : -1;
+        return sortOrder === "desc" ? va - vb : vb - va;
+      });
+    } else {
+      const field = fieldMap[sortBy] || "notaGlobal";
+      sorted.sort((a, b) => {
+        const va = a[field] as number | null | undefined;
+        const vb = b[field] as number | null | undefined;
+        if (va == null || vb == null) return va == null ? (vb == null ? 0 : 1) : -1;
+        return sortOrder === "asc" ? va - vb : vb - va;
+      });
+    }
+    return sorted;
+  }, [allPlayers, deferredSearch, positionFilter, selectedTeams, selectedLeagues, minAge, maxAge, minRatingFilter, sortBy, sortOrder]);
+
+  // Progressive rendering: reset window on filter change, grow on scroll
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [players]);
+
+  const visiblePlayers = useMemo(() => players.slice(0, visibleCount), [players, visibleCount]);
+  const hasMore = visibleCount < players.length;
+
+  useEffect(() => {
+    const el = loadMoreRef.current;
+    if (!el || !hasMore) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) setVisibleCount((c) => c + PAGE_SIZE * 2);
+      },
+      { rootMargin: "800px 0px" }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasMore, visiblePlayers.length]);
 
   const toggleWatchlist = (id: string) => {
     setSavedWatchlist((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -808,7 +949,7 @@ function PlayersDirectoryContent() {
           </div>
         )}
         <CardContent className="p-0 overflow-x-auto">
-          {isLoading ? (
+          {isLoading && allPlayers.length === 0 ? (
             <LoadingState message="Loading player database and metrics..." />
           ) : players.length === 0 ? (
             <EmptyState
@@ -887,26 +1028,26 @@ function PlayersDirectoryContent() {
                 </TableRow>
               </TableHeader>
               <TableBody className="divide-y divide-border/30">
-                {players.map((player) => (
-                  <TableRow key={player.id} className="hover:bg-navy-900/50 transition-colors">
-                    <TableCell>
-                      <Link href={`/players/${player.id}`} className="flex items-center gap-3 group">
-                        <div className="w-9 h-9 rounded-full bg-navy-900 border border-white/20 flex items-center justify-center overflow-hidden shrink-0 group-hover:border-primary transition-colors">
+                {visiblePlayers.map((player) => (
+                  <TableRow key={player.id} className="h-14 hover:bg-navy-900/50 transition-colors">
+                    <TableCell className="p-0 pl-3">
+                      <Link href={`/players/${player.id}`} className="flex items-center gap-3 group h-14">
+                        <div className="w-14 h-14 bg-navy-950/80 border-r border-white/10 flex items-center justify-center overflow-hidden shrink-0 group-hover:border-primary/50 transition-colors">
                           {player.photoUrl ? (
                             <img
                               src={player.photoUrl}
                               alt={player.name}
-                              className="w-full h-full object-cover object-top"
+                              className="w-full h-full object-cover object-top scale-110 group-hover:scale-125 transition-transform duration-200"
                               loading="lazy"
                               onError={(e) => {
                                 (e.target as HTMLElement).style.display = "none";
                               }}
                             />
                           ) : (
-                            <span className="text-xs font-bold text-muted-foreground">⚽</span>
+                            <span className="text-sm font-bold text-muted-foreground">⚽</span>
                           )}
                         </div>
-                        <div>
+                        <div className="py-1">
                           <div className="flex items-center gap-2">
                             {player.shirtNumber && (
                               <CamisetaDorsal number={player.shirtNumber} size="xs" />
@@ -1109,6 +1250,11 @@ function PlayersDirectoryContent() {
                 ))}
               </TableBody>
             </Table>
+          )}
+          {!isLoading && hasMore && (
+            <div ref={loadMoreRef} className="py-4 text-center text-[11px] text-muted-foreground">
+              Showing {visiblePlayers.length} of {players.length}…
+            </div>
           )}
         </CardContent>
       </Card>

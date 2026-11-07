@@ -2,13 +2,22 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import { Search, ChevronDown, Check, X } from "lucide-react";
+import { Bandera } from "@/components/scouting/Bandera";
+
+export interface FilterOption {
+  id: string;
+  name: string;
+  country?: string | null;
+  badgeUrl?: string | null;
+}
 
 interface MultiSelectFilterProps {
   label: string;
   placeholder?: string;
-  options: { id: string; name: string }[];
+  options: FilterOption[];
   selectedIds: string[];
   onChange: (ids: string[]) => void;
+  showFlag?: boolean;
 }
 
 export const MultiSelectFilter: React.FC<MultiSelectFilterProps> = ({
@@ -17,6 +26,7 @@ export const MultiSelectFilter: React.FC<MultiSelectFilterProps> = ({
   options,
   selectedIds,
   onChange,
+  showFlag = false,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -75,12 +85,12 @@ export const MultiSelectFilter: React.FC<MultiSelectFilterProps> = ({
               <X className="w-3 h-3" />
             </span>
           )}
-          <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground transition-transform ${isOpen ? "rotate-180" : ""}`} />
+          <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground transition-transform duration-150 ${isOpen ? "rotate-180" : ""}`} />
         </div>
       </button>
 
       {isOpen && (
-        <div className="absolute left-0 top-full mt-1.5 w-64 rounded-xl border border-white/15 bg-[#0a1224]/95 backdrop-blur-xl shadow-2xl z-50 flex flex-col overflow-hidden">
+        <div className="absolute left-0 top-full mt-1.5 w-72 rounded-xl border border-white/15 bg-[#0a1224]/95 backdrop-blur-xl shadow-2xl z-50 flex flex-col overflow-hidden">
           <div className="p-2 border-b border-white/10 bg-navy-950/60">
             <div className="relative">
               <Search className="w-3.5 h-3.5 text-muted-foreground absolute left-2.5 top-2.5 pointer-events-none" />
@@ -95,7 +105,7 @@ export const MultiSelectFilter: React.FC<MultiSelectFilterProps> = ({
             </div>
           </div>
 
-          <div className="max-h-56 overflow-y-auto p-1.5 space-y-0.5 divide-y divide-white/5">
+          <div className="max-h-60 overflow-y-auto p-1.5 space-y-0.5 divide-y divide-white/5">
             {filteredOptions.length === 0 ? (
               <div className="py-4 text-center text-xs text-muted-foreground">
                 No hay resultados
@@ -114,7 +124,14 @@ export const MultiSelectFilter: React.FC<MultiSelectFilterProps> = ({
                         : "text-slate-300 hover:bg-white/5"
                     }`}
                   >
-                    <span className="truncate pr-2">{opt.name}</span>
+                    <div className="flex items-center gap-2 truncate pr-2">
+                      {showFlag && (
+                        <div className="shrink-0 flex items-center justify-center">
+                          <Bandera country={opt.country || opt.name} size="sm" />
+                        </div>
+                      )}
+                      <span className="truncate">{opt.name}</span>
+                    </div>
                     <div
                       className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 ${
                         isSelected
@@ -147,4 +164,3 @@ export const MultiSelectFilter: React.FC<MultiSelectFilterProps> = ({
     </div>
   );
 };
-

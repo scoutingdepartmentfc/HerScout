@@ -2,13 +2,191 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { isRetired } from "@/lib/utils";
 
-// In-memory cache to make repeated calls and filtering instantaneous (< 20ms)
-let cachedData: {
-  timestamp: number;
-  rows: any[];
-  sdLeagues: { leagueCountryByCode: Map<string, string>; leagueCountryByName: Map<string, string> };
-} | null = null;
 const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes cache
+const TREND_FROM_DATE = "2026-08-01";
+const PAGE = 1000;
+
+type BaseData = {
+  rows: any[];
+  leagueCountryByCode: Map<string, string>;
+  leagueCountryByName: Map<string, string>;
+  trendByPlayer: Map<string, "up" | "neutral" | "down">;
+};
+
+type ProcessedSeason = {
+  list: any[];
+  filters: {
+    teams: string[];
+    teamsDetailed: any[];
+    leagues: string[];
+    leaguesDetailed: any[];
+    seasons: string[];
+  };
+};
+
+// In-memory caches: raw DB data + fully processed list per season.
+// Each request then only filters/sorts in memory.
+let baseCache: { timestamp: number; data: BaseData } | null = null;
+let baseInflight: Promise<BaseData> | null = null;
+const processedCache = new Map<string, { timestamp: number; value: ProcessedSeason }>();
+
+function computeTrend(ratings: number[]): "up" | "neutral" | "down" {
+  const avg = ratings.reduce((acc, curr) => acc + curr, 0) / ratings.length;
+  if (ratings.length === 1) {
+    return ratings[0] >= 7.3 ? "up" : ratings[0] <= 5.8 ? "down" : "neutral";
+  }
+  const half = Math.max(1, Math.floor(ratings.length / 2));
+  const firstHalf = ratings.slice(0, half);
+  const secondHalf = ratings.slice(-half);
+  const firstAvg = firstHalf.reduce((a, b) => a + b, 0) / firstHalf.length;
+  const secondAvg = secondHalf.reduce((a, b) => a + b, 0) / secondHalf.length;
+  const diff = secondAvg - firstAvg;
+  if (diff >= 0.3 || avg >= 7.3) return "up";
+  if (diff <= -0.3 || avg <= 5.8) return "down";
+  return "neutral";
+}
+
+async function fetchTrends(db: any): Promise<Map<string, "up" | "neutral" | "down">> {
+  const trendByPlayer = new Map<string, "up" | "neutral" | "down">();
+  try {
+    const { count, error: countErr } = await db
+      .from("player_match_scores")
+      .select("player_id", { count: "exact", head: true })
+      .gte("match_date", TREND_FROM_DATE);
+    if (countErr) throw countErr;
+
+    const total = Math.min(count || 0, 50000);
+    const offsets: number[] = [];
+    for (let from = 0; from < total; from += PAGE) offsets.push(from);
+
+    // Fetch all pages in parallel (stable order: match_date, then player_id)
+    const results = await Promise.all(
+      offsets.map((from) =>
+        db
+          .from("player_match_scores")
+          .select("player_id, score_general, match_date")
+          .gte("match_date", TREND_FROM_DATE)
+          .order("match_date", { ascending: true })
+          .order("player_id", { ascending: true })
+          .range(from, from + PAGE - 1)
+      )
+    );
+
+    const playerMatchesMap = new Map<string, Array<{ date: string; score: number }>>();
+    for (const res of results as any[]) {
+      if (res.error) {
+        console.error("[TREND] Error fetching match scores:", res.error);
+        continue;
+      }
+      for (const row of res.data || []) {
+        if (row.score_general != null && !isNaN(Number(row.score_general))) {
+          const arr = playerMatchesMap.get(row.player_id) || [];
+          arr.push({ date: row.match_date, score: Number(row.score_general) });
+          playerMatchesMap.set(row.player_id, arr);
+        }
+      }
+    }
+
+    for (const [playerId, matches] of Array.from(playerMatchesMap.entries())) {
+      if (matches.length === 0) continue;
+      matches.sort((a, b) => String(a.date).localeCompare(String(b.date)));
+      trendByPlayer.set(playerId, computeTrend(matches.slice(-8).map((m) => m.score)));
+    }
+  } catch (trendErr) {
+    console.warn("Could not compute player trends:", trendErr);
+  }
+  return trendByPlayer;
+}
+
+async function loadBaseData(db: any): Promise<BaseData> {
+  const now = Date.now();
+  if (baseCache && now - baseCache.timestamp < CACHE_TTL_MS) return baseCache.data;
+  if (baseInflight) return baseInflight;
+
+  baseInflight = (async () => {
+    const selectStats = () =>
+      db.from("player_season_stats").select(`
+        player_id,
+        season_id,
+        seasons:season_id ( name, is_active, start_date ),
+        demarcacion,
+        grupo_demarcacion,
+        matches_played,
+        minutes_played,
+        starter_pct,
+        nota_global,
+        nota_ataque,
+        nota_construccion,
+        nota_defensa,
+        nota_balon_parado,
+        nota_disponibilidad,
+        score_general,
+        players:player_id (
+          id,
+          name,
+          match_name,
+          first_name,
+          last_name,
+          country,
+          birth_date,
+          photo_url,
+          primary_position,
+          grupo_demarcacion,
+          shirt_number,
+          height,
+          weight,
+          market_value,
+          fm_team_name, fm_team_badge_url, current_league_name, current_league_logo_url,
+          sd_league_code,
+          teams:current_team_id ( id, name, badge_url, league_name, league_logo_url ),
+          player_ea_ratings ( pace, physicality )
+        )
+      `);
+
+    const statsCountPromise = db
+      .from("player_season_stats")
+      .select("player_id", { count: "exact", head: true });
+
+    // Stats count, sd_leagues and trends all run in parallel
+    const [statsCountRes, sdLRes, trendByPlayer] = await Promise.all([
+      statsCountPromise,
+      db.from("sd_leagues").select("code, name, country"),
+      fetchTrends(db),
+    ]);
+
+    const totalStats = Math.max(statsCountRes?.count || 0, PAGE);
+    const offsets: number[] = [];
+    for (let from = 0; from < totalStats; from += PAGE) offsets.push(from);
+
+    const batchResults = await Promise.all(
+      offsets.map((from) => selectStats().order("player_id").order("season_id").range(from, from + PAGE - 1))
+    );
+
+    const rows: any[] = [];
+    for (const res of batchResults as any[]) {
+      if (res.error) throw res.error;
+      if (res.data) rows.push(...res.data);
+    }
+
+    const leagueCountryByCode = new Map<string, string>();
+    const leagueCountryByName = new Map<string, string>();
+    for (const item of sdLRes?.data || []) {
+      if (item.code && item.country) leagueCountryByCode.set(item.code, item.country);
+      if (item.name && item.country) leagueCountryByName.set(item.name.toLowerCase(), item.country);
+    }
+
+    const data: BaseData = { rows, leagueCountryByCode, leagueCountryByName, trendByPlayer };
+    baseCache = { timestamp: Date.now(), data };
+    processedCache.clear();
+    return data;
+  })();
+
+  try {
+    return await baseInflight;
+  } finally {
+    baseInflight = null;
+  }
+}
 
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);
@@ -46,80 +224,13 @@ export async function GET(req: NextRequest) {
     ];
 
     const now = Date.now();
-    let rows: any[] = [];
-    let leagueCountryByCode = new Map<string, string>();
-    let leagueCountryByName = new Map<string, string>();
-
-    if (cachedData && now - cachedData.timestamp < CACHE_TTL_MS) {
-      rows = cachedData.rows;
-      leagueCountryByCode = cachedData.sdLeagues.leagueCountryByCode;
-      leagueCountryByName = cachedData.sdLeagues.leagueCountryByName;
+    const base = await loadBaseData(db);
+    const cachedProcessed = processedCache.get(season);
+    let processed: ProcessedSeason;
+    if (cachedProcessed && cachedProcessed.timestamp === baseCache?.timestamp) {
+      processed = cachedProcessed.value;
     } else {
-      // Fetch stats with Promise.all in parallel batches of 1000
-      const selectStats = () =>
-        db.from("player_season_stats").select(`
-          player_id,
-          season_id,
-          seasons:season_id ( name, is_active, start_date ),
-          demarcacion,
-          grupo_demarcacion,
-          matches_played,
-          minutes_played,
-          starter_pct,
-          nota_global,
-          nota_ataque,
-          nota_construccion,
-          nota_defensa,
-          nota_balon_parado,
-          nota_disponibilidad,
-          score_general,
-          players:player_id (
-            id,
-            name,
-            match_name,
-            first_name,
-            last_name,
-            country,
-            birth_date,
-            photo_url,
-            primary_position,
-            grupo_demarcacion,
-            shirt_number,
-            height,
-            weight,
-            market_value,
-            fm_team_name, fm_team_badge_url, current_league_name, current_league_logo_url,
-            sd_league_code,
-            teams:current_team_id ( id, name, badge_url, league_name, league_logo_url ),
-            player_ea_ratings ( pace, physicality )
-          )
-        `);
-
-      // Launch batch queries in parallel
-      const batchPromises = [0, 1000, 2000, 3000, 4000, 5000].map((from) =>
-        selectStats().order("player_id").order("season_id").range(from, from + 999)
-      );
-
-      const [batchResults, sdLRes] = await Promise.all([
-        Promise.all(batchPromises),
-        db.from("sd_leagues").select("code, name, country"),
-      ]);
-
-      for (const res of batchResults) {
-        if (res.data) rows.push(...res.data);
-      }
-
-      for (const item of sdLRes?.data || []) {
-        if (item.code && item.country) leagueCountryByCode.set(item.code, item.country);
-        if (item.name && item.country) leagueCountryByName.set(item.name.toLowerCase(), item.country);
-      }
-
-      cachedData = {
-        timestamp: now,
-        rows,
-        sdLeagues: { leagueCountryByCode, leagueCountryByName },
-      };
-    }
+    const { rows, leagueCountryByCode, leagueCountryByName, trendByPlayer } = base;
 
     // Extract available season names from all rows for the filter dropdown
     const availableSeasons = Array.from(
@@ -135,7 +246,7 @@ export async function GET(req: NextRequest) {
       rowsByPlayer.set(r.player_id, arr);
     }
 
-    let list: any[] = [];
+    const list: any[] = [];
 
     if (season === "all") {
       // ACCUMULATED MODE (Default): Weighted average across all seasons
@@ -295,81 +406,25 @@ export async function GET(req: NextRequest) {
     const availableTeams = availableTeamsList.map((t) => t.name);
     const availableLeagues = availableLeaguesList.map((l) => l.name);
 
-    // Compute player trends for the last 3 months (Aug - Nov 2026 / latest matches)
-    // Directly query player_match_scores by match_date (which already has player_id, score_general and match_date!)
-    const evaluatedPeriod = "TREND (LAST 3M)";
-    try {
-      const recentScores: Array<{ player_id: string; score_general: number; match_date: string }> = [];
-      for (let from = 0; from < 25000; from += 1000) {
-        const { data, error } = await db
-          .from("player_match_scores")
-          .select("player_id, score_general, match_date")
-          .gte("match_date", "2026-08-01")
-          .order("match_date", { ascending: true })
-          .range(from, from + 999);
-
-        if (error) {
-          console.error("[TREND] Error fetching match scores:", error);
-          break;
-        }
-        if (data && data.length > 0) {
-          recentScores.push(...data);
-        }
-        if (!data || data.length < 1000) break;
-      }
-
-      console.log(`[TREND] Total player_match_scores fetched since 2026-08-01: ${recentScores.length}`);
-
-      // Group scores by player_id
-      const playerMatchesMap = new Map<string, Array<{ date: string; score: number }>>();
-      for (const row of recentScores) {
-        if (row.score_general != null && !isNaN(Number(row.score_general))) {
-          const arr = playerMatchesMap.get(row.player_id) || [];
-          arr.push({ date: row.match_date, score: Number(row.score_general) });
-          playerMatchesMap.set(row.player_id, arr);
-        }
-      }
-
-      console.log(`[TREND] Unique players with scores: ${playerMatchesMap.size}`);
-
-      // Calculate trend for each player in list across the 3 months
-      let withTrendCount = 0;
-      for (const p of list) {
-        const matches = playerMatchesMap.get(p.id);
-        if (!matches || matches.length === 0) {
-          p.trend = null;
-          continue;
-        }
-        withTrendCount++;
-        const sample = matches.slice(-8);
-        const ratings = sample.map((m) => m.score);
-        const avg = ratings.reduce((acc, curr) => acc + curr, 0) / ratings.length;
-
-        if (ratings.length === 1) {
-          p.trend = ratings[0] >= 7.3 ? "up" : ratings[0] <= 5.8 ? "down" : "neutral";
-        } else {
-          const half = Math.max(1, Math.floor(ratings.length / 2));
-          const firstHalf = ratings.slice(0, half);
-          const secondHalf = ratings.slice(-half);
-          const firstAvg = firstHalf.reduce((a, b) => a + b, 0) / firstHalf.length;
-          const secondAvg = secondHalf.reduce((a, b) => a + b, 0) / secondHalf.length;
-          const diff = secondAvg - firstAvg;
-
-          if (diff >= 0.3 || avg >= 7.3) {
-            p.trend = "up";
-          } else if (diff <= -0.3 || avg <= 5.8) {
-            p.trend = "down";
-          } else {
-            p.trend = "neutral";
-          }
-        }
-      }
-      console.log(`[TREND] Players in directory with trend calculated: ${withTrendCount}`);
-      const sampleTop = list.slice(0, 5).map((p: any) => ({ name: p.name, trend: p.trend }));
-      console.log("[TREND] Top 5 players trends:", sampleTop);
-    } catch (trendErr) {
-      console.warn("Could not compute player trends:", trendErr);
+    for (const p of list) {
+      p.trend = trendByPlayer.get(p.id) ?? null;
     }
+
+    processed = {
+      list,
+      filters: {
+        teams: availableTeams,
+        teamsDetailed: availableTeamsList,
+        leagues: availableLeagues,
+        leaguesDetailed: availableLeaguesList,
+        seasons: availableSeasons,
+      },
+    };
+    processedCache.set(season, { timestamp: baseCache?.timestamp ?? now, value: processed });
+    }
+
+    const evaluatedPeriod = "TREND (LAST 3M)";
+    let list = processed.list.slice();
 
     // Filters
     if (search) {
@@ -430,14 +485,14 @@ export async function GET(req: NextRequest) {
     const key: Record<string, string> = {
       nota_global: "notaGlobal",
       nota_ataque: "notaAtaque",
-      notaConstruccion: "notaConstruccion",
-      notaDefensa: "notaDefensa",
+      nota_construccion: "notaConstruccion",
+      nota_defensa: "notaDefensa",
       nota_balon_parado: "notaBalonParado",
-      notaDisponibilidad: "notaDisponibilidad",
+      nota_disponibilidad: "notaDisponibilidad",
       nota_fisico: "notaFisico",
       age: "birthDate",
     };
-    const field = key[validScores.includes(sortBy) || sortBy === "age" ? sortBy : "nota_global"];
+    const field = key[validScores.includes(sortBy) || sortBy === "nota_fisico" || sortBy === "age" ? sortBy : "nota_global"];
     list.sort((a: any, b: any) => {
       if (sortBy === "age") {
         // Higher birthDate = younger, lower birthDate = older
@@ -456,13 +511,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       players: list,
       evaluatedPeriod,
-      filters: {
-        teams: availableTeams,
-        teamsDetailed: availableTeamsList,
-        leagues: availableLeagues,
-        leaguesDetailed: availableLeaguesList,
-        seasons: availableSeasons,
-      },
+      filters: processed.filters,
+    }, {
+      headers: { "Cache-Control": "private, max-age=60, stale-while-revalidate=600" },
     });
   } catch (err: any) {
     console.error("[API_PLAYERS_ERROR]", err);

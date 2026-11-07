@@ -37,20 +37,24 @@ export const StadiumPitch: React.FC<StadiumPitchProps> = ({ children }) => {
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-36 h-36 sm:w-44 sm:h-44 rounded-full border-2 border-white/35" />
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-white/40" />
 
-          {/* Top Penalty Area (Opponent Box) */}
-          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-72 sm:w-80 h-28 border-b-2 border-x-2 border-white/35 rounded-b-md">
-            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-36 h-12 border-b-2 border-x-2 border-white/35 rounded-b-sm" />
-            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-2 h-2 rounded-full bg-white/40" />
+          {/* Top Penalty Area (Opponent Box) - Doble de grande */}
+          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[520px] max-w-[85%] h-52 border-b-2 border-x-2 border-white/35 rounded-b-xl">
+            {/* Goal area chica */}
+            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-64 h-24 border-b-2 border-x-2 border-white/35 rounded-b-md" />
+            {/* Punto de penalti */}
+            <div className="absolute bottom-8 left-1/2 -translate-x-1/2 w-2.5 h-2.5 rounded-full bg-white/50" />
             {/* Top Penalty Arc */}
-            <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 w-24 h-8 border-b-2 border-white/35 rounded-b-full" />
+            <div className="absolute -bottom-14 left-1/2 -translate-x-1/2 w-44 h-14 border-b-2 border-white/35 rounded-b-full" />
           </div>
 
-          {/* Bottom Penalty Area (Own Box) */}
-          <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-72 sm:w-80 h-28 border-t-2 border-x-2 border-white/35 rounded-t-md">
-            <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-36 h-12 border-t-2 border-x-2 border-white/35 rounded-t-sm" />
-            <div className="absolute top-4 left-1/2 -translate-x-1/2 w-2 h-2 rounded-full bg-white/40" />
+          {/* Bottom Penalty Area (Own Box) - Doble de grande */}
+          <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[520px] max-w-[85%] h-52 border-t-2 border-x-2 border-white/35 rounded-t-xl">
+            {/* Goal area chica */}
+            <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-64 h-24 border-t-2 border-x-2 border-white/35 rounded-t-md" />
+            {/* Punto de penalti */}
+            <div className="absolute top-8 left-1/2 -translate-x-1/2 w-2.5 h-2.5 rounded-full bg-white/50" />
             {/* Bottom Penalty Arc */}
-            <div className="absolute -top-8 left-1/2 -translate-x-1/2 w-24 h-8 border-t-2 border-white/35 rounded-t-full" />
+            <div className="absolute -top-14 left-1/2 -translate-x-1/2 w-44 h-14 border-t-2 border-white/35 rounded-t-full" />
           </div>
 
           {/* Corner arcs */}

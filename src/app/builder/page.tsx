@@ -36,10 +36,10 @@ const FORMATION_CONFIGS: Record<FormationKey, { name: string; lines: PositionSlo
       ],
       // Defense
       [
-        { role: "LB", category: "DEF", acceptedPositions: ["LB", "LWB", "Lateral Izquierdo", "Left-Back"] },
-        { role: "LCB", category: "DEF", acceptedPositions: ["CB", "Central Izquierdo", "Central Derecho", "Centre-Back", "Defensa"] },
-        { role: "RCB", category: "DEF", acceptedPositions: ["CB", "Central Derecho", "Central Izquierdo", "Centre-Back", "Defensa"] },
-        { role: "RB", category: "DEF", acceptedPositions: ["RB", "RWB", "Lateral Derecho", "Right-Back"] },
+        { role: "LB", category: "DEF", acceptedPositions: ["LB", "LWB", "Lateral Izquierdo", "Lateral", "Left-Back", "Left Wing-Back"] },
+        { role: "LCB", category: "DEF", acceptedPositions: ["CB", "LCB", "RCB", "Central", "Central Izquierdo", "Central Derecho", "Centrales", "Centre-Back", "Defensa"] },
+        { role: "RCB", category: "DEF", acceptedPositions: ["CB", "RCB", "LCB", "Central", "Central Derecho", "Central Izquierdo", "Centrales", "Centre-Back", "Defensa"] },
+        { role: "RB", category: "DEF", acceptedPositions: ["RB", "RWB", "Lateral Derecho", "Lateral", "Right-Back", "Right Wing-Back"] },
       ],
       // Goalkeeper
       [
@@ -55,19 +55,19 @@ const FORMATION_CONFIGS: Record<FormationKey, { name: string; lines: PositionSlo
         { role: "RS", category: "ATT", acceptedPositions: ["ST", "CF", "Delantero", "Delantera", "Striker"] },
       ],
       [
-        { role: "LM", category: "MID", acceptedPositions: ["LM", "LW", "Extremo Izquierdo", "Left Winger"] },
-        { role: "LCM", category: "MID", acceptedPositions: ["CM", "CDM", "Mediocentro"] },
-        { role: "RCM", category: "MID", acceptedPositions: ["CM", "CAM", "Mediocentro"] },
-        { role: "RM", category: "MID", acceptedPositions: ["RM", "RW", "Extremo Derecho", "Right Winger"] },
+        { role: "LM", category: "MID", acceptedPositions: ["LM", "LW", "Extremo Izquierdo", "Left Winger", "Interior"] },
+        { role: "LCM", category: "MID", acceptedPositions: ["CM", "CDM", "Mediocentro", "Central Midfield"] },
+        { role: "RCM", category: "MID", acceptedPositions: ["CM", "CAM", "Mediocentro", "Central Midfield"] },
+        { role: "RM", category: "MID", acceptedPositions: ["RM", "RW", "Extremo Derecho", "Right Winger", "Interior"] },
       ],
       [
-        { role: "LB", category: "DEF", acceptedPositions: ["LB", "Lateral Izquierdo", "Left-Back"] },
-        { role: "LCB", category: "DEF", acceptedPositions: ["CB", "Centre-Back", "Defensa"] },
-        { role: "RCB", category: "DEF", acceptedPositions: ["CB", "Centre-Back", "Defensa"] },
-        { role: "RB", category: "DEF", acceptedPositions: ["RB", "Lateral Derecho", "Right-Back"] },
+        { role: "LB", category: "DEF", acceptedPositions: ["LB", "LWB", "Lateral Izquierdo", "Lateral", "Left-Back"] },
+        { role: "LCB", category: "DEF", acceptedPositions: ["CB", "LCB", "RCB", "Central", "Central Izquierdo", "Central Derecho", "Centrales", "Centre-Back", "Defensa"] },
+        { role: "RCB", category: "DEF", acceptedPositions: ["CB", "RCB", "LCB", "Central", "Central Derecho", "Central Izquierdo", "Centrales", "Centre-Back", "Defensa"] },
+        { role: "RB", category: "DEF", acceptedPositions: ["RB", "RWB", "Lateral Derecho", "Lateral", "Right-Back"] },
       ],
       [
-        { role: "GK", category: "GK", acceptedPositions: ["GK", "Portero"] },
+        { role: "GK", category: "GK", acceptedPositions: ["GK", "Portero", "Goalkeeper"] },
       ],
     ],
   },
@@ -75,25 +75,25 @@ const FORMATION_CONFIGS: Record<FormationKey, { name: string; lines: PositionSlo
     name: "4-2-3-1",
     lines: [
       [
-        { role: "ST", category: "ATT", acceptedPositions: ["ST", "CF", "Delantero", "Delantera"] },
+        { role: "ST", category: "ATT", acceptedPositions: ["ST", "CF", "Delantero", "Delantera", "Striker"] },
       ],
       [
-        { role: "LAM", category: "ATT", acceptedPositions: ["LW", "LM", "CAM"] },
-        { role: "CAM", category: "MID", acceptedPositions: ["CAM", "Mediapunta", "CM"] },
-        { role: "RAM", category: "ATT", acceptedPositions: ["RW", "RM", "CAM"] },
+        { role: "LAM", category: "ATT", acceptedPositions: ["LW", "LM", "CAM", "Extremo Izquierdo"] },
+        { role: "CAM", category: "MID", acceptedPositions: ["CAM", "Mediapunta", "CM", "Attacking Midfield"] },
+        { role: "RAM", category: "ATT", acceptedPositions: ["RW", "RM", "CAM", "Extremo Derecho"] },
       ],
       [
-        { role: "LDM", category: "MID", acceptedPositions: ["CDM", "CM", "Mediocentro Defensivo"] },
-        { role: "RDM", category: "MID", acceptedPositions: ["CDM", "CM", "Mediocentro"] },
+        { role: "LDM", category: "MID", acceptedPositions: ["CDM", "CM", "Mediocentro Defensivo", "Pivote", "Defensive Midfield"] },
+        { role: "RDM", category: "MID", acceptedPositions: ["CDM", "CM", "Mediocentro Defensivo", "Pivote", "Defensive Midfield"] },
       ],
       [
-        { role: "LB", category: "DEF", acceptedPositions: ["LB", "Lateral Izquierdo"] },
-        { role: "LCB", category: "DEF", acceptedPositions: ["CB", "Centre-Back"] },
-        { role: "RCB", category: "DEF", acceptedPositions: ["CB", "Centre-Back"] },
-        { role: "RB", category: "DEF", acceptedPositions: ["RB", "Lateral Derecho"] },
+        { role: "LB", category: "DEF", acceptedPositions: ["LB", "LWB", "Lateral Izquierdo", "Lateral", "Left-Back"] },
+        { role: "LCB", category: "DEF", acceptedPositions: ["CB", "LCB", "RCB", "Central", "Central Izquierdo", "Central Derecho", "Centrales", "Centre-Back", "Defensa"] },
+        { role: "RCB", category: "DEF", acceptedPositions: ["CB", "RCB", "LCB", "Central", "Central Derecho", "Central Izquierdo", "Centrales", "Centre-Back", "Defensa"] },
+        { role: "RB", category: "DEF", acceptedPositions: ["RB", "RWB", "Lateral Derecho", "Lateral", "Right-Back"] },
       ],
       [
-        { role: "GK", category: "GK", acceptedPositions: ["GK", "Portero"] },
+        { role: "GK", category: "GK", acceptedPositions: ["GK", "Portero", "Goalkeeper"] },
       ],
     ],
   },
@@ -101,23 +101,23 @@ const FORMATION_CONFIGS: Record<FormationKey, { name: string; lines: PositionSlo
     name: "3-5-2",
     lines: [
       [
-        { role: "LS", category: "ATT", acceptedPositions: ["ST", "CF", "Delantero"] },
-        { role: "RS", category: "ATT", acceptedPositions: ["ST", "CF", "Delantera"] },
+        { role: "LS", category: "ATT", acceptedPositions: ["ST", "CF", "Delantero", "Delantera"] },
+        { role: "RS", category: "ATT", acceptedPositions: ["ST", "CF", "Delantero", "Delantera"] },
       ],
       [
-        { role: "LWB", category: "MID", acceptedPositions: ["LM", "LB", "LWB"] },
-        { role: "LCM", category: "MID", acceptedPositions: ["CM", "CAM"] },
-        { role: "CDM", category: "MID", acceptedPositions: ["CDM", "CM"] },
-        { role: "RCM", category: "MID", acceptedPositions: ["CM", "CAM"] },
-        { role: "RWB", category: "MID", acceptedPositions: ["RM", "RB", "RWB"] },
+        { role: "LWB", category: "MID", acceptedPositions: ["LM", "LB", "LWB", "Carrilero Izquierdo"] },
+        { role: "LCM", category: "MID", acceptedPositions: ["CM", "CAM", "Mediocentro"] },
+        { role: "CDM", category: "MID", acceptedPositions: ["CDM", "CM", "Mediocentro Defensivo", "Pivote"] },
+        { role: "RCM", category: "MID", acceptedPositions: ["CM", "CAM", "Mediocentro"] },
+        { role: "RWB", category: "MID", acceptedPositions: ["RM", "RB", "RWB", "Carrilero Derecho"] },
       ],
       [
-        { role: "LCB", category: "DEF", acceptedPositions: ["CB", "Centre-Back"] },
-        { role: "CB", category: "DEF", acceptedPositions: ["CB", "Centre-Back"] },
-        { role: "RCB", category: "DEF", acceptedPositions: ["CB", "Centre-Back"] },
+        { role: "LCB", category: "DEF", acceptedPositions: ["CB", "LCB", "RCB", "Central", "Central Izquierdo", "Centrales", "Centre-Back", "Defensa"] },
+        { role: "CB", category: "DEF", acceptedPositions: ["CB", "Central", "Central Izquierdo", "Central Derecho", "Centrales", "Centre-Back", "Defensa"] },
+        { role: "RCB", category: "DEF", acceptedPositions: ["CB", "RCB", "LCB", "Central", "Central Derecho", "Centrales", "Centre-Back", "Defensa"] },
       ],
       [
-        { role: "GK", category: "GK", acceptedPositions: ["GK", "Portero"] },
+        { role: "GK", category: "GK", acceptedPositions: ["GK", "Portero", "Goalkeeper"] },
       ],
     ],
   },
@@ -125,23 +125,23 @@ const FORMATION_CONFIGS: Record<FormationKey, { name: string; lines: PositionSlo
     name: "3-4-3",
     lines: [
       [
-        { role: "LW", category: "ATT", acceptedPositions: ["LW", "LM"] },
-        { role: "ST", category: "ATT", acceptedPositions: ["ST", "CF"] },
-        { role: "RW", category: "ATT", acceptedPositions: ["RW", "RM"] },
+        { role: "LW", category: "ATT", acceptedPositions: ["LW", "LM", "Extremo Izquierdo"] },
+        { role: "ST", category: "ATT", acceptedPositions: ["ST", "CF", "Delantero", "Delantera"] },
+        { role: "RW", category: "ATT", acceptedPositions: ["RW", "RM", "Extremo Derecho"] },
       ],
       [
-        { role: "LM", category: "MID", acceptedPositions: ["LM", "LW"] },
-        { role: "LCM", category: "MID", acceptedPositions: ["CM", "CDM"] },
-        { role: "RCM", category: "MID", acceptedPositions: ["CM", "CAM"] },
-        { role: "RM", category: "MID", acceptedPositions: ["RM", "RW"] },
+        { role: "LM", category: "MID", acceptedPositions: ["LM", "LW", "Extremo Izquierdo"] },
+        { role: "LCM", category: "MID", acceptedPositions: ["CM", "CDM", "Mediocentro"] },
+        { role: "RCM", category: "MID", acceptedPositions: ["CM", "CAM", "Mediocentro"] },
+        { role: "RM", category: "MID", acceptedPositions: ["RM", "RW", "Extremo Derecho"] },
       ],
       [
-        { role: "LCB", category: "DEF", acceptedPositions: ["CB"] },
-        { role: "CB", category: "DEF", acceptedPositions: ["CB"] },
-        { role: "RCB", category: "DEF", acceptedPositions: ["CB"] },
+        { role: "LCB", category: "DEF", acceptedPositions: ["CB", "LCB", "RCB", "Central", "Central Izquierdo", "Centrales", "Centre-Back", "Defensa"] },
+        { role: "CB", category: "DEF", acceptedPositions: ["CB", "Central", "Central Izquierdo", "Central Derecho", "Centrales", "Centre-Back", "Defensa"] },
+        { role: "RCB", category: "DEF", acceptedPositions: ["CB", "RCB", "LCB", "Central", "Central Derecho", "Centrales", "Centre-Back", "Defensa"] },
       ],
       [
-        { role: "GK", category: "GK", acceptedPositions: ["GK"] },
+        { role: "GK", category: "GK", acceptedPositions: ["GK", "Portero", "Goalkeeper"] },
       ],
     ],
   },
@@ -149,23 +149,23 @@ const FORMATION_CONFIGS: Record<FormationKey, { name: string; lines: PositionSlo
     name: "5-3-2",
     lines: [
       [
-        { role: "LS", category: "ATT", acceptedPositions: ["ST", "CF"] },
-        { role: "RS", category: "ATT", acceptedPositions: ["ST", "CF"] },
+        { role: "LS", category: "ATT", acceptedPositions: ["ST", "CF", "Delantero", "Delantera"] },
+        { role: "RS", category: "ATT", acceptedPositions: ["ST", "CF", "Delantero", "Delantera"] },
       ],
       [
-        { role: "LCM", category: "MID", acceptedPositions: ["CM", "CAM"] },
-        { role: "CDM", category: "MID", acceptedPositions: ["CDM", "CM"] },
-        { role: "RCM", category: "MID", acceptedPositions: ["CM", "CAM"] },
+        { role: "LCM", category: "MID", acceptedPositions: ["CM", "CAM", "Mediocentro"] },
+        { role: "CDM", category: "MID", acceptedPositions: ["CDM", "CM", "Mediocentro Defensivo", "Pivote"] },
+        { role: "RCM", category: "MID", acceptedPositions: ["CM", "CAM", "Mediocentro"] },
       ],
       [
-        { role: "LWB", category: "DEF", acceptedPositions: ["LB", "LWB", "LM"] },
-        { role: "LCB", category: "DEF", acceptedPositions: ["CB"] },
-        { role: "CB", category: "DEF", acceptedPositions: ["CB"] },
-        { role: "RCB", category: "DEF", acceptedPositions: ["CB"] },
-        { role: "RWB", category: "DEF", acceptedPositions: ["RB", "RWB", "RM"] },
+        { role: "LWB", category: "DEF", acceptedPositions: ["LB", "LWB", "LM", "Lateral Izquierdo", "Carrilero Izquierdo"] },
+        { role: "LCB", category: "DEF", acceptedPositions: ["CB", "LCB", "RCB", "Central", "Central Izquierdo", "Centrales", "Centre-Back", "Defensa"] },
+        { role: "CB", category: "DEF", acceptedPositions: ["CB", "Central", "Central Izquierdo", "Central Derecho", "Centrales", "Centre-Back", "Defensa"] },
+        { role: "RCB", category: "DEF", acceptedPositions: ["CB", "RCB", "LCB", "Central", "Central Derecho", "Centrales", "Centre-Back", "Defensa"] },
+        { role: "RWB", category: "DEF", acceptedPositions: ["RB", "RWB", "RM", "Lateral Derecho", "Carrilero Derecho"] },
       ],
       [
-        { role: "GK", category: "GK", acceptedPositions: ["GK"] },
+        { role: "GK", category: "GK", acceptedPositions: ["GK", "Portero", "Goalkeeper"] },
       ],
     ],
   },
@@ -316,8 +316,8 @@ function BuilderContent() {
 
         // Fallback by general category if specific match fails
         if (!matchesPosition) {
-          if (slot.category === "GK" && (pPos.includes("GK") || pPos.includes("PORT"))) return true;
-          if (slot.category === "DEF" && (pDem.includes("DEF") || pPos.includes("CB") || pPos.includes("LB") || pPos.includes("RB"))) return true;
+          if (slot.category === "GK" && (pPos.includes("GK") || pPos.includes("PORT") || pDem.includes("PORT"))) return true;
+          if (slot.category === "DEF" && (pDem.includes("DEF") || pDem.includes("CENTRAL") || pDem.includes("LATERAL") || pPos.includes("CB") || pPos.includes("LB") || pPos.includes("RB") || pPos.includes("CENTRAL"))) return true;
           if (slot.category === "MID" && (pDem.includes("MED") || pDem.includes("MID") || pPos.includes("CM") || pPos.includes("CAM") || pPos.includes("CDM"))) return true;
           if (slot.category === "ATT" && (pDem.includes("DEL") || pDem.includes("ATT") || pPos.includes("ST") || pPos.includes("RW") || pPos.includes("LW") || pPos.includes("CF"))) return true;
         }

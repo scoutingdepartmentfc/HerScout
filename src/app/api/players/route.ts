@@ -2,6 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { isRetired } from "@/lib/utils";
 
+// In-memory cache to make repeated calls and filtering instantaneous (< 20ms)
+let cachedData: {
+  timestamp: number;
+  rows: any[];
+  sdLeagues: { leagueCountryByCode: Map<string, string>; leagueCountryByName: Map<string, string> };
+} | null = null;
+const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes cache
+
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const search = url.searchParams.get("search") || "";
@@ -37,65 +45,80 @@ export async function GET(req: NextRequest) {
       "nota_fisico",
     ];
 
-    // Read all rows from player_season_stats
-    const selectStats = () =>
-      db.from("player_season_stats").select(`
-        player_id,
-        season_id,
-        seasons:season_id ( name, is_active, start_date ),
-        demarcacion,
-        grupo_demarcacion,
-        matches_played,
-        minutes_played,
-        starter_pct,
-        nota_global,
-        nota_ataque,
-        nota_construccion,
-        nota_defensa,
-        nota_balon_parado,
-        nota_disponibilidad,
-        score_general,
-        players:player_id (
-          id,
-          name,
-          match_name,
-          first_name,
-          last_name,
-          country,
-          birth_date,
-          photo_url,
-          primary_position,
+    const now = Date.now();
+    let rows: any[] = [];
+    let leagueCountryByCode = new Map<string, string>();
+    let leagueCountryByName = new Map<string, string>();
+
+    if (cachedData && now - cachedData.timestamp < CACHE_TTL_MS) {
+      rows = cachedData.rows;
+      leagueCountryByCode = cachedData.sdLeagues.leagueCountryByCode;
+      leagueCountryByName = cachedData.sdLeagues.leagueCountryByName;
+    } else {
+      // Fetch stats with Promise.all in parallel batches of 1000
+      const selectStats = () =>
+        db.from("player_season_stats").select(`
+          player_id,
+          season_id,
+          seasons:season_id ( name, is_active, start_date ),
+          demarcacion,
           grupo_demarcacion,
-          shirt_number,
-          height,
-          weight,
-          market_value,
-          fm_team_name, fm_team_badge_url, current_league_name, current_league_logo_url,
-          sd_league_code,
-          teams:current_team_id ( id, name, badge_url, league_name, league_logo_url ),
-          player_ea_ratings ( pace, physicality )
-        )
-      `);
+          matches_played,
+          minutes_played,
+          starter_pct,
+          nota_global,
+          nota_ataque,
+          nota_construccion,
+          nota_defensa,
+          nota_balon_parado,
+          nota_disponibilidad,
+          score_general,
+          players:player_id (
+            id,
+            name,
+            match_name,
+            first_name,
+            last_name,
+            country,
+            birth_date,
+            photo_url,
+            primary_position,
+            grupo_demarcacion,
+            shirt_number,
+            height,
+            weight,
+            market_value,
+            fm_team_name, fm_team_badge_url, current_league_name, current_league_logo_url,
+            sd_league_code,
+            teams:current_team_id ( id, name, badge_url, league_name, league_logo_url ),
+            player_ea_ratings ( pace, physicality )
+          )
+        `);
 
-    const rows: any[] = [];
-    for (let from = 0; ; from += 1000) {
-      const { data, error } = await selectStats().order("player_id").order("season_id").range(from, from + 999);
-      if (error) throw error;
-      rows.push(...(data || []));
-      if (!data || data.length < 1000) break;
-    }
+      // Launch batch queries in parallel
+      const batchPromises = [0, 1000, 2000, 3000, 4000, 5000].map((from) =>
+        selectStats().order("player_id").order("season_id").range(from, from + 999)
+      );
 
-    // Fetch sd_leagues country mapping
-    const leagueCountryByCode = new Map<string, string>();
-    const leagueCountryByName = new Map<string, string>();
-    try {
-      const { data: sdL } = await db.from("sd_leagues").select("code, name, country");
-      for (const item of sdL || []) {
+      const [batchResults, sdLRes] = await Promise.all([
+        Promise.all(batchPromises),
+        db.from("sd_leagues").select("code, name, country"),
+      ]);
+
+      for (const res of batchResults) {
+        if (res.data) rows.push(...res.data);
+      }
+
+      for (const item of sdLRes?.data || []) {
         if (item.code && item.country) leagueCountryByCode.set(item.code, item.country);
         if (item.name && item.country) leagueCountryByName.set(item.name.toLowerCase(), item.country);
       }
-    } catch {
-      // sd_leagues optional
+
+      cachedData = {
+        timestamp: now,
+        rows,
+        sdLeagues: { leagueCountryByCode, leagueCountryByName },
+      };
     }
 
     // Extract available season names from all rows for the filter dropdown
@@ -389,7 +412,6 @@ export async function GET(req: NextRequest) {
     }
 
     // Age filter (based on birthDate)
-    const now = Date.now();
     if (minAge != null || maxAge != null) {
       list = list.filter((p: any) => {
         if (!p.birthDate) return false;
@@ -443,6 +465,7 @@ export async function GET(req: NextRequest) {
       },
     });
   } catch (err: any) {
+    console.error("[API_PLAYERS_ERROR]", err);
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }

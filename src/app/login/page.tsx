@@ -6,7 +6,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { useThemeContext } from "@/context/ThemeContext";
-import { Lock, Mail, ShieldAlert, Eye, EyeOff } from "lucide-react";
+import { Lock, Mail, Eye, EyeOff } from "lucide-react";
 import { LoginBackground } from "@/components/login/ScoutingBackground";
 
 function LoginForm() {
@@ -57,8 +57,12 @@ function LoginForm() {
 
             {/* Header */}
             <div className="flex flex-col items-center text-center mb-6">
-              <div className="h-12 w-12 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center text-sky-400 backdrop-blur-sm shadow-[0_0_20px_rgba(56,189,248,0.2)] mb-3">
-                <ShieldAlert className="w-6 h-6 text-sky-400" />
+              <div className="h-16 w-16 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center p-2 backdrop-blur-sm shadow-[0_0_20px_rgba(56,189,248,0.2)] mb-3 overflow-hidden">
+                <img
+                  src="/logo1.png"
+                  alt="SPONDA"
+                  className="w-full h-full object-contain filter drop-shadow-md"
+                />
               </div>
               <h1 className="text-xl font-black tracking-tight text-white drop-shadow-md">
                 SPONDA <span className="text-sky-300 text-xs font-semibold px-2 py-0.5 rounded-full bg-white/15 border border-white/25 ml-1">PRO</span>

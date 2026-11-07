@@ -14,6 +14,7 @@ import {
   Shield,
   ChevronLeft,
   ChevronRight,
+  Trophy,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -35,6 +36,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const navigation = [
     { name: "The Hub", href: "/hub", icon: LayoutDashboard },
     { name: "Player Database", href: "/players", icon: Users },
+    { name: "11 Builder", href: "/builder", icon: Trophy },
     { name: "Reports & Analysis", href: "/reports", icon: FileText },
     { name: "Matches", href: "/matches", icon: Calendar },
     { name: "Watchlist", href: "/watchlist", icon: Bookmark },

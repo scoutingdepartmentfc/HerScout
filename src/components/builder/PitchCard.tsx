@@ -3,6 +3,7 @@
 import React from "react";
 import { Bandera } from "@/components/scouting/Bandera";
 import { EscudoEquipo } from "@/components/scouting/EscudoEquipo";
+import { getClubTheme } from "@/lib/clubThemes";
 
 export interface PitchCardPlayer {
   id: string;
@@ -35,92 +36,6 @@ interface PitchCardProps {
   onClick?: () => void;
 }
 
-const getClubColors = (name?: string) => {
-  const n = (name || "").toLowerCase();
-  if (n.includes("barcelona") || n.includes("barça")) {
-    return {
-      bg: "linear-gradient(135deg, #004d98 0%, #154284 35%, #7a1c32 70%, #a50044 100%)",
-      textLight: true,
-    };
-  }
-  if (n.includes("chelsea")) {
-    return {
-      bg: "linear-gradient(135deg, #034694 0%, #001f5c 50%, #034694 100%)",
-      textLight: true,
-    };
-  }
-  if (n.includes("arsenal")) {
-    return {
-      bg: "linear-gradient(135deg, #db0007 0%, #9c0004 50%, #023474 100%)",
-      textLight: true,
-    };
-  }
-  if (n.includes("real madrid")) {
-    return {
-      bg: "linear-gradient(135deg, #ffffff 0%, #edf1f7 35%, #00266b 85%, #001438 100%)",
-      textLight: false,
-    };
-  }
-  if (n.includes("atlético") || n.includes("atletico")) {
-    return {
-      bg: "linear-gradient(135deg, #cb3524 0%, #ffffff 45%, #0c2340 100%)",
-      textLight: true,
-    };
-  }
-  if (n.includes("manchester city") || n.includes("man city")) {
-    return {
-      bg: "linear-gradient(135deg, #6cabdd 0%, #4682b4 50%, #1c2c5b 100%)",
-      textLight: true,
-    };
-  }
-  if (n.includes("manchester united") || n.includes("man utd")) {
-    return {
-      bg: "linear-gradient(135deg, #c70101 0%, #7e0000 50%, #000000 100%)",
-      textLight: true,
-    };
-  }
-  if (n.includes("sevilla")) {
-    return {
-      bg: "linear-gradient(135deg, #ffffff 0%, #f4f4f4 40%, #d4001f 85%, #8f0015 100%)",
-      textLight: false,
-    };
-  }
-  if (n.includes("real sociedad")) {
-    return {
-      bg: "linear-gradient(135deg, #004d98 0%, #ffffff 50%, #004d98 100%)",
-      textLight: true,
-    };
-  }
-  if (n.includes("valencia")) {
-    return {
-      bg: "linear-gradient(135deg, #ffffff 0%, #f8f8f8 40%, #ee7c00 70%, #000000 100%)",
-      textLight: false,
-    };
-  }
-  if (n.includes("bayern")) {
-    return {
-      bg: "linear-gradient(135deg, #dc052d 0%, #a00320 50%, #0066b2 100%)",
-      textLight: true,
-    };
-  }
-  if (n.includes("lyon")) {
-    return {
-      bg: "linear-gradient(135deg, #1b3866 0%, #002244 50%, #da291c 100%)",
-      textLight: true,
-    };
-  }
-  // Dynamic fallback based on club name hash for consistent custom club colors
-  let hash = 0;
-  const str = name || "Club";
-  for (let i = 0; i < str.length; i++) hash = str.charCodeAt(i) + ((hash << 5) - hash);
-  const h1 = Math.abs(hash) % 360;
-  const h2 = (h1 + 45) % 360;
-  return {
-    bg: `linear-gradient(135deg, hsl(${h1}, 75%, 32%) 0%, hsl(${h1}, 80%, 18%) 50%, hsl(${h2}, 70%, 12%) 100%)`,
-    textLight: true,
-  };
-};
-
 export const PitchCard: React.FC<PitchCardProps> = ({ player, assignedRole, onClick }) => {
   const rawScore = player.notaGlobal ?? player.score_general;
   const ovr =
@@ -130,7 +45,7 @@ export const PitchCard: React.FC<PitchCardProps> = ({ player, assignedRole, onCl
         : Math.min(99, Math.max(1, Math.round(rawScore * 10)))
       : 75;
 
-  const clubTheme = getClubColors(player.teamName);
+  const clubTheme = getClubTheme(player.teamName);
 
   const cardClipPath =
     "polygon(0% 12%, 8% 4%, 22% 1.5%, 50% 0%, 78% 1.5%, 92% 4%, 100% 12%, 100% 92%, 92% 98.5%, 78% 100%, 22% 100%, 8% 98.5%, 0% 92%)";

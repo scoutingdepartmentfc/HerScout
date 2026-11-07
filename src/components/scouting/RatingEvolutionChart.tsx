@@ -281,51 +281,68 @@ export const RatingEvolutionChart: React.FC<RatingEvolutionChartProps> = ({
         </div>
       </CardHeader>
 
-      <CardContent className="p-4 sm:p-5 relative">
+      <CardContent className="p-4 sm:p-5 relative overflow-visible">
         {/* Interactive Hover Card (Floating HUD) */}
-        {hoveredPoint && (
-          <div
-            className="absolute z-30 pointer-events-none -translate-x-1/2 -translate-y-full transition-all duration-75"
-            style={{
-              left: `${(hoveredPoint.x / width) * 100}%`,
-              top: `${(hoveredPoint.y / height) * 100 - 10}px`,
-            }}
-          >
-            <div className="bg-[#0b1329]/95 border border-emerald-500/40 rounded-xl p-2.5 shadow-[0_8px_20px_rgba(0,0,0,0.7)] backdrop-blur-md min-w-[170px] text-xs space-y-1">
-              <div className="flex items-center justify-between gap-2 border-b border-white/10 pb-1">
-                <span className="font-mono text-[10px] text-muted-foreground">
-                  {new Date(hoveredPoint.date).toLocaleDateString("en-GB", {
-                    day: "numeric",
-                    month: "short",
-                    year: "numeric",
-                  })}
-                </span>
-                <span className="font-mono font-black text-emerald-400 text-sm px-1.5 py-0.2 rounded bg-emerald-500/15">
-                  {hoveredPoint.ratingNum.toFixed(1)}
-                </span>
-              </div>
-              <div className="flex items-center gap-1.5 pt-0.5">
-                <EscudoEquipo
-                  teamId={hoveredPoint.opponent?.id}
-                  badgeUrl={hoveredPoint.opponent?.badgeUrl}
-                  name={hoveredPoint.opponent?.name}
-                  size={16}
-                />
-                <span className="font-medium text-white truncate text-[11px]">
-                  {hoveredPoint.isHome ? "vs" : "@"} {hoveredPoint.opponent?.name || "Opponent"}
-                </span>
-              </div>
-              {(hoveredPoint.goalsFor != null || hoveredPoint.minutes != null) && (
-                <div className="flex items-center justify-between text-[10px] text-slate-400 pt-0.5 font-mono">
-                  <span>
-                    Score: {hoveredPoint.goalsFor ?? 0} - {hoveredPoint.goalsAgainst ?? 0}
+        {hoveredPoint && (() => {
+          const xPct = (hoveredPoint.x / width) * 100;
+          // Si está a la derecha del 80%, alinear hacia la izquierda para que nunca se desborde o corte
+          // Si está a la izquierda del 20%, alinear hacia la derecha
+          // En medio, centrado normal
+          let transformClass = "-translate-x-1/2 -translate-y-full";
+          let styleLeft = `${xPct}%`;
+
+          if (xPct > 80) {
+            transformClass = "-translate-x-full -translate-y-full";
+            styleLeft = `min(${xPct}%, 98%)`;
+          } else if (xPct < 20) {
+            transformClass = "translate-x-0 -translate-y-full";
+            styleLeft = `max(${xPct}%, 2%)`;
+          }
+
+          return (
+            <div
+              className={`absolute z-50 pointer-events-none ${transformClass} transition-all duration-75`}
+              style={{
+                left: styleLeft,
+                top: `${(hoveredPoint.y / height) * 100 - 12}px`,
+              }}
+            >
+              <div className="bg-[#0b1329]/95 border border-emerald-500/50 rounded-xl p-2.5 shadow-[0_12px_28px_rgba(0,0,0,0.85)] backdrop-blur-md min-w-[175px] max-w-[220px] text-xs space-y-1">
+                <div className="flex items-center justify-between gap-2 border-b border-white/10 pb-1">
+                  <span className="font-mono text-[10px] text-muted-foreground whitespace-nowrap">
+                    {new Date(hoveredPoint.date).toLocaleDateString("en-GB", {
+                      day: "numeric",
+                      month: "short",
+                      year: "numeric",
+                    })}
                   </span>
-                  <span>{hoveredPoint.minutes ?? 0}&apos; played</span>
+                  <span className="font-mono font-black text-emerald-400 text-sm px-1.5 py-0.2 rounded bg-emerald-500/15 shrink-0">
+                    {hoveredPoint.ratingNum.toFixed(1)}
+                  </span>
                 </div>
-              )}
+                <div className="flex items-center gap-1.5 pt-0.5">
+                  <EscudoEquipo
+                    teamId={hoveredPoint.opponent?.id}
+                    badgeUrl={hoveredPoint.opponent?.badgeUrl}
+                    name={hoveredPoint.opponent?.name}
+                    size={16}
+                  />
+                  <span className="font-medium text-white truncate text-[11px]" title={hoveredPoint.opponent?.name}>
+                    {hoveredPoint.isHome ? "vs" : "@"} {hoveredPoint.opponent?.name || "Opponent"}
+                  </span>
+                </div>
+                {(hoveredPoint.goalsFor != null || hoveredPoint.minutes != null) && (
+                  <div className="flex items-center justify-between text-[10px] text-slate-400 pt-0.5 font-mono">
+                    <span>
+                      Score: {hoveredPoint.goalsFor ?? 0} - {hoveredPoint.goalsAgainst ?? 0}
+                    </span>
+                    <span>{hoveredPoint.minutes ?? 0}&apos; played</span>
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Modern Vector SVG Curve */}
         <div className="w-full overflow-hidden">

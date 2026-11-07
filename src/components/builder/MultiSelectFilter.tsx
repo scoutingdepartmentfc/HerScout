@@ -9,6 +9,7 @@ export interface FilterOption {
   name: string;
   country?: string | null;
   badgeUrl?: string | null;
+  count?: number;
 }
 
 interface MultiSelectFilterProps {
@@ -18,6 +19,7 @@ interface MultiSelectFilterProps {
   selectedIds: string[];
   onChange: (ids: string[]) => void;
   showFlag?: boolean;
+  compact?: boolean;
 }
 
 export const MultiSelectFilter: React.FC<MultiSelectFilterProps> = ({
@@ -27,6 +29,7 @@ export const MultiSelectFilter: React.FC<MultiSelectFilterProps> = ({
   selectedIds,
   onChange,
   showFlag = false,
+  compact = false,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -56,9 +59,11 @@ export const MultiSelectFilter: React.FC<MultiSelectFilterProps> = ({
 
   return (
     <div className="relative" ref={dropdownRef}>
-      <label className="text-[10px] font-semibold text-slate-300 uppercase tracking-wider block mb-1">
-        {label}
-      </label>
+      {!compact && (
+        <label className="text-[10px] font-semibold text-slate-300 uppercase tracking-wider block mb-1">
+          {label}
+        </label>
+      )}
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
@@ -68,7 +73,13 @@ export const MultiSelectFilter: React.FC<MultiSelectFilterProps> = ({
           {selectedIds.length === 0 ? (
             <span className="text-muted-foreground">{placeholder}</span>
           ) : selectedIds.length === 1 ? (
-            <span className="text-emerald-400 font-semibold">{selectedIds[0]}</span>
+            <span className="text-emerald-400 font-semibold inline-flex items-center gap-1.5">
+              {showFlag && (() => {
+                const o = options.find((x) => x.id === selectedIds[0]);
+                return o?.country ? <Bandera country={o.country} size="xs" /> : null;
+              })()}
+              {selectedIds[0]}
+            </span>
           ) : (
             <span className="text-emerald-400 font-semibold">{selectedIds.length} seleccionados</span>
           )}
@@ -126,11 +137,16 @@ export const MultiSelectFilter: React.FC<MultiSelectFilterProps> = ({
                   >
                     <div className="flex items-center gap-2 truncate pr-2">
                       {showFlag && (
-                        <div className="shrink-0 flex items-center justify-center">
-                          <Bandera country={opt.country || opt.name} size="sm" />
+                        <div className="shrink-0 w-5 flex items-center justify-center">
+                          {opt.country ? <Bandera country={opt.country} size="sm" /> : <span className="w-5 h-3.5 rounded-sm bg-white/10" />}
                         </div>
                       )}
+                      {opt.badgeUrl && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={opt.badgeUrl} alt="" className="w-4 h-4 object-contain shrink-0" loading="lazy" />
+                      )}
                       <span className="truncate">{opt.name}</span>
+                      {opt.count != null && <span className="text-[10px] text-slate-500 tabular-nums">{opt.count}</span>}
                     </div>
                     <div
                       className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 ${

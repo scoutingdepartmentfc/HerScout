@@ -76,3 +76,4 @@ export const MinMaxSlider: React.FC<MinMaxSliderProps> = ({
     </div>
   );
 };
+

@@ -2,6 +2,8 @@ import React from "react";
 import { Bandera } from "./Bandera";
 import { EscudoEquipo } from "./EscudoEquipo";
 
+import { getClubTheme } from "@/lib/clubThemes";
+
 export type TrendEvolution = "up" | "neutral" | "down" | null;
 
 export interface CromoPlayerProps {
@@ -93,106 +95,7 @@ export const CromoJugador: React.FC<CromoPlayerProps> = ({
     ? (rawScore > 10 ? Math.min(99, Math.max(1, Math.round(rawScore))) : Math.min(99, Math.max(1, Math.round(rawScore * 10))))
     : 75;
 
-  const getClubColors = (name?: string) => {
-    const n = (name || "").toLowerCase();
-    if (n.includes("barcelona") || n.includes("barça")) {
-      return {
-        bg: "linear-gradient(135deg, #004d98 0%, #154284 35%, #7a1c32 70%, #a50044 100%)",
-        overlay: "rgba(237, 187, 0, 0.15)",
-        textLight: true,
-      };
-    }
-    if (n.includes("chelsea")) {
-      return {
-        bg: "linear-gradient(135deg, #034694 0%, #001f5c 50%, #034694 100%)",
-        overlay: "rgba(255, 255, 255, 0.15)",
-        textLight: true,
-      };
-    }
-    if (n.includes("arsenal")) {
-      return {
-        bg: "linear-gradient(135deg, #db0007 0%, #9c0004 50%, #023474 100%)",
-        overlay: "rgba(255, 255, 255, 0.15)",
-        textLight: true,
-      };
-    }
-    if (n.includes("real madrid")) {
-      return {
-        bg: "linear-gradient(135deg, #ffffff 0%, #edf1f7 35%, #00266b 85%, #001438 100%)",
-        overlay: "rgba(238, 198, 67, 0.25)",
-        textLight: false,
-      };
-    }
-    if (n.includes("atlético") || n.includes("atletico")) {
-      return {
-        bg: "linear-gradient(135deg, #cb3524 0%, #ffffff 45%, #0c2340 100%)",
-        overlay: "rgba(255, 255, 255, 0.15)",
-        textLight: true,
-      };
-    }
-    if (n.includes("manchester city") || n.includes("man city")) {
-      return {
-        bg: "linear-gradient(135deg, #6cabdd 0%, #4682b4 50%, #1c2c5b 100%)",
-        overlay: "rgba(255, 255, 255, 0.2)",
-        textLight: true,
-      };
-    }
-    if (n.includes("manchester united") || n.includes("man utd")) {
-      return {
-        bg: "linear-gradient(135deg, #c70101 0%, #7e0000 50%, #000000 100%)",
-        overlay: "rgba(255, 255, 255, 0.15)",
-        textLight: true,
-      };
-    }
-    if (n.includes("sevilla")) {
-      return {
-        bg: "linear-gradient(135deg, #ffffff 0%, #f4f4f4 40%, #d4001f 85%, #8f0015 100%)",
-        overlay: "rgba(255, 255, 255, 0.2)",
-        textLight: false,
-      };
-    }
-    if (n.includes("real sociedad")) {
-      return {
-        bg: "linear-gradient(135deg, #004d98 0%, #ffffff 50%, #004d98 100%)",
-        overlay: "rgba(255, 255, 255, 0.2)",
-        textLight: true,
-      };
-    }
-    if (n.includes("valencia")) {
-      return {
-        bg: "linear-gradient(135deg, #ffffff 0%, #f8f8f8 40%, #ee7c00 70%, #000000 100%)",
-        overlay: "rgba(255, 255, 255, 0.2)",
-        textLight: false,
-      };
-    }
-    if (n.includes("bayern")) {
-      return {
-        bg: "linear-gradient(135deg, #dc052d 0%, #a00320 50%, #0066b2 100%)",
-        overlay: "rgba(255, 255, 255, 0.15)",
-        textLight: true,
-      };
-    }
-    if (n.includes("lyon")) {
-      return {
-        bg: "linear-gradient(135deg, #1b3866 0%, #002244 50%, #da291c 100%)",
-        overlay: "rgba(255, 255, 255, 0.15)",
-        textLight: true,
-      };
-    }
-    // Dynamic fallback based on club name hash for consistent custom club colors
-    let hash = 0;
-    const str = name || "Club";
-    for (let i = 0; i < str.length; i++) hash = str.charCodeAt(i) + ((hash << 5) - hash);
-    const h1 = Math.abs(hash) % 360;
-    const h2 = (h1 + 45) % 360;
-    return {
-      bg: `linear-gradient(135deg, hsl(${h1}, 75%, 32%) 0%, hsl(${h1}, 80%, 18%) 50%, hsl(${h2}, 70%, 12%) 100%)`,
-      overlay: "rgba(255, 255, 255, 0.15)",
-      textLight: true,
-    };
-  };
-
-  const clubTheme = getClubColors(j.team_name);
+  const clubTheme = getClubTheme(j.team_name);
 
   const dims = {
     sm: "w-44 h-[245px] text-[10px]",

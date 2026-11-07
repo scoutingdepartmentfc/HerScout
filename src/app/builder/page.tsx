@@ -1,204 +1,197 @@
 "use client";
 
-import React, { useEffect, useState, useMemo, Suspense } from "react";
+import React, { useEffect, useState, useMemo, useRef, Suspense } from "react";
 import Link from "next/link";
 import { StadiumPitch } from "@/components/builder/StadiumPitch";
-import { PitchCard, PitchCardPlayer } from "@/components/builder/PitchCard";
+import { PitchCard } from "@/components/builder/PitchCard";
 import { MultiSelectFilter } from "@/components/builder/MultiSelectFilter";
+import { RangeSlider } from "@/components/builder/RangeSlider";
 import { CromoJugador } from "@/components/scouting/CromoJugador";
 import { LoadingState } from "@/components/ui/StatusStates";
-import { SlidersHorizontal, Trophy, RefreshCw, X, Sparkles, Filter, ChevronRight, Eye } from "lucide-react";
-import { notaClases } from "@/lib/notaColor";
+import {
+  SlidersHorizontal, Trophy, X, ChevronRight, ChevronDown, Eye, Plus, Search, Loader2, RotateCcw, Layers, Info,
+} from "lucide-react";
+import { METRICS_HIERARCHY, GOALKEEPER_HIERARCHY, CategoryDef } from "@/lib/metricsHierarchy";
+import { guessLeagueCountry } from "@/lib/leagueCountry";
 
-type FormationKey = "4-3-3" | "4-4-2" | "3-5-2" | "4-2-3-1" | "3-4-3" | "5-3-2";
+/* ─────────────────────────── Demarcaciones y sistemas ─────────────────────────── */
 
-interface PositionSlot {
-  role: string;
-  category: "GK" | "DEF" | "MID" | "ATT";
-  acceptedPositions: string[];
-}
+type GroupId = "Porteros" | "Centrales" | "Laterales" | "Medios" | "Mediapuntas" | "Extremos" | "Delanteros";
+type ScopeId = "all" | GroupId;
 
-const FORMATION_CONFIGS: Record<FormationKey, { name: string; lines: PositionSlot[][] }> = {
-  "4-3-3": {
-    name: "4-3-3",
-    lines: [
-      // Attack
-      [
-        { role: "LW", category: "ATT", acceptedPositions: ["LW", "LM", "Extremo Izquierdo", "Left Winger"] },
-        { role: "ST", category: "ATT", acceptedPositions: ["ST", "CF", "Delantero", "Delantera", "Centre-Forward", "Striker"] },
-        { role: "RW", category: "ATT", acceptedPositions: ["RW", "RM", "Extremo Derecho", "Right Winger"] },
-      ],
-      // Midfield
-      [
-        { role: "LCM", category: "MID", acceptedPositions: ["CM", "CAM", "Mediocentro", "Central Midfield"] },
-        { role: "CDM", category: "MID", acceptedPositions: ["CDM", "CM", "Mediocentro Defensivo", "Defensive Midfield"] },
-        { role: "RCM", category: "MID", acceptedPositions: ["CM", "CAM", "Mediocentro", "Central Midfield"] },
-      ],
-      // Defense
-      [
-        { role: "LB", category: "DEF", acceptedPositions: ["LB", "LWB", "Lateral Izquierdo", "Lateral", "Left-Back", "Left Wing-Back"] },
-        { role: "LCB", category: "DEF", acceptedPositions: ["CB", "LCB", "RCB", "Central", "Central Izquierdo", "Central Derecho", "Centrales", "Centre-Back", "Defensa"] },
-        { role: "RCB", category: "DEF", acceptedPositions: ["CB", "RCB", "LCB", "Central", "Central Derecho", "Central Izquierdo", "Centrales", "Centre-Back", "Defensa"] },
-        { role: "RB", category: "DEF", acceptedPositions: ["RB", "RWB", "Lateral Derecho", "Lateral", "Right-Back", "Right Wing-Back"] },
-      ],
-      // Goalkeeper
-      [
-        { role: "GK", category: "GK", acceptedPositions: ["GK", "Portero", "Goalkeeper"] },
-      ],
-    ],
-  },
-  "4-4-2": {
-    name: "4-4-2",
-    lines: [
-      [
-        { role: "LS", category: "ATT", acceptedPositions: ["ST", "CF", "Delantero", "Delantera", "Striker"] },
-        { role: "RS", category: "ATT", acceptedPositions: ["ST", "CF", "Delantero", "Delantera", "Striker"] },
-      ],
-      [
-        { role: "LM", category: "MID", acceptedPositions: ["LM", "LW", "Extremo Izquierdo", "Left Winger", "Interior"] },
-        { role: "LCM", category: "MID", acceptedPositions: ["CM", "CDM", "Mediocentro", "Central Midfield"] },
-        { role: "RCM", category: "MID", acceptedPositions: ["CM", "CAM", "Mediocentro", "Central Midfield"] },
-        { role: "RM", category: "MID", acceptedPositions: ["RM", "RW", "Extremo Derecho", "Right Winger", "Interior"] },
-      ],
-      [
-        { role: "LB", category: "DEF", acceptedPositions: ["LB", "LWB", "Lateral Izquierdo", "Lateral", "Left-Back"] },
-        { role: "LCB", category: "DEF", acceptedPositions: ["CB", "LCB", "RCB", "Central", "Central Izquierdo", "Central Derecho", "Centrales", "Centre-Back", "Defensa"] },
-        { role: "RCB", category: "DEF", acceptedPositions: ["CB", "RCB", "LCB", "Central", "Central Derecho", "Central Izquierdo", "Centrales", "Centre-Back", "Defensa"] },
-        { role: "RB", category: "DEF", acceptedPositions: ["RB", "RWB", "Lateral Derecho", "Lateral", "Right-Back"] },
-      ],
-      [
-        { role: "GK", category: "GK", acceptedPositions: ["GK", "Portero", "Goalkeeper"] },
-      ],
-    ],
-  },
-  "4-2-3-1": {
-    name: "4-2-3-1",
-    lines: [
-      [
-        { role: "ST", category: "ATT", acceptedPositions: ["ST", "CF", "Delantero", "Delantera", "Striker"] },
-      ],
-      [
-        { role: "LAM", category: "ATT", acceptedPositions: ["LW", "LM", "CAM", "Extremo Izquierdo"] },
-        { role: "CAM", category: "MID", acceptedPositions: ["CAM", "Mediapunta", "CM", "Attacking Midfield"] },
-        { role: "RAM", category: "ATT", acceptedPositions: ["RW", "RM", "CAM", "Extremo Derecho"] },
-      ],
-      [
-        { role: "LDM", category: "MID", acceptedPositions: ["CDM", "CM", "Mediocentro Defensivo", "Pivote", "Defensive Midfield"] },
-        { role: "RDM", category: "MID", acceptedPositions: ["CDM", "CM", "Mediocentro Defensivo", "Pivote", "Defensive Midfield"] },
-      ],
-      [
-        { role: "LB", category: "DEF", acceptedPositions: ["LB", "LWB", "Lateral Izquierdo", "Lateral", "Left-Back"] },
-        { role: "LCB", category: "DEF", acceptedPositions: ["CB", "LCB", "RCB", "Central", "Central Izquierdo", "Central Derecho", "Centrales", "Centre-Back", "Defensa"] },
-        { role: "RCB", category: "DEF", acceptedPositions: ["CB", "RCB", "LCB", "Central", "Central Derecho", "Central Izquierdo", "Centrales", "Centre-Back", "Defensa"] },
-        { role: "RB", category: "DEF", acceptedPositions: ["RB", "RWB", "Lateral Derecho", "Lateral", "Right-Back"] },
-      ],
-      [
-        { role: "GK", category: "GK", acceptedPositions: ["GK", "Portero", "Goalkeeper"] },
-      ],
-    ],
-  },
-  "3-5-2": {
-    name: "3-5-2",
-    lines: [
-      [
-        { role: "LS", category: "ATT", acceptedPositions: ["ST", "CF", "Delantero", "Delantera"] },
-        { role: "RS", category: "ATT", acceptedPositions: ["ST", "CF", "Delantero", "Delantera"] },
-      ],
-      [
-        { role: "LWB", category: "MID", acceptedPositions: ["LM", "LB", "LWB", "Carrilero Izquierdo"] },
-        { role: "LCM", category: "MID", acceptedPositions: ["CM", "CAM", "Mediocentro"] },
-        { role: "CDM", category: "MID", acceptedPositions: ["CDM", "CM", "Mediocentro Defensivo", "Pivote"] },
-        { role: "RCM", category: "MID", acceptedPositions: ["CM", "CAM", "Mediocentro"] },
-        { role: "RWB", category: "MID", acceptedPositions: ["RM", "RB", "RWB", "Carrilero Derecho"] },
-      ],
-      [
-        { role: "LCB", category: "DEF", acceptedPositions: ["CB", "LCB", "RCB", "Central", "Central Izquierdo", "Centrales", "Centre-Back", "Defensa"] },
-        { role: "CB", category: "DEF", acceptedPositions: ["CB", "Central", "Central Izquierdo", "Central Derecho", "Centrales", "Centre-Back", "Defensa"] },
-        { role: "RCB", category: "DEF", acceptedPositions: ["CB", "RCB", "LCB", "Central", "Central Derecho", "Centrales", "Centre-Back", "Defensa"] },
-      ],
-      [
-        { role: "GK", category: "GK", acceptedPositions: ["GK", "Portero", "Goalkeeper"] },
-      ],
-    ],
-  },
-  "3-4-3": {
-    name: "3-4-3",
-    lines: [
-      [
-        { role: "LW", category: "ATT", acceptedPositions: ["LW", "LM", "Extremo Izquierdo"] },
-        { role: "ST", category: "ATT", acceptedPositions: ["ST", "CF", "Delantero", "Delantera"] },
-        { role: "RW", category: "ATT", acceptedPositions: ["RW", "RM", "Extremo Derecho"] },
-      ],
-      [
-        { role: "LM", category: "MID", acceptedPositions: ["LM", "LW", "Extremo Izquierdo"] },
-        { role: "LCM", category: "MID", acceptedPositions: ["CM", "CDM", "Mediocentro"] },
-        { role: "RCM", category: "MID", acceptedPositions: ["CM", "CAM", "Mediocentro"] },
-        { role: "RM", category: "MID", acceptedPositions: ["RM", "RW", "Extremo Derecho"] },
-      ],
-      [
-        { role: "LCB", category: "DEF", acceptedPositions: ["CB", "LCB", "RCB", "Central", "Central Izquierdo", "Centrales", "Centre-Back", "Defensa"] },
-        { role: "CB", category: "DEF", acceptedPositions: ["CB", "Central", "Central Izquierdo", "Central Derecho", "Centrales", "Centre-Back", "Defensa"] },
-        { role: "RCB", category: "DEF", acceptedPositions: ["CB", "RCB", "LCB", "Central", "Central Derecho", "Centrales", "Centre-Back", "Defensa"] },
-      ],
-      [
-        { role: "GK", category: "GK", acceptedPositions: ["GK", "Portero", "Goalkeeper"] },
-      ],
-    ],
-  },
-  "5-3-2": {
-    name: "5-3-2",
-    lines: [
-      [
-        { role: "LS", category: "ATT", acceptedPositions: ["ST", "CF", "Delantero", "Delantera"] },
-        { role: "RS", category: "ATT", acceptedPositions: ["ST", "CF", "Delantero", "Delantera"] },
-      ],
-      [
-        { role: "LCM", category: "MID", acceptedPositions: ["CM", "CAM", "Mediocentro"] },
-        { role: "CDM", category: "MID", acceptedPositions: ["CDM", "CM", "Mediocentro Defensivo", "Pivote"] },
-        { role: "RCM", category: "MID", acceptedPositions: ["CM", "CAM", "Mediocentro"] },
-      ],
-      [
-        { role: "LWB", category: "DEF", acceptedPositions: ["LB", "LWB", "LM", "Lateral Izquierdo", "Carrilero Izquierdo"] },
-        { role: "LCB", category: "DEF", acceptedPositions: ["CB", "LCB", "RCB", "Central", "Central Izquierdo", "Centrales", "Centre-Back", "Defensa"] },
-        { role: "CB", category: "DEF", acceptedPositions: ["CB", "Central", "Central Izquierdo", "Central Derecho", "Centrales", "Centre-Back", "Defensa"] },
-        { role: "RCB", category: "DEF", acceptedPositions: ["CB", "RCB", "LCB", "Central", "Central Derecho", "Centrales", "Centre-Back", "Defensa"] },
-        { role: "RWB", category: "DEF", acceptedPositions: ["RB", "RWB", "RM", "Lateral Derecho", "Carrilero Derecho"] },
-      ],
-      [
-        { role: "GK", category: "GK", acceptedPositions: ["GK", "Portero", "Goalkeeper"] },
-      ],
-    ],
-  },
+const GROUPS: { id: GroupId; label: string; short: string; color: string }[] = [
+  { id: "Porteros", label: "Porteras", short: "POR", color: "#f59e0b" },
+  { id: "Centrales", label: "Centrales", short: "DFC", color: "#3b82f6" },
+  { id: "Laterales", label: "Laterales", short: "LAT", color: "#06b6d4" },
+  { id: "Medios", label: "Mediocentros", short: "MC", color: "#10b981" },
+  { id: "Mediapuntas", label: "Mediapuntas", short: "MP", color: "#84cc16" },
+  { id: "Extremos", label: "Extremas", short: "EXT", color: "#f43f5e" },
+  { id: "Delanteros", label: "Delanteras", short: "DC", color: "#ef4444" },
+];
+const GROUP_BY_ID = Object.fromEntries(GROUPS.map((g) => [g.id, g])) as Record<GroupId, (typeof GROUPS)[number]>;
+
+type FormationKey = "4-3-3" | "4-4-2" | "4-2-3-1" | "3-5-2" | "3-4-3" | "5-3-2";
+
+// Líneas de arriba (ataque) a abajo (portera)
+const FORMATIONS: Record<FormationKey, string[][]> = {
+  "4-3-3": [["LW", "ST", "RW"], ["LCM", "CDM", "RCM"], ["LB", "LCB", "RCB", "RB"], ["GK"]],
+  "4-4-2": [["LS", "RS"], ["LM", "LCM", "RCM", "RM"], ["LB", "LCB", "RCB", "RB"], ["GK"]],
+  "4-2-3-1": [["ST"], ["LAM", "CAM", "RAM"], ["LDM", "RDM"], ["LB", "LCB", "RCB", "RB"], ["GK"]],
+  "3-5-2": [["LS", "RS"], ["LWB", "LCM", "CDM", "RCM", "RWB"], ["LCB", "CB", "RCB"], ["GK"]],
+  "3-4-3": [["LW", "ST", "RW"], ["LM", "LCM", "RCM", "RM"], ["LCB", "CB", "RCB"], ["GK"]],
+  "5-3-2": [["LS", "RS"], ["LCM", "CDM", "RCM"], ["LWB", "LCB", "CB", "RCB", "RWB"], ["GK"]],
 };
 
-const METRIC_OPTIONS = [
-  { id: "nota_global", name: "Nota Global (OVR General)" },
-  { id: "nota_ataque", name: "Métrica: Ataque" },
-  { id: "nota_construccion", name: "Métrica: Construcción" },
-  { id: "nota_defensa", name: "Métrica: Defensa" },
-  { id: "nota_balon_parado", name: "Métrica: Balón Parado" },
-  { id: "nota_disponibilidad", name: "Métrica: Disponibilidad" },
-  { id: "nota_fisico", name: "Métrica: Físico (EA Rating)" },
-  { id: "minutes_played", name: "Minutos Jugados" },
+interface RoleMeta { group: GroupId; side?: "L" | "R"; fallback: GroupId[] }
+const ROLE_META: Record<string, RoleMeta> = {
+  GK: { group: "Porteros", fallback: [] },
+  CB: { group: "Centrales", fallback: ["Medios"] },
+  LCB: { group: "Centrales", fallback: ["Laterales", "Medios"] },
+  RCB: { group: "Centrales", fallback: ["Laterales", "Medios"] },
+  LB: { group: "Laterales", side: "L", fallback: ["Centrales"] },
+  RB: { group: "Laterales", side: "R", fallback: ["Centrales"] },
+  LWB: { group: "Laterales", side: "L", fallback: ["Extremos"] },
+  RWB: { group: "Laterales", side: "R", fallback: ["Extremos"] },
+  CDM: { group: "Medios", fallback: ["Centrales", "Mediapuntas"] },
+  LDM: { group: "Medios", fallback: ["Mediapuntas"] },
+  RDM: { group: "Medios", fallback: ["Mediapuntas"] },
+  LCM: { group: "Medios", fallback: ["Mediapuntas"] },
+  RCM: { group: "Medios", fallback: ["Mediapuntas"] },
+  CAM: { group: "Mediapuntas", fallback: ["Medios", "Extremos"] },
+  LM: { group: "Extremos", side: "L", fallback: ["Mediapuntas", "Medios"] },
+  RM: { group: "Extremos", side: "R", fallback: ["Mediapuntas", "Medios"] },
+  LW: { group: "Extremos", side: "L", fallback: ["Delanteros", "Mediapuntas"] },
+  RW: { group: "Extremos", side: "R", fallback: ["Delanteros", "Mediapuntas"] },
+  LAM: { group: "Extremos", side: "L", fallback: ["Mediapuntas"] },
+  RAM: { group: "Extremos", side: "R", fallback: ["Mediapuntas"] },
+  ST: { group: "Delanteros", fallback: ["Extremos", "Mediapuntas"] },
+  LS: { group: "Delanteros", fallback: ["Extremos", "Mediapuntas"] },
+  RS: { group: "Delanteros", fallback: ["Extremos", "Mediapuntas"] },
+};
+
+/* ─────────────────────────── Filtros ─────────────────────────── */
+
+type Range = [number, number];
+
+interface FilterSet {
+  leagues: string[];
+  teams: string[];
+  countries: string[];
+  feet: string[];
+  ranges: Record<string, Range>;
+  /** Métricas añadidas a mano (se muestran como slider aunque no estén activas) */
+  extraMetrics: string[];
+  /** Orden propio de esta demarcación ("" = el global) */
+  sortBy: string;
+}
+
+const emptyFilters = (): FilterSet => ({ leagues: [], teams: [], countries: [], feet: [], ranges: {}, extraMetrics: [], sortBy: "" });
+
+const SCOPES: ScopeId[] = ["all", ...GROUPS.map((g) => g.id)];
+const emptyScopes = (): Record<ScopeId, FilterSet> =>
+  Object.fromEntries(SCOPES.map((s) => [s, emptyFilters()])) as Record<ScopeId, FilterSet>;
+
+const FEET = [
+  { id: "right", label: "Diestra" },
+  { id: "left", label: "Zurda" },
+  { id: "both", label: "Ambidiestra" },
 ];
+
+// Campos básicos (límites calculados a partir de los datos)
+interface BasicField { key: string; label: string; unit?: string; step: number; get: (p: any) => number | null; color: string; format?: (v: number) => string }
+const fmtMoney = (v: number) => (v >= 1000 ? `${(v / 1000).toFixed(v >= 10000 ? 0 : 1)}M€` : `${v}k€`);
+const BASIC_FIELDS: BasicField[] = [
+  { key: "age", label: "Edad", unit: "años", step: 1, get: (p) => p._age, color: "#38bdf8" },
+  { key: "height", label: "Altura", unit: "cm", step: 1, get: (p) => p.height || null, color: "#a78bfa" },
+  { key: "weight", label: "Peso", unit: "kg", step: 1, get: (p) => p.weight || null, color: "#a78bfa" },
+  { key: "minutes", label: "Minutos jugados", step: 50, get: (p) => p.minutesPlayed ?? null, color: "#22d3ee" },
+  { key: "matches", label: "Partidos jugados", step: 1, get: (p) => p.matchesPlayed ?? null, color: "#22d3ee" },
+  { key: "marketValue", label: "Valor de mercado", step: 5, get: (p) => p._mv, color: "#facc15", format: fmtMoney },
+];
+const BASIC_BY_KEY = Object.fromEntries(BASIC_FIELDS.map((f) => [f.key, f]));
+
+// Notas 0-100 que vienen en /api/players
+const NOTE_FIELD: Record<string, string> = {
+  nota_global: "notaGlobal",
+  nota_ataque: "notaAtaque",
+  nota_construccion: "notaConstruccion",
+  nota_defensa: "notaDefensa",
+  nota_balon_parado: "notaBalonParado",
+  nota_disponibilidad: "notaDisponibilidad",
+  nota_fisico: "notaFisico",
+};
+const isRemoteKey = (k: string) => !BASIC_BY_KEY[k] && !NOTE_FIELD[k];
+
+// Lo que sí se aplica a porteras desde la pestaña "Todas" (el resto son métricas de campo)
+const AVAILABILITY = METRICS_HIERARCHY.find((c) => c.id === "disponibilidad")!;
+const GK_SAFE_KEYS = new Set<string>([
+  ...BASIC_FIELDS.map((f) => f.key), "nota_global", "nota_disponibilidad", "nota_fisico",
+  ...AVAILABILITY.subcategories.flatMap((s) => [`_sub_${s.id}`, ...s.metrics.map((m) => m.key)]),
+]);
+
+const hierarchyForScope = (scope: ScopeId): CategoryDef[] => (scope === "Porteros" ? GOALKEEPER_HIERARCHY : METRICS_HIERARCHY);
+
+// Etiqueta de cualquier clave (para chips y selects)
+const LABELS: Record<string, string> = (() => {
+  const out: Record<string, string> = { nota_global: "Nota global", nota_fisico: "Físico (EA)" };
+  BASIC_FIELDS.forEach((f) => (out[f.key] = f.label));
+  for (const [h, gk] of [[METRICS_HIERARCHY, false], [GOALKEEPER_HIERARCHY, true]] as const) {
+    for (const c of h) {
+      if (!gk || !out[c.noteKey]) out[c.noteKey] = c.name;
+      for (const s of c.subcategories) {
+        out[`_sub_${s.id}`] = s.name;
+        for (const m of s.metrics) out[m.key] = m.name;
+      }
+    }
+  }
+  return out;
+})();
+
+const STORAGE_KEY = "builder_filters_v2";
+const BENCH_SIZE = 4;
+
+function activeCount(f: FilterSet): number {
+  return (
+    (f.leagues.length ? 1 : 0) + (f.teams.length ? 1 : 0) + (f.countries.length ? 1 : 0) + (f.feet.length ? 1 : 0) +
+    Object.keys(f.ranges).length + (f.sortBy ? 1 : 0)
+  );
+}
+
+/* ─────────────────────────── Página ─────────────────────────── */
 
 function BuilderContent() {
   const [formation, setFormation] = useState<FormationKey>("4-3-3");
   const [metricSort, setMetricSort] = useState<string>("nota_global");
+  const [scopes, setScopes] = useState<Record<ScopeId, FilterSet>>(emptyScopes);
+  const [activeScope, setActiveScope] = useState<ScopeId>("all");
   const [allPlayers, setAllPlayers] = useState<any[]>([]);
-  const [availableLeagues, setAvailableLeagues] = useState<{ id: string; name: string }[]>([]);
-  const [availableTeams, setAvailableTeams] = useState<{ id: string; name: string }[]>([]);
-  const [availableCountries, setAvailableCountries] = useState<{ id: string; name: string }[]>([]);
+  const [leagueOptions, setLeagueOptions] = useState<{ id: string; name: string; country?: string | null }[]>([]);
+  const [teamOptions, setTeamOptions] = useState<{ id: string; name: string; badgeUrl?: string | null }[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-
-  // Filters
-  const [selectedLeagues, setSelectedLeagues] = useState<string[]>([]);
-  const [selectedTeams, setSelectedTeams] = useState<string[]>([]);
-  const [selectedCountries, setSelectedCountries] = useState<string[]>([]);
-  const [minAge, setMinAge] = useState<number>(15);
-  const [maxAge, setMaxAge] = useState<number>(42);
-  const [minRating, setMinRating] = useState<number>(0);
   const [selectedPlayerModal, setSelectedPlayerModal] = useState<any | null>(null);
+  const [showFiltersMobile, setShowFiltersMobile] = useState(false);
+
+  // Notas de subcategorías/métricas cargadas bajo demanda: clave → jugadora → nota
+  const [remote, setRemote] = useState<Record<string, Record<string, number | null>>>({});
+  const [loadingKeys, setLoadingKeys] = useState<Set<string>>(new Set());
+  const requested = useRef<Set<string>>(new Set());
+
+  // Restaurar filtros guardados
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
+      const saved = JSON.parse(raw);
+      if (saved.formation && FORMATIONS[saved.formation as FormationKey]) setFormation(saved.formation);
+      if (saved.metricSort) setMetricSort(saved.metricSort);
+      if (saved.scopes) setScopes({ ...emptyScopes(), ...saved.scopes });
+    } catch {}
+  }, []);
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ formation, metricSort, scopes }));
+    } catch {}
+  }, [formation, metricSort, scopes]);
 
   useEffect(() => {
     async function loadData() {
@@ -206,21 +199,19 @@ function BuilderContent() {
       try {
         const res = await fetch("/api/players?season=all");
         const json = await res.json();
-        const playersList = json.players || [];
-        setAllPlayers(playersList);
-
-        if (json.filters?.leaguesDetailed) {
-          setAvailableLeagues(json.filters.leaguesDetailed.map((l: any) => ({ id: l.name, name: l.name })));
-        }
-        if (json.filters?.teamsDetailed) {
-          setAvailableTeams(json.filters.teamsDetailed.map((t: any) => ({ id: t.name, name: t.name })));
-        }
-
-        // Countries from players
-        const countries = Array.from(
-          new Set(playersList.map((p: any) => p.country).filter(Boolean))
-        ).sort();
-        setAvailableCountries(countries.map((c) => ({ id: c as string, name: c as string })));
+        const now = Date.now();
+        const list = (json.players || []).map((p: any) => ({
+          ...p,
+          _age: p.birthDate ? Math.floor((now - new Date(p.birthDate).getTime()) / (365.25 * 24 * 3600 * 1000)) : null,
+          _mv: p.marketValue ? Math.round(Number(p.marketValue) / 1000) : null,
+        }));
+        setAllPlayers(list);
+        setLeagueOptions(
+          (json.filters?.leaguesDetailed || []).map((l: any) => ({
+            id: l.name, name: l.name, country: l.country || guessLeagueCountry(l.name),
+          }))
+        );
+        setTeamOptions((json.filters?.teamsDetailed || []).map((t: any) => ({ id: t.name, name: t.name, badgeUrl: t.badgeUrl })));
       } catch (err) {
         console.error("Failed to fetch players for 11 Builder", err);
       } finally {
@@ -230,351 +221,530 @@ function BuilderContent() {
     loadData();
   }, []);
 
-  // Filter and sort candidates
-  const filteredCandidates = useMemo(() => {
-    const now = Date.now();
-
-    return allPlayers.filter((p) => {
-      // League filter
-      if (selectedLeagues.length > 0) {
-        const pLeague = (p.leagueName || "").toLowerCase();
-        const match = selectedLeagues.some(
-          (sel) => pLeague === sel.toLowerCase() || pLeague.includes(sel.toLowerCase())
-        );
-        if (!match) return false;
+  // Límites de cada campo básico según los datos
+  const bounds = useMemo(() => {
+    const out: Record<string, Range> = {};
+    for (const f of BASIC_FIELDS) {
+      let lo = Infinity, hi = -Infinity;
+      for (const p of allPlayers) {
+        const v = f.get(p);
+        if (v == null || !Number.isFinite(v)) continue;
+        if (v < lo) lo = v;
+        if (v > hi) hi = v;
       }
+      if (!Number.isFinite(lo)) { lo = 0; hi = 1; }
+      out[f.key] = [Math.floor(lo / f.step) * f.step, Math.ceil(hi / f.step) * f.step];
+    }
+    return out;
+  }, [allPlayers]);
 
-      // Team filter
-      if (selectedTeams.length > 0) {
-        const pTeam = (p.teamName || "").toLowerCase();
-        const match = selectedTeams.some(
-          (sel) => pTeam === sel.toLowerCase() || pTeam.includes(sel.toLowerCase())
-        );
-        if (!match) return false;
-      }
+  const boundsFor = (key: string): Range => bounds[key] || [0, 100];
 
-      // Country filter
-      if (selectedCountries.length > 0) {
-        if (!p.country || !selectedCountries.includes(p.country)) return false;
-      }
+  // Recuento por opción (para los desplegables)
+  const counts = useMemo(() => {
+    const leagues: Record<string, number> = {}, teams: Record<string, number> = {}, countries: Record<string, number> = {};
+    for (const p of allPlayers) {
+      if (p.leagueName) leagues[p.leagueName] = (leagues[p.leagueName] || 0) + 1;
+      if (p.teamName) teams[p.teamName] = (teams[p.teamName] || 0) + 1;
+      if (p.country) countries[p.country] = (countries[p.country] || 0) + 1;
+    }
+    return { leagues, teams, countries };
+  }, [allPlayers]);
 
-      // Age filter
-      if (p.birthDate) {
-        const age = Math.floor((now - new Date(p.birthDate).getTime()) / (365.25 * 24 * 3600 * 1000));
-        if (age < minAge || age > maxAge) return false;
-      }
+  const leagueOpts = useMemo(() => leagueOptions.map((o) => ({ ...o, count: counts.leagues[o.name] || 0 })), [leagueOptions, counts]);
+  const teamOpts = useMemo(() => teamOptions.map((o) => ({ ...o, count: counts.teams[o.name] || 0 })), [teamOptions, counts]);
+  const countryOpts = useMemo(
+    () => Object.keys(counts.countries).sort().map((c) => ({ id: c, name: c, country: c, count: counts.countries[c] })),
+    [counts]
+  );
 
-      // Min Rating
-      if (minRating > 0 && (p.notaGlobal || 0) < minRating) {
-        return false;
-      }
+  // Claves remotas necesarias (filtros activos + órdenes) → se piden las que falten
+  const neededKeys = useMemo(() => {
+    const keys = new Set<string>();
+    for (const s of SCOPES) {
+      Object.keys(scopes[s].ranges).forEach((k) => isRemoteKey(k) && keys.add(k));
+      if (scopes[s].sortBy && isRemoteKey(scopes[s].sortBy)) keys.add(scopes[s].sortBy);
+    }
+    if (isRemoteKey(metricSort)) keys.add(metricSort);
+    return Array.from(keys);
+  }, [scopes, metricSort]);
 
-      return true;
-    });
-  }, [allPlayers, selectedLeagues, selectedTeams, selectedCountries, minAge, maxAge, minRating]);
-
-  // Compute the Best 11 for the selected formation
-  const bestEleven = useMemo(() => {
-    const selectedPlayerIds = new Set<string>();
-    const formationLines = FORMATION_CONFIGS[formation].lines;
-
-    // Helper score getter
-    const getScore = (p: any) => {
-      if (metricSort === "nota_ataque") return p.notaAtaque ?? 0;
-      if (metricSort === "nota_construccion") return p.notaConstruccion ?? 0;
-      if (metricSort === "nota_defensa") return p.notaDefensa ?? 0;
-      if (metricSort === "nota_balon_parado") return p.notaBalonParado ?? 0;
-      if (metricSort === "nota_disponibilidad") return p.notaDisponibilidad ?? 0;
-      if (metricSort === "nota_fisico") return p.notaFisico ?? 0;
-      if (metricSort === "minutes_played") return p.minutesPlayed ?? 0;
-      return p.notaGlobal ?? p.score_general ?? 0;
-    };
-
-    // Flatten all slots with line and slot indices
-    const slotsWithPos: { lineIdx: number; slotIdx: number; slot: PositionSlot }[] = [];
-    formationLines.forEach((line, lIdx) => {
-      line.forEach((slot, sIdx) => {
-        slotsWithPos.push({ lineIdx: lIdx, slotIdx: sIdx, slot });
-      });
-    });
-
-    const resultSlots: { lineIdx: number; slotIdx: number; slot: PositionSlot; player: any | null }[] = [];
-
-    slotsWithPos.forEach(({ lineIdx, slotIdx, slot }) => {
-      // Find candidate matching accepted positions
-      const candidates = filteredCandidates.filter((p) => {
-        if (selectedPlayerIds.has(p.id)) return false;
-
-        const pPos = (p.position || "").toUpperCase();
-        const pDem = (p.grupoDemarcacion || "").toUpperCase();
-
-        // Exact or partial match with accepted positions
-        const matchesPosition = slot.acceptedPositions.some((pos) => {
-          const upPos = pos.toUpperCase();
-          return pPos.includes(upPos) || pDem.includes(upPos) || upPos.includes(pPos);
+  useEffect(() => {
+    const missing = neededKeys.filter((k) => !requested.current.has(k));
+    if (missing.length === 0) return;
+    missing.forEach((k) => requested.current.add(k));
+    setLoadingKeys((prev) => new Set([...Array.from(prev), ...missing]));
+    (async () => {
+      try {
+        const res = await fetch(`/api/builder/metrics?keys=${encodeURIComponent(missing.join(","))}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = await res.json();
+        const next: Record<string, Record<string, number | null>> = {};
+        (json.keys as string[]).forEach((k, i) => {
+          const col: Record<string, number | null> = {};
+          for (const [pid, row] of Object.entries(json.players as Record<string, (number | null)[]>)) col[pid] = row[i];
+          next[k] = col;
         });
-
-        // Fallback by general category if specific match fails
-        if (!matchesPosition) {
-          if (slot.category === "GK" && (pPos.includes("GK") || pPos.includes("PORT") || pDem.includes("PORT"))) return true;
-          if (slot.category === "DEF" && (pDem.includes("DEF") || pDem.includes("CENTRAL") || pDem.includes("LATERAL") || pPos.includes("CB") || pPos.includes("LB") || pPos.includes("RB") || pPos.includes("CENTRAL"))) return true;
-          if (slot.category === "MID" && (pDem.includes("MED") || pDem.includes("MID") || pPos.includes("CM") || pPos.includes("CAM") || pPos.includes("CDM"))) return true;
-          if (slot.category === "ATT" && (pDem.includes("DEL") || pDem.includes("ATT") || pPos.includes("ST") || pPos.includes("RW") || pPos.includes("LW") || pPos.includes("CF"))) return true;
-        }
-
-        return matchesPosition;
-      });
-
-      // Sort candidates by the selected metric score descending
-      candidates.sort((a, b) => getScore(b) - getScore(a));
-
-      const chosen = candidates[0] || null;
-      if (chosen) {
-        selectedPlayerIds.add(chosen.id);
+        setRemote((prev) => ({ ...prev, ...next }));
+      } catch (err) {
+        console.error("Failed to load builder metrics", err);
+        missing.forEach((k) => requested.current.delete(k));
+      } finally {
+        setLoadingKeys((prev) => {
+          const n = new Set(prev);
+          missing.forEach((k) => n.delete(k));
+          return n;
+        });
       }
+    })();
+  }, [neededKeys]);
 
-      resultSlots.push({ lineIdx, slotIdx, slot, player: chosen });
-    });
+  const getVal = (p: any, key: string): number | null => {
+    const basic = BASIC_BY_KEY[key];
+    if (basic) return basic.get(p);
+    const nf = NOTE_FIELD[key];
+    if (nf) return p[nf] ?? null;
+    const col = remote[key];
+    return col ? col[p.id] ?? null : null;
+  };
 
-    // Reconstruct lines
-    const finalLines = formationLines.map((line, lIdx) => {
-      return line.map((slot, sIdx) => {
-        const found = resultSlots.find((r) => r.lineIdx === lIdx && r.slotIdx === sIdx);
-        return {
-          slot,
-          player: found?.player || null,
-        };
-      });
-    });
+  // ¿Pasa la jugadora un conjunto de filtros para un puesto del grupo `slotGroup`?
+  const passes = (p: any, f: FilterSet, slotGroup: GroupId, isGlobal: boolean): boolean => {
+    if (f.leagues.length) {
+      const pl = (p.leagueName || "").toLowerCase();
+      if (!f.leagues.some((l) => pl === l.toLowerCase() || pl.includes(l.toLowerCase()))) return false;
+    }
+    if (f.teams.length && !f.teams.includes(p.teamName)) return false;
+    if (f.countries.length && !f.countries.includes(p.country)) return false;
+    if (f.feet.length && !f.feet.includes(p.preferredFoot)) return false;
+    for (const [key, [lo, hi]] of Object.entries(f.ranges)) {
+      // Desde "Todas", las métricas de campo no se aplican a porteras (tienen las suyas)
+      if (isGlobal && slotGroup === "Porteros" && !GK_SAFE_KEYS.has(key)) continue;
+      if (isRemoteKey(key) && !remote[key]) continue; // aún cargando
+      const v = getVal(p, key);
+      if (v == null || v < lo || v > hi) return false;
+    }
+    return true;
+  };
 
-    return finalLines;
-  }, [formation, filteredCandidates, metricSort]);
+  // Candidatas por grupo de puesto, ordenadas por la métrica de ese grupo
+  const candidatesByGroup = useMemo(() => {
+    const out = {} as Record<GroupId, any[]>;
+    for (const g of GROUPS) {
+      const sortKey = scopes[g.id].sortBy || metricSort;
+      const list = allPlayers.filter((p) => passes(p, scopes.all, g.id, true) && passes(p, scopes[g.id], g.id, false));
+      list.sort((a, b) => (getVal(b, sortKey) ?? -Infinity) - (getVal(a, sortKey) ?? -Infinity));
+      out[g.id] = list;
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allPlayers, scopes, metricSort, remote]);
 
-  // Average OVR of the 11
-  const squadOvr = useMemo(() => {
-    let sum = 0;
-    let count = 0;
-    bestEleven.forEach((line) => {
-      line.forEach(({ player }) => {
-        if (player) {
-          sum += player.notaGlobal ?? player.score_general ?? 75;
-          count++;
+  const globalCount = useMemo(
+    () => allPlayers.filter((p) => passes(p, scopes.all, (p.grupoDemarcacion as GroupId) || "Medios", true)).length,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [allPlayers, scopes.all, remote]
+  );
+
+  // Mejor 11: 1) demarcación y lado preferidos, 2) misma demarcación, 3) demarcaciones afines
+  const bestEleven = useMemo(() => {
+    const lines = FORMATIONS[formation];
+    const used = new Set<string>();
+    const result: (any | null)[][] = lines.map((l) => l.map(() => null));
+    const slots = lines.flatMap((line, li) => line.map((role, si) => ({ li, si, role, meta: ROLE_META[role] })));
+    const sideOk = (p: any, side?: "L" | "R") =>
+      !side || (side === "L" ? /izquierd/i.test(p.position || "") : /derech/i.test(p.position || ""));
+    const pick = (pool: any[], filter: (p: any) => boolean) => pool.find((p) => !used.has(p.id) && filter(p)) || null;
+
+    const passesList: ((s: (typeof slots)[number]) => any | null)[] = [
+      (s) => pick(candidatesByGroup[s.meta.group], (p) => p.grupoDemarcacion === s.meta.group && sideOk(p, s.meta.side)),
+      (s) => pick(candidatesByGroup[s.meta.group], (p) => p.grupoDemarcacion === s.meta.group),
+      (s) => {
+        for (const g of s.meta.fallback) {
+          const found = pick(candidatesByGroup[s.meta.group], (p) => p.grupoDemarcacion === g);
+          if (found) return found;
         }
-      });
-    });
-    return count > 0 ? (sum / count).toFixed(1) : "—";
+        return null;
+      },
+    ];
+    for (const choose of passesList) {
+      for (const s of slots) {
+        if (result[s.li][s.si]) continue;
+        const p = choose(s);
+        if (p) {
+          used.add(p.id);
+          result[s.li][s.si] = p;
+        }
+      }
+    }
+
+    // Banquillo: las 4 siguientes de cada puesto, repartidas por rondas para que no se repitan entre
+    // puestos de la misma demarcación (dos centrales → cada una con sus propias suplentes)
+    const bench: any[][][] = lines.map((l) => l.map(() => []));
+    for (let round = 0; round < BENCH_SIZE; round++) {
+      for (const s of slots) {
+        for (const choose of passesList) {
+          const p = choose(s);
+          if (p) {
+            used.add(p.id);
+            bench[s.li][s.si].push(p);
+            break;
+          }
+        }
+      }
+    }
+
+    return lines.map((line, li) =>
+      line.map((role, si) => ({ role, meta: ROLE_META[role], player: result[li][si], bench: bench[li][si] }))
+    );
+  }, [formation, candidatesByGroup]);
+
+  const squadOvr = useMemo(() => {
+    const vals = bestEleven.flat().map((s) => s.player?.notaGlobal).filter((v) => v != null) as number[];
+    return vals.length ? (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1) : "—";
   }, [bestEleven]);
 
-  return (
-    <div className="min-h-screen bg-[#070b14] text-white p-4 md:p-8">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 border-b border-white/10 pb-6">
-        <div>
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
-              <Trophy className="w-6 h-6" />
-            </div>
-            <div>
-              <h1 className="text-2xl md:text-3xl font-black tracking-tight text-white flex items-center gap-2">
-                11 BUILDER <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">ELITE TACTICAL</span>
-              </h1>
-              <p className="text-xs md:text-sm text-slate-400 mt-0.5">
-                Campograma táctico con las mejores jugadoras del mundo según tu sistema de juego y filtros aplicados.
-              </p>
-            </div>
+  /* ───── Actualizar filtros ───── */
+  const updateScope = (scope: ScopeId, patch: Partial<FilterSet>) =>
+    setScopes((prev) => ({ ...prev, [scope]: { ...prev[scope], ...patch } }));
+
+  const setRange = (scope: ScopeId, key: string, value: Range | null) =>
+    setScopes((prev) => {
+      const ranges = { ...prev[scope].ranges };
+      if (value) ranges[key] = value;
+      else delete ranges[key];
+      return { ...prev, [scope]: { ...prev[scope], ranges } };
+    });
+
+  const addMetric = (scope: ScopeId, key: string) =>
+    setScopes((prev) =>
+      prev[scope].extraMetrics.includes(key)
+        ? prev
+        : { ...prev, [scope]: { ...prev[scope], extraMetrics: [...prev[scope].extraMetrics, key] } }
+    );
+
+  const removeMetric = (scope: ScopeId, key: string) =>
+    setScopes((prev) => {
+      const ranges = { ...prev[scope].ranges };
+      delete ranges[key];
+      return { ...prev, [scope]: { ...prev[scope], ranges, extraMetrics: prev[scope].extraMetrics.filter((k) => k !== key) } };
+    });
+
+  const totalActive = SCOPES.reduce((n, s) => n + activeCount(scopes[s]), 0);
+  const f = scopes[activeScope];
+  const scopeColor = activeScope === "all" ? "#10b981" : GROUP_BY_ID[activeScope].color;
+
+  // Chips de filtros activos (todas las pestañas)
+  const chips = SCOPES.flatMap((s) => {
+    const fs = scopes[s];
+    const tag = s === "all" ? "Todas" : GROUP_BY_ID[s].label;
+    const color = s === "all" ? "#10b981" : GROUP_BY_ID[s].color;
+    const out: { id: string; scope: ScopeId; tag: string; color: string; text: string; clear: () => void }[] = [];
+    if (fs.leagues.length) out.push({ id: `${s}-lg`, scope: s, tag, color, text: fs.leagues.length === 1 ? fs.leagues[0] : `${fs.leagues.length} ligas`, clear: () => updateScope(s, { leagues: [] }) });
+    if (fs.teams.length) out.push({ id: `${s}-tm`, scope: s, tag, color, text: fs.teams.length === 1 ? fs.teams[0] : `${fs.teams.length} equipos`, clear: () => updateScope(s, { teams: [] }) });
+    if (fs.countries.length) out.push({ id: `${s}-ct`, scope: s, tag, color, text: fs.countries.length === 1 ? fs.countries[0] : `${fs.countries.length} países`, clear: () => updateScope(s, { countries: [] }) });
+    if (fs.feet.length) out.push({ id: `${s}-ft`, scope: s, tag, color, text: fs.feet.map((x) => FEET.find((y) => y.id === x)?.label).join(" / "), clear: () => updateScope(s, { feet: [] }) });
+    for (const [k, [lo, hi]] of Object.entries(fs.ranges)) {
+      const basic = BASIC_BY_KEY[k];
+      const fmt = basic?.format || ((v: number) => String(v));
+      const [bLo, bHi] = basic ? boundsFor(k) : [0, 100];
+      const text = lo > bLo && hi < bHi ? `${fmt(lo)}–${fmt(hi)}` : lo > bLo ? `≥ ${fmt(lo)}` : `≤ ${fmt(hi)}`;
+      out.push({ id: `${s}-${k}`, scope: s, tag, color, text: `${LABELS[k] || k} ${text}`, clear: () => setRange(s, k, null) });
+    }
+    if (fs.sortBy) out.push({ id: `${s}-sort`, scope: s, tag, color, text: `Orden: ${LABELS[fs.sortBy] || fs.sortBy}`, clear: () => updateScope(s, { sortBy: "" }) });
+    return out;
+  });
+
+  /* ───── Render ───── */
+  const filtersPanel = (
+    <div className="bg-[#0b1322]/95 border border-white/10 rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[calc(100vh-7rem)]">
+      {/* Pestañas de alcance */}
+      <div className="p-3 border-b border-white/10 bg-gradient-to-b from-white/[0.03] to-transparent">
+        <div className="flex items-center justify-between mb-2.5">
+          <div className="flex items-center gap-2 text-xs font-bold text-slate-200 uppercase tracking-wider">
+            <SlidersHorizontal className="w-4 h-4 text-emerald-400" />
+            Filtros
+            {totalActive > 0 && (
+              <span className="px-1.5 py-0.5 rounded-md bg-emerald-500/15 text-emerald-300 text-[10px] tabular-nums">{totalActive}</span>
+            )}
           </div>
-        </div>
-
-        {/* Global Squad Stat Badge */}
-        <div className="flex items-center gap-4 bg-navy-950/80 border border-white/10 rounded-xl p-3 shadow-lg">
-          <div className="text-center px-3 border-r border-white/10">
-            <span className="text-[10px] uppercase font-bold text-slate-400 block">Formación</span>
-            <span className="text-lg font-black text-emerald-400">{formation}</span>
-          </div>
-          <div className="text-center px-3 border-r border-white/10">
-            <span className="text-[10px] uppercase font-bold text-slate-400 block">Rating Medio</span>
-            <span className="text-lg font-black text-amber-400">{squadOvr}</span>
-          </div>
-          <div className="text-center px-2">
-            <span className="text-[10px] uppercase font-bold text-slate-400 block">Candidatas</span>
-            <span className="text-lg font-black text-sky-400">{filteredCandidates.length}</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Filter Control Bar */}
-      <div className="bg-[#0b1322] border border-white/10 rounded-2xl p-4 md:p-5 mb-6 shadow-xl space-y-4">
-        <div className="flex items-center gap-2 text-xs font-bold text-slate-300 uppercase tracking-wider mb-1">
-          <SlidersHorizontal className="w-4 h-4 text-emerald-400" />
-          <span>Filtros y Configuración del 11 Ideal</span>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-          {/* Formation Picker */}
-          <div>
-            <label className="text-[10px] font-semibold text-slate-300 uppercase tracking-wider block mb-1">
-              Sistema / Dibujo
-            </label>
-            <select
-              value={formation}
-              onChange={(e) => setFormation(e.target.value as FormationKey)}
-              className="w-full h-9 px-3 rounded-lg border border-white/10 bg-navy-950/90 text-xs text-white focus:outline-none focus:border-emerald-500 font-bold"
-            >
-              {(Object.keys(FORMATION_CONFIGS) as FormationKey[]).map((f) => (
-                <option key={f} value={f} className="bg-[#0b1322] text-white">
-                  {f}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Metric Sort */}
-          <div>
-            <label className="text-[10px] font-semibold text-slate-300 uppercase tracking-wider block mb-1">
-              Métrica de Selección
-            </label>
-            <select
-              value={metricSort}
-              onChange={(e) => setMetricSort(e.target.value)}
-              className="w-full h-9 px-3 rounded-lg border border-white/10 bg-navy-950/90 text-xs text-emerald-400 focus:outline-none focus:border-emerald-500 font-semibold"
-            >
-              {METRIC_OPTIONS.map((m) => (
-                <option key={m.id} value={m.id} className="bg-[#0b1322] text-white">
-                  {m.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* League Filter */}
-          <MultiSelectFilter
-            label="Ligas"
-            placeholder="Todas las ligas"
-            options={availableLeagues}
-            selectedIds={selectedLeagues}
-            onChange={setSelectedLeagues}
-          />
-
-          {/* Team Filter */}
-          <MultiSelectFilter
-            label="Equipos"
-            placeholder="Todos los equipos"
-            options={availableTeams}
-            selectedIds={selectedTeams}
-            onChange={setSelectedTeams}
-          />
-
-          {/* Country / Nationality Filter */}
-          <MultiSelectFilter
-            label="Nacionalidad"
-            placeholder="Todas las naciones"
-            options={availableCountries}
-            selectedIds={selectedCountries}
-            onChange={setSelectedCountries}
-          />
-
-          {/* Min Rating Slider / Input */}
-          <div>
-            <label className="text-[10px] font-semibold text-slate-300 uppercase tracking-wider block mb-1">
-              Nota Mínima: <span className="text-emerald-400 font-bold">{minRating > 0 ? minRating : "Sin mín."}</span>
-            </label>
-            <input
-              type="range"
-              min="0"
-              max="90"
-              step="5"
-              value={minRating}
-              onChange={(e) => setMinRating(Number(e.target.value))}
-              className="w-full h-2 bg-navy-950 rounded-lg appearance-none cursor-pointer accent-emerald-500 mt-2"
-            />
-          </div>
-        </div>
-
-        {/* Age Range Slider */}
-        <div className="pt-2 border-t border-white/5 flex flex-wrap items-center justify-between gap-4 text-xs">
-          <div className="flex items-center gap-3">
-            <span className="text-slate-400 font-medium">Rango de Edad:</span>
-            <div className="flex items-center gap-2">
-              <input
-                type="number"
-                min="15"
-                max={maxAge}
-                value={minAge}
-                onChange={(e) => setMinAge(Number(e.target.value))}
-                className="w-14 h-7 text-center rounded bg-navy-950 border border-white/10 text-xs text-white"
-              />
-              <span className="text-slate-500">—</span>
-              <input
-                type="number"
-                min={minAge}
-                max="45"
-                value={maxAge}
-                onChange={(e) => setMaxAge(Number(e.target.value))}
-                className="w-14 h-7 text-center rounded bg-navy-950 border border-white/10 text-xs text-white"
-              />
-              <span className="text-slate-400 text-[11px]">años</span>
-            </div>
-          </div>
-
-          {(selectedLeagues.length > 0 || selectedTeams.length > 0 || selectedCountries.length > 0 || minRating > 0 || minAge > 15 || maxAge < 42) && (
-            <button
-              onClick={() => {
-                setSelectedLeagues([]);
-                setSelectedTeams([]);
-                setSelectedCountries([]);
-                setMinRating(0);
-                setMinAge(15);
-                setMaxAge(42);
-              }}
-              className="text-[11px] text-rose-400 hover:text-rose-300 flex items-center gap-1 font-semibold"
-            >
-              <X className="w-3.5 h-3.5" />
-              Resetear todos los filtros
+          {totalActive > 0 && (
+            <button onClick={() => setScopes(emptyScopes())} className="text-[10px] text-rose-400 hover:text-rose-300 font-semibold flex items-center gap-1">
+              <RotateCcw className="w-3 h-3" /> Resetear todo
             </button>
+          )}
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {SCOPES.map((s) => {
+            const g = s === "all" ? null : GROUP_BY_ID[s];
+            const n = activeCount(scopes[s]);
+            const on = activeScope === s;
+            const color = g?.color || "#10b981";
+            return (
+              <button
+                key={s}
+                onClick={() => setActiveScope(s)}
+                className={`relative h-7 px-2.5 rounded-lg text-[11px] font-bold flex items-center gap-1.5 border transition-all ${
+                  on ? "text-white shadow-lg" : "text-slate-400 border-white/5 bg-black/20 hover:text-slate-200 hover:border-white/15"
+                }`}
+                style={on ? { borderColor: `${color}80`, background: `${color}22`, boxShadow: `0 0 18px ${color}25` } : undefined}
+                title={g ? `Filtros solo para ${g.label}` : "Filtros para todas las demarcaciones"}
+              >
+                {g ? <span className="w-1.5 h-1.5 rounded-full" style={{ background: color }} /> : <Layers className="w-3 h-3" />}
+                {g ? g.short : "Todas"}
+                {n > 0 && (
+                  <span className="min-w-[16px] h-4 px-1 rounded-full text-[9px] flex items-center justify-center text-gray-950" style={{ background: color }}>
+                    {n}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+        <div className="mt-2.5 flex items-start gap-1.5 text-[10.5px] text-slate-400 leading-snug">
+          <Info className="w-3 h-3 mt-0.5 shrink-0" style={{ color: scopeColor }} />
+          {activeScope === "all" ? (
+            <span>Se aplican a <b className="text-slate-200">todas las demarcaciones</b>. Las métricas de campo no afectan a las porteras.</span>
+          ) : (
+            <span>
+              Solo para <b style={{ color: scopeColor }}>{GROUP_BY_ID[activeScope].label}</b>, sumados a los de «Todas».{" "}
+              <span className="text-slate-300 tabular-nums">{candidatesByGroup[activeScope]?.filter((p) => p.grupoDemarcacion === activeScope).length ?? 0}</span> candidatas.
+            </span>
           )}
         </div>
       </div>
 
-      {/* Main Tactical Pitch */}
-      {isLoading ? (
-        <div className="min-h-[500px] flex items-center justify-center">
-          <LoadingState message="Calculando el 11 ideal y posicionando a las mejores jugadoras..." />
-        </div>
-      ) : (
-        <StadiumPitch>
-          {bestEleven.map((line, lineIndex) => (
-            <div
-              key={`line-${lineIndex}`}
-              className="w-full flex items-center justify-around px-2 sm:px-6 my-2"
-            >
-              {line.map(({ slot, player }, slotIndex) => {
-                if (!player) {
+      <div className="overflow-y-auto p-3 space-y-4 flex-1">
+        {/* Orden propio */}
+        {activeScope !== "all" && (
+          <Section title="Ordenar esta demarcación por">
+            <MetricSelect
+              value={f.sortBy}
+              onChange={(v) => updateScope(activeScope, { sortBy: v })}
+              scope={activeScope}
+              allowInherit
+              loading={loadingKeys.has(f.sortBy)}
+            />
+          </Section>
+        )}
+
+        <Section title="Competición y perfil">
+          <div className="grid grid-cols-1 gap-2">
+            <MultiSelectFilter label="Ligas" placeholder="Todas las ligas" options={leagueOpts} selectedIds={f.leagues} onChange={(v) => updateScope(activeScope, { leagues: v })} showFlag />
+            <MultiSelectFilter label="Equipos" placeholder="Todos los equipos" options={teamOpts} selectedIds={f.teams} onChange={(v) => updateScope(activeScope, { teams: v })} />
+            <MultiSelectFilter label="Nacionalidad" placeholder="Todas las naciones" options={countryOpts} selectedIds={f.countries} onChange={(v) => updateScope(activeScope, { countries: v })} showFlag />
+            <div>
+              <span className="text-[10px] font-semibold text-slate-300 uppercase tracking-wider block mb-1">Pie dominante</span>
+              <div className="grid grid-cols-3 gap-1.5">
+                {FEET.map((ft) => {
+                  const on = f.feet.includes(ft.id);
                   return (
-                    <div
-                      key={`empty-${lineIndex}-${slotIndex}`}
-                      className="flex flex-col items-center justify-center w-24 h-36 rounded-xl border-2 border-dashed border-white/20 bg-black/40 backdrop-blur-sm p-2 text-center"
+                    <button
+                      key={ft.id}
+                      onClick={() => updateScope(activeScope, { feet: on ? f.feet.filter((x) => x !== ft.id) : [...f.feet, ft.id] })}
+                      className={`h-8 rounded-lg text-[11px] font-semibold border transition-all ${
+                        on ? "bg-emerald-500/15 border-emerald-500/50 text-emerald-300" : "bg-black/20 border-white/10 text-slate-400 hover:text-white hover:border-white/20"
+                      }`}
                     >
-                      <span className="text-[11px] font-black text-amber-400 uppercase">{slot.role}</span>
-                      <span className="text-[10px] text-slate-400 mt-2">Sin candidata con estos filtros</span>
-                    </div>
+                      {ft.label}
+                    </button>
                   );
-                }
-
-                return (
-                  <PitchCard
-                    key={player.id}
-                    assignedRole={slot.role}
-                    player={player}
-                    onClick={() => setSelectedPlayerModal(player)}
-                  />
-                );
-              })}
+                })}
+              </div>
             </div>
-          ))}
-        </StadiumPitch>
-      )}
+          </div>
+        </Section>
 
-      {/* Player Dossier Quick Modal when clicking any card on the pitch */}
+        <Section title="Datos físicos y de juego">
+          <div className="space-y-1.5">
+            {BASIC_FIELDS.map((bf) => {
+              const [lo, hi] = boundsFor(bf.key);
+              return (
+                <RangeSlider
+                  key={bf.key}
+                  label={bf.unit ? `${bf.label} (${bf.unit})` : bf.label}
+                  min={lo}
+                  max={hi}
+                  step={bf.step}
+                  value={f.ranges[bf.key] || null}
+                  onChange={(v) => setRange(activeScope, bf.key, v)}
+                  format={bf.format}
+                  color={bf.color}
+                />
+              );
+            })}
+          </div>
+        </Section>
+
+        <Section title="Rendimiento (notas 0–100)">
+          <div className="space-y-1.5">
+            <RangeSlider label="Nota global" min={0} max={100} value={f.ranges.nota_global || null} onChange={(v) => setRange(activeScope, "nota_global", v)} color="#fbbf24" />
+            <RangeSlider label="Físico (EA)" min={0} max={100} value={f.ranges.nota_fisico || null} onChange={(v) => setRange(activeScope, "nota_fisico", v)} color="#fb923c" />
+          </div>
+          <div className="mt-2 space-y-2">
+            {hierarchyForScope(activeScope).map((cat) => (
+              <CategoryBlock
+                key={cat.id}
+                cat={cat}
+                filters={f}
+                loadingKeys={loadingKeys}
+                onRange={(k, v) => setRange(activeScope, k, v)}
+                onAddMetric={(k) => addMetric(activeScope, k)}
+                onRemoveMetric={(k) => removeMetric(activeScope, k)}
+                dimmed={activeScope === "all" && cat.id !== "disponibilidad" ? "No se aplica a porteras" : undefined}
+              />
+            ))}
+          </div>
+        </Section>
+
+        {activeCount(f) > 0 && (
+          <button
+            onClick={() => setScopes((prev) => ({ ...prev, [activeScope]: emptyFilters() }))}
+            className="w-full h-8 rounded-lg border border-white/10 text-[11px] text-slate-300 hover:text-white hover:border-white/25 flex items-center justify-center gap-1.5"
+          >
+            <RotateCcw className="w-3 h-3" /> Limpiar filtros de {activeScope === "all" ? "«Todas»" : GROUP_BY_ID[activeScope].label}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="min-h-screen bg-[#070b14] text-white p-4 md:p-6">
+      {/* Cabecera */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-5">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+            <Trophy className="w-6 h-6" />
+          </div>
+          <div>
+            <h1 className="text-2xl md:text-3xl font-black tracking-tight text-white flex items-center gap-2">
+              11 BUILDER
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">ELITE TACTICAL</span>
+            </h1>
+            <p className="text-xs text-slate-400 mt-0.5">El mejor once según tu sistema, con filtros globales y por demarcación.</p>
+          </div>
+        </div>
+
+        <div className="flex items-stretch gap-0 bg-navy-950/80 border border-white/10 rounded-xl shadow-lg divide-x divide-white/10">
+          <Stat label="Formación" value={formation} className="text-emerald-400" />
+          <Stat label="Rating medio" value={squadOvr} className="text-amber-400" />
+          <Stat label="Candidatas" value={globalCount} className="text-sky-400" />
+          <Stat label="Filtros" value={totalActive} className="text-fuchsia-400" />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-[380px_minmax(0,1fr)] gap-5 items-start">
+        {/* Panel de filtros */}
+        <aside className="lg:sticky lg:top-4">
+          <button
+            onClick={() => setShowFiltersMobile((v) => !v)}
+            className="lg:hidden w-full mb-3 h-10 rounded-xl border border-white/10 bg-[#0b1322] text-xs font-bold flex items-center justify-center gap-2"
+          >
+            <SlidersHorizontal className="w-4 h-4 text-emerald-400" />
+            {showFiltersMobile ? "Ocultar filtros" : `Mostrar filtros${totalActive ? ` (${totalActive})` : ""}`}
+          </button>
+          <div className={`${showFiltersMobile ? "block" : "hidden"} lg:block`}>{filtersPanel}</div>
+        </aside>
+
+        {/* Campo */}
+        <section className="space-y-3 min-w-0">
+          <div className="flex flex-col md:flex-row md:items-center gap-3 justify-between bg-[#0b1322]/80 border border-white/10 rounded-2xl p-3">
+            <div className="flex flex-wrap gap-1.5">
+              {(Object.keys(FORMATIONS) as FormationKey[]).map((fk) => (
+                <button
+                  key={fk}
+                  onClick={() => setFormation(fk)}
+                  className={`h-8 px-3 rounded-lg text-xs font-black tabular-nums border transition-all ${
+                    formation === fk
+                      ? "bg-emerald-500 text-gray-950 border-emerald-400 shadow-lg shadow-emerald-500/20"
+                      : "bg-black/20 text-slate-300 border-white/10 hover:border-emerald-500/40 hover:text-white"
+                  }`}
+                >
+                  {fk}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-2 md:w-80">
+              <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">Elegir por</span>
+              <MetricSelect value={metricSort} onChange={setMetricSort} scope="all" loading={loadingKeys.has(metricSort)} />
+            </div>
+          </div>
+
+          {chips.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {chips.map((c) => (
+                <span
+                  key={c.id}
+                  className="inline-flex items-center gap-1.5 h-6 pl-1 pr-1.5 rounded-full text-[10.5px] bg-white/[0.04] border border-white/10 text-slate-200"
+                >
+                  <button
+                    onClick={() => setActiveScope(c.scope)}
+                    className="px-1.5 h-4 rounded-full text-[9px] font-bold text-gray-950"
+                    style={{ background: c.color }}
+                    title="Ir a la pestaña"
+                  >
+                    {c.tag}
+                  </button>
+                  {c.text}
+                  <button onClick={c.clear} className="text-slate-500 hover:text-white" aria-label="Quitar filtro">
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+
+          {isLoading ? (
+            <div className="min-h-[500px] flex items-center justify-center">
+              <LoadingState message="Calculando el 11 ideal y posicionando a las mejores jugadoras..." />
+            </div>
+          ) : (
+            <StadiumPitch>
+              {bestEleven.map((line, lineIndex) => (
+                <div key={`line-${lineIndex}`} className="w-full flex items-center justify-around px-2 sm:px-6 my-2">
+                  {line.map(({ role, meta, player, bench }, slotIndex) => {
+                    const g = GROUP_BY_ID[meta.group];
+                    if (!player) {
+                      return (
+                        <button
+                          key={`empty-${lineIndex}-${slotIndex}`}
+                          onClick={() => { setActiveScope(meta.group); setShowFiltersMobile(true); }}
+                          className="flex flex-col items-center justify-center w-24 h-36 rounded-xl border-2 border-dashed bg-black/40 backdrop-blur-sm p-2 text-center hover:bg-black/60 transition-colors"
+                          style={{ borderColor: `${g.color}66` }}
+                        >
+                          <span className="text-[11px] font-black uppercase" style={{ color: g.color }}>{role}</span>
+                          <span className="text-[10px] text-slate-400 mt-2">Sin candidata con estos filtros</span>
+                          <span className="text-[9px] text-slate-500 mt-1 underline">Ajustar {g.label}</span>
+                        </button>
+                      );
+                    }
+                    const sortKey = scopes[meta.group].sortBy || metricSort;
+                    return (
+                      <SlotWithBench
+                        key={player.id}
+                        role={role}
+                        color={g.color}
+                        bench={bench}
+                        sortLabel={LABELS[sortKey] || sortKey}
+                        valueOf={(p) => getVal(p, sortKey)}
+                        format={BASIC_BY_KEY[sortKey]?.format}
+                        below={lineIndex < bestEleven.length / 2}
+                        align={slotIndex === 0 ? "left" : slotIndex === line.length - 1 ? "right" : "center"}
+                        onSelect={setSelectedPlayerModal}
+                      >
+                        <PitchCard assignedRole={role} player={player} onClick={() => setSelectedPlayerModal(player)} />
+                      </SlotWithBench>
+                    );
+                  })}
+                </div>
+              ))}
+            </StadiumPitch>
+          )}
+        </section>
+      </div>
+
+      {/* Ficha rápida */}
       {selectedPlayerModal && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in-0 duration-150"
@@ -584,14 +754,9 @@ function BuilderContent() {
             className="relative w-full max-w-lg bg-[#0a1224] border border-white/20 rounded-2xl p-6 shadow-2xl flex flex-col md:flex-row items-center gap-6"
             onClick={(e) => e.stopPropagation()}
           >
-            <button
-              onClick={() => setSelectedPlayerModal(null)}
-              className="absolute top-4 right-4 p-1 rounded-full text-slate-400 hover:text-white hover:bg-white/10"
-            >
+            <button onClick={() => setSelectedPlayerModal(null)} className="absolute top-4 right-4 p-1 rounded-full text-slate-400 hover:text-white hover:bg-white/10">
               <X className="w-5 h-5" />
             </button>
-
-            {/* Complete Official Card */}
             <div className="shrink-0">
               <CromoJugador
                 j={{
@@ -610,34 +775,30 @@ function BuilderContent() {
                 size="md"
               />
             </div>
-
-            {/* Info details */}
             <div className="w-full flex-1 space-y-3">
               <div>
                 <h3 className="text-xl font-black text-white">{selectedPlayerModal.name}</h3>
                 <p className="text-xs text-slate-400">{selectedPlayerModal.teamName} • {selectedPlayerModal.leagueName}</p>
               </div>
-
-              {/* Metric Breakdown */}
               <div className="grid grid-cols-2 gap-2 text-xs">
-                <div className="p-2 rounded bg-white/5 border border-white/5">
-                  <span className="text-[10px] text-slate-400 block uppercase">Ataque</span>
-                  <span className="text-base font-bold text-emerald-400">{selectedPlayerModal.notaAtaque?.toFixed(1) ?? "—"}</span>
-                </div>
-                <div className="p-2 rounded bg-white/5 border border-white/5">
-                  <span className="text-[10px] text-slate-400 block uppercase">Construcción</span>
-                  <span className="text-base font-bold text-sky-400">{selectedPlayerModal.notaConstruccion?.toFixed(1) ?? "—"}</span>
-                </div>
-                <div className="p-2 rounded bg-white/5 border border-white/5">
-                  <span className="text-[10px] text-slate-400 block uppercase">Defensa</span>
-                  <span className="text-base font-bold text-indigo-400">{selectedPlayerModal.notaDefensa?.toFixed(1) ?? "—"}</span>
-                </div>
-                <div className="p-2 rounded bg-white/5 border border-white/5">
-                  <span className="text-[10px] text-slate-400 block uppercase">Físico EA</span>
-                  <span className="text-base font-bold text-amber-400">{selectedPlayerModal.notaFisico ?? "—"}</span>
-                </div>
+                {[
+                  ["Ataque", selectedPlayerModal.notaAtaque, "text-emerald-400"],
+                  ["Construcción", selectedPlayerModal.notaConstruccion, "text-sky-400"],
+                  ["Defensa", selectedPlayerModal.notaDefensa, "text-indigo-400"],
+                  ["Físico EA", selectedPlayerModal.notaFisico, "text-amber-400"],
+                ].map(([label, v, cls]) => (
+                  <div key={label as string} className="p-2 rounded bg-white/5 border border-white/5">
+                    <span className="text-[10px] text-slate-400 block uppercase">{label}</span>
+                    <span className={`text-base font-bold ${cls}`}>{v != null ? Number(v).toFixed(1) : "—"}</span>
+                  </div>
+                ))}
               </div>
-
+              {metricSort !== "nota_global" && (
+                <p className="text-[11px] text-slate-400">
+                  {LABELS[metricSort] || metricSort}:{" "}
+                  <b className="text-white">{getVal(selectedPlayerModal, metricSort)?.toFixed(1) ?? "—"}</b>
+                </p>
+              )}
               <Link
                 href={`/players/${selectedPlayerModal.id}`}
                 className="mt-4 w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-gray-950 font-bold text-xs transition-colors shadow-lg shadow-emerald-500/20"
@@ -654,6 +815,284 @@ function BuilderContent() {
   );
 }
 
+/* ─────────────────────────── Piezas ─────────────────────────── */
+
+/** Titular del campo; al pasar el ratón muestra las suplentes de ese puesto */
+function SlotWithBench({
+  children, role, color, bench, sortLabel, valueOf, format, below, align, onSelect,
+}: {
+  children: React.ReactNode;
+  role: string;
+  color: string;
+  bench: any[];
+  sortLabel: string;
+  valueOf: (p: any) => number | null;
+  format?: (v: number) => string;
+  below: boolean;
+  align: "left" | "center" | "right";
+  onSelect: (p: any) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const show = () => { if (timer.current) clearTimeout(timer.current); timer.current = setTimeout(() => setOpen(true), 120); };
+  const hide = () => { if (timer.current) clearTimeout(timer.current); timer.current = setTimeout(() => setOpen(false), 120); };
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+
+  const pos =
+    align === "left" ? "left-0" : align === "right" ? "right-0" : "left-1/2 -translate-x-1/2";
+  const fmt = (v: number | null) => (v == null ? "—" : format ? format(v) : Number.isInteger(v) ? String(v) : v.toFixed(1));
+
+  return (
+    <div className={`relative ${open ? "z-50" : "z-10"}`} onMouseEnter={show} onMouseLeave={hide}>
+      {children}
+      {open && (
+        // El padding hace de puente entre la carta y el panel para no perder el hover
+        <div className={`absolute ${pos} ${below ? "top-full pt-2" : "bottom-full pb-2"} w-64`}>
+          <div
+            className="rounded-xl border bg-[#0a1224]/95 backdrop-blur-xl shadow-2xl overflow-hidden animate-in fade-in-0 zoom-in-95 duration-150"
+            style={{ borderColor: `${color}55`, boxShadow: `0 12px 40px rgba(0,0,0,0.6), 0 0 24px ${color}22` }}
+          >
+            <div className="px-3 py-2 flex items-center justify-between border-b border-white/10" style={{ background: `${color}14` }}>
+              <span className="text-[10px] font-black uppercase tracking-wider" style={{ color }}>
+                Suplentes · {role}
+              </span>
+              <span className="text-[9px] text-slate-400 truncate max-w-[110px]" title={sortLabel}>{sortLabel}</span>
+            </div>
+            {bench.length === 0 ? (
+              <div className="px-3 py-4 text-center text-[11px] text-slate-500">No hay más candidatas con estos filtros</div>
+            ) : (
+              <ol className="p-1.5 space-y-0.5">
+                {bench.map((p, i) => (
+                  <li key={p.id}>
+                    <button
+                      onClick={() => onSelect(p)}
+                      className="w-full flex items-center gap-2.5 px-1.5 py-1.5 rounded-lg hover:bg-white/[0.06] text-left transition-colors"
+                    >
+                      <span className="w-4 text-[10px] font-bold text-slate-500 tabular-nums text-center">{i + 2}</span>
+                      <div className="w-8 h-8 rounded-full overflow-hidden bg-white/5 border border-white/10 shrink-0">
+                        {p.photoUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={p.photoUrl} alt="" className="w-full h-full object-cover object-top" loading="lazy" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-[10px] font-bold text-slate-500">
+                            {(p.matchName || p.name || "?").slice(0, 1)}
+                          </div>
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-xs font-semibold text-white truncate">{p.matchName || p.name}</div>
+                        <div className="flex items-center gap-1 text-[10px] text-slate-400 truncate">
+                          {p.badgeUrl && (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={p.badgeUrl} alt="" className="w-3 h-3 object-contain shrink-0" loading="lazy" />
+                          )}
+                          <span className="truncate">{p.teamName}</span>
+                          {p._age != null && <span className="text-slate-500">· {p._age}</span>}
+                        </div>
+                      </div>
+                      <span className="text-xs font-black tabular-nums" style={{ color }}>{fmt(valueOf(p))}</span>
+                    </button>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Stat({ label, value, className }: { label: string; value: React.ReactNode; className: string }) {
+  return (
+    <div className="text-center px-4 py-2">
+      <span className="text-[10px] uppercase font-bold text-slate-400 block">{label}</span>
+      <span className={`text-lg font-black tabular-nums ${className}`}>{value}</span>
+    </div>
+  );
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.12em] mb-2">{title}</h3>
+      {children}
+    </div>
+  );
+}
+
+/** Select de métrica de orden: general, categorías, subcategorías y todas las métricas */
+function MetricSelect({
+  value, onChange, scope, allowInherit, loading,
+}: { value: string; onChange: (v: string) => void; scope: ScopeId; allowInherit?: boolean; loading?: boolean }) {
+  const hierarchy = hierarchyForScope(scope);
+  return (
+    <div className="relative w-full">
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full h-8 pl-3 pr-8 rounded-lg border border-white/10 bg-navy-950/90 text-xs text-emerald-300 font-semibold focus:outline-none focus:border-emerald-500 appearance-none"
+      >
+        {allowInherit && <option value="" className="bg-[#0b1322] text-white">Igual que el global</option>}
+        <optgroup label="General" className="bg-[#0b1322]">
+          <option value="nota_global">Nota global</option>
+          <option value="nota_fisico">Físico (EA)</option>
+          <option value="minutes">Minutos jugados</option>
+          <option value="matches">Partidos jugados</option>
+          <option value="marketValue">Valor de mercado</option>
+        </optgroup>
+        <optgroup label="Categorías" className="bg-[#0b1322]">
+          {hierarchy.map((c) => (
+            <option key={c.noteKey} value={c.noteKey}>{c.name}</option>
+          ))}
+        </optgroup>
+        <optgroup label="Subcategorías" className="bg-[#0b1322]">
+          {hierarchy.flatMap((c) => c.subcategories.map((s) => (
+            <option key={s.id} value={`_sub_${s.id}`}>{c.name} › {s.name}</option>
+          )))}
+        </optgroup>
+        {hierarchy.flatMap((c) => c.subcategories.map((s) => (
+          <optgroup key={`m-${c.id}-${s.id}`} label={`Métricas · ${c.name} › ${s.name}`} className="bg-[#0b1322]">
+            {s.metrics.map((m) => (
+              <option key={m.key} value={m.key}>{m.name}</option>
+            ))}
+          </optgroup>
+        )))}
+      </select>
+      {loading ? (
+        <Loader2 className="w-3.5 h-3.5 text-emerald-400 animate-spin absolute right-2.5 top-2.5 pointer-events-none" />
+      ) : (
+        <ChevronDown className="w-3.5 h-3.5 text-slate-500 absolute right-2.5 top-2.5 pointer-events-none" />
+      )}
+    </div>
+  );
+}
+
+/** Bloque de una categoría: su nota, sus subcategorías y las métricas añadidas */
+function CategoryBlock({
+  cat, filters, loadingKeys, onRange, onAddMetric, onRemoveMetric, dimmed,
+}: {
+  cat: CategoryDef;
+  filters: FilterSet;
+  loadingKeys: Set<string>;
+  onRange: (key: string, v: Range | null) => void;
+  onAddMetric: (key: string) => void;
+  onRemoveMetric: (key: string) => void;
+  dimmed?: string;
+}) {
+  const subKeys = cat.subcategories.map((s) => `_sub_${s.id}`);
+  const metricKeys = new Set(cat.subcategories.flatMap((s) => s.metrics.map((m) => m.key)));
+  const shownMetrics = Array.from(new Set([
+    ...filters.extraMetrics.filter((k) => metricKeys.has(k)),
+    ...Object.keys(filters.ranges).filter((k) => metricKeys.has(k)),
+  ]));
+  const active = [cat.noteKey, ...subKeys, ...Array.from(metricKeys)].filter((k) => filters.ranges[k]).length;
+  const [open, setOpen] = useState(active > 0);
+  const [picker, setPicker] = useState(false);
+  const [q, setQ] = useState("");
+
+  return (
+    <div className="rounded-xl border border-white/10 bg-black/20 overflow-hidden" style={{ borderLeft: `3px solid ${cat.color}` }}>
+      <button onClick={() => setOpen((o) => !o)} className="w-full flex items-center justify-between px-3 py-2 hover:bg-white/[0.03]">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-bold text-white">{cat.name}</span>
+          {active > 0 && (
+            <span className="px-1.5 h-4 rounded-full text-[9px] font-bold flex items-center text-gray-950" style={{ background: cat.color }}>{active}</span>
+          )}
+          {dimmed && <span className="text-[9px] text-slate-500" title={dimmed}>· campo</span>}
+        </div>
+        <ChevronDown className={`w-3.5 h-3.5 text-slate-500 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+
+      {open && (
+        <div className="px-2.5 pb-2.5 space-y-1.5">
+          <RangeSlider label={`${cat.name} (categoría)`} min={0} max={100} value={filters.ranges[cat.noteKey] || null} onChange={(v) => onRange(cat.noteKey, v)} color={cat.color} compact />
+          <div className="pl-2 border-l border-white/10 space-y-1.5">
+            {cat.subcategories.map((s) => {
+              const key = `_sub_${s.id}`;
+              return (
+                <RangeSlider
+                  key={key}
+                  label={`${s.name}${loadingKeys.has(key) ? " …" : ""}`}
+                  min={0}
+                  max={100}
+                  value={filters.ranges[key] || null}
+                  onChange={(v) => onRange(key, v)}
+                  color={cat.color}
+                  compact
+                />
+              );
+            })}
+            {shownMetrics.map((k) => (
+              <RangeSlider
+                key={k}
+                label={`${LABELS[k] || k}${loadingKeys.has(k) ? " …" : ""}`}
+                hint="Nota 0–100 de la métrica (comparada con su demarcación y liga)"
+                min={0}
+                max={100}
+                value={filters.ranges[k] || null}
+                onChange={(v) => onRange(k, v)}
+                onRemove={() => onRemoveMetric(k)}
+                color={cat.color}
+                compact
+              />
+            ))}
+          </div>
+
+          <div className="relative">
+            <button
+              onClick={() => setPicker((v) => !v)}
+              className="w-full h-7 rounded-lg border border-dashed border-white/15 text-[10.5px] text-slate-400 hover:text-white hover:border-white/30 flex items-center justify-center gap-1"
+            >
+              <Plus className="w-3 h-3" /> Añadir métrica de {cat.name}
+            </button>
+            {picker && (
+              <div className="absolute z-40 left-0 right-0 mt-1 rounded-xl border border-white/15 bg-[#0a1224]/95 backdrop-blur-xl shadow-2xl overflow-hidden">
+                <div className="p-2 border-b border-white/10">
+                  <div className="relative">
+                    <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-2 pointer-events-none" />
+                    <input
+                      autoFocus
+                      value={q}
+                      onChange={(e) => setQ(e.target.value)}
+                      placeholder="Buscar métrica…"
+                      className="w-full h-7 pl-8 pr-2 bg-black/40 border border-white/10 rounded-md text-xs text-white focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                </div>
+                <div className="max-h-64 overflow-y-auto p-1.5">
+                  {cat.subcategories.map((s) => {
+                    const ms = s.metrics.filter((m) => !q || m.name.toLowerCase().includes(q.toLowerCase()));
+                    if (!ms.length) return null;
+                    return (
+                      <div key={s.id} className="mb-1">
+                        <div className="px-2 pt-1 pb-0.5 text-[9px] font-bold uppercase tracking-wider text-slate-500">{s.name}</div>
+                        {ms.map((m) => {
+                          const added = shownMetrics.includes(m.key);
+                          return (
+                            <button
+                              key={m.key}
+                              disabled={added}
+                              onClick={() => { onAddMetric(m.key); setPicker(false); setQ(""); }}
+                              className={`w-full text-left px-2 py-1 rounded-md text-xs ${added ? "text-slate-600" : "text-slate-300 hover:bg-white/5 hover:text-white"}`}
+                            >
+                              {m.name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function BuilderPage() {
   return (
     <Suspense fallback={<LoadingState message="Cargando 11 Builder..." />}>
@@ -661,4 +1100,3 @@ export default function BuilderPage() {
     </Suspense>
   );
 }
-

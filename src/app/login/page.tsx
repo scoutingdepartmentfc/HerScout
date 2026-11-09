@@ -1,7 +1,7 @@
 "use client";
 
 import React, { Suspense, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -10,7 +10,6 @@ import { Lock, Mail, Eye, EyeOff } from "lucide-react";
 import { LoginBackground } from "@/components/login/ScoutingBackground";
 
 function LoginForm() {
-  const router = useRouter();
   const params = useSearchParams();
   const { refreshAdminSession } = useThemeContext();
   const [email, setEmail] = useState("");
@@ -34,10 +33,13 @@ function LoginForm() {
       await refreshAdminSession();
       // Only internal paths: never redirect to another site
       const next = params.get("next") || "/hub";
-      router.replace(next.startsWith("/") && !next.startsWith("//") ? next : "/hub");
+      // Hard navigation, not router.replace: the client Router Cache may still hold the
+      // middleware's "redirect to /login" for that route from before the session existed,
+      // which bounced users back to the login until they refreshed the page.
+      window.location.replace(next.startsWith("/") && !next.startsWith("//") ? next : "/hub");
+      // Keep the button in loading state while the browser navigates
     } catch (err: any) {
       setError(err.message || "Could not log in");
-    } finally {
       setLoading(false);
     }
   };

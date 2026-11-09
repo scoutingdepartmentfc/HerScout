@@ -46,14 +46,46 @@ export const MultiSelectFilter: React.FC<MultiSelectFilterProps> = ({
   }, []);
 
   const filteredOptions = options.filter((opt) =>
-    opt.name.toLowerCase().includes(search.toLowerCase())
+    opt.name.toLowerCase().includes(search.toLowerCase()) ||
+    (opt.country && opt.country.toLowerCase().includes(search.toLowerCase()))
   );
+
+  const groupedByCountry = React.useMemo(() => {
+    if (!showFlag) return null;
+    const hasAnyCountry = options.some((o) => !!o.country);
+    if (!hasAnyCountry) return null;
+
+    const groups: { country: string; items: FilterOption[] }[] = [];
+    const map = new Map<string, FilterOption[]>();
+
+    for (const opt of filteredOptions) {
+      const c = opt.country || "Other";
+      if (!map.has(c)) {
+        const list: FilterOption[] = [];
+        map.set(c, list);
+        groups.push({ country: c, items: list });
+      }
+      map.get(c)!.push(opt);
+    }
+    return groups;
+  }, [options, filteredOptions, showFlag]);
 
   const toggle = (id: string) => {
     if (selectedIds.includes(id)) {
       onChange(selectedIds.filter((item) => item !== id));
     } else {
       onChange([...selectedIds, id]);
+    }
+  };
+
+  const toggleGroup = (items: FilterOption[]) => {
+    const ids = items.map((x) => x.id);
+    const allSelected = ids.every((id) => selectedIds.includes(id));
+    if (allSelected) {
+      onChange(selectedIds.filter((id) => !ids.includes(id)));
+    } else {
+      const next = new Set([...selectedIds, ...ids]);
+      onChange(Array.from(next));
     }
   };
 
@@ -116,11 +148,68 @@ export const MultiSelectFilter: React.FC<MultiSelectFilterProps> = ({
             </div>
           </div>
 
-          <div className="max-h-60 overflow-y-auto p-1.5 space-y-0.5 divide-y divide-white/5">
+          <div className="max-h-72 overflow-y-auto p-1.5 space-y-1">
             {filteredOptions.length === 0 ? (
               <div className="py-4 text-center text-xs text-muted-foreground">
                 No results
               </div>
+            ) : groupedByCountry ? (
+              groupedByCountry.map((grp) => {
+                const groupIds = grp.items.map((x) => x.id);
+                const countSelected = groupIds.filter((id) => selectedIds.includes(id)).length;
+                const isAllSelected = countSelected === groupIds.length;
+                const isPartiallySelected = countSelected > 0 && !isAllSelected;
+
+                return (
+                  <div key={grp.country} className="rounded-lg bg-white/[0.02] border border-white/5 overflow-hidden">
+                    <div className="flex items-center justify-between px-2 py-1 bg-white/[0.04] border-b border-white/5">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        {grp.country !== "Other" && <Bandera country={grp.country} size="xs" />}
+                        <span className="text-[10.5px] font-bold text-slate-200 tracking-wide uppercase truncate">
+                          {grp.country}
+                        </span>
+                        <span className="text-[10px] text-slate-500 tabular-nums">({grp.items.length})</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => toggleGroup(grp.items)}
+                        className="text-[10px] font-semibold text-emerald-400 hover:text-emerald-300 transition-colors px-1"
+                      >
+                        {isAllSelected ? "Clear" : isPartiallySelected ? `${countSelected}/${groupIds.length}` : "All"}
+                      </button>
+                    </div>
+
+                    <div className="p-1 space-y-0.5">
+                      {grp.items.map((opt) => {
+                        const isSelected = selectedIds.includes(opt.id);
+                        return (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => toggle(opt.id)}
+                            className={`w-full py-1 px-2 rounded-md flex items-center justify-between text-left text-xs transition-colors ${
+                              isSelected
+                                ? "bg-emerald-500/15 text-emerald-300 font-semibold border border-emerald-500/30"
+                                : "text-slate-300 hover:bg-white/5 border border-transparent"
+                            }`}
+                          >
+                            <span className="truncate pr-2">{opt.name}</span>
+                            <div
+                              className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 ${
+                                isSelected
+                                  ? "bg-emerald-500 border-emerald-400 text-gray-950"
+                                  : "border-white/20 bg-navy-950"
+                              }`}
+                            >
+                              {isSelected && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })
             ) : (
               filteredOptions.map((opt) => {
                 const isSelected = selectedIds.includes(opt.id);

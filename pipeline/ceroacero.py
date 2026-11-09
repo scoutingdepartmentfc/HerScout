@@ -314,12 +314,14 @@ def _faltan(p: Dict[str, Any], con_traspasos: set) -> List[str]:
 
 class CeroaceroSync:
     def __init__(self, refresh_days: int = 30, limit: Optional[int] = None, max_minutos: Optional[float] = None,
-                 prueba: bool = False):
+                 prueba: bool = False, league: Optional[str] = None, country: Optional[str] = None):
         self.prueba = prueba
         self.store = Store(get_supabase_client())  # en prueba se lee la BD pero no se escribe (_flush/upload)
         self.cz = CZClient(cache_days=refresh_days)
         self.refresh_days = refresh_days
         self.limit = limit
+        self.league = league
+        self.country = country
         self.fin = time.time() + max_minutos * 60 if max_minutos else None
         self.pendiente: Dict[str, List[Dict[str, Any]]] = {}
         self.asignadas: Dict[int, str] = {}
@@ -417,10 +419,46 @@ class CeroaceroSync:
         jugadoras = self.store.select_all(
             "players", "id,name,first_name,last_name,match_name,birth_date,place_of_birth,height,weight,"
                        "preferred_foot,contract_expires,country,citizenship,photo_url,current_team_id,"
-                       "fm_team_name,cz_id,cz_updated_at")
+                       "fm_team_name,current_league_name,sd_league_code,cz_id,cz_updated_at")
         limite = datetime.now(timezone.utc) - timedelta(days=self.refresh_days)
+
+        # Si se especificó una liga o país, obtener también los IDs de equipos como respaldo
+        target_team_ids = set()
+        league_countries = {}
+        for l in self.store.select_all("sd_leagues", "code,name,country"):
+            if l.get("code") and l.get("country"):
+                league_countries[l["code"].lower()] = l["country"].lower()
+            if l.get("name") and l.get("country"):
+                league_countries[l["name"].lower()] = l["country"].lower()
+
+        if self.league or self.country:
+            l_lower = (self.league or "").lower()
+            c_lower = (self.country or "").lower()
+            for t in self.store.select_all("teams", "id,name,league_name,sd_league_code,country"):
+                t_league = (t.get("league_name") or "").lower()
+                t_sd = (t.get("sd_league_code") or "").lower()
+                t_country = (t.get("country") or league_countries.get(t_sd) or league_countries.get(t_league) or "").lower()
+                
+                match_l = bool(self.league and ((l_lower in t_league) or (l_lower == t_sd)))
+                match_c = bool(self.country and (c_lower in t_country))
+                if match_l or match_c:
+                    target_team_ids.add(t["id"])
+
         pendientes = []
         for p in jugadoras:
+            if self.league or self.country:
+                p_league = (p.get("current_league_name") or "").lower()
+                p_sd = (p.get("sd_league_code") or "").lower()
+                p_country = (p.get("country") or p.get("citizenship") or league_countries.get(p_sd) or league_countries.get(p_league) or "").lower()
+
+                match_l = bool(self.league and ((self.league.lower() in p_league) or (self.league.lower() == p_sd) or (p.get("current_team_id") in target_team_ids)))
+                match_c = bool(self.country and ((self.country.lower() in p_country) or (p.get("current_team_id") in target_team_ids)))
+
+                if self.league and not match_l:
+                    continue
+                if self.country and not match_c:
+                    continue
+
             if p.get("cz_id"):
                 self.asignadas[p["cz_id"]] = p["id"]
             if p["id"] not in con_stats:
@@ -462,13 +500,15 @@ class CeroaceroSync:
 
 def main():
     parser = argparse.ArgumentParser(description="Coche escoba: rellena huecos de las jugadoras con ceroacero.es")
+    parser.add_argument("--league", type=str, default=None, help="Filtrar por nombre o código de liga")
+    parser.add_argument("--country", type=str, default=None, help="Filtrar por país de la liga, equipo o jugadora")
     parser.add_argument("--limit", type=int, default=None, help="Máximo de jugadoras a revisar")
     parser.add_argument("--refresh-days", type=int, default=30,
                         help="No volver a revisar una jugadora hasta pasados N días (por defecto 30)")
     parser.add_argument("--max-minutos", type=float, default=None, help="Parar tras N minutos (reanudable)")
     parser.add_argument("--prueba", action="store_true", help="Lee la BD pero no escribe: muestra lo que rellenaría")
     args = parser.parse_args()
-    CeroaceroSync(args.refresh_days, args.limit, args.max_minutos, args.prueba).run()
+    CeroaceroSync(args.refresh_days, args.limit, args.max_minutos, args.prueba, args.league, args.country).run()
     sys.exit(0)
 
 

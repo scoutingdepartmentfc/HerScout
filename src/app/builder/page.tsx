@@ -12,7 +12,7 @@ import {
   SlidersHorizontal, Trophy, X, ChevronRight, ChevronDown, Eye, Plus, Search, Loader2, RotateCcw, Layers, Info,
 } from "lucide-react";
 import { METRICS_HIERARCHY, GOALKEEPER_HIERARCHY, CategoryDef } from "@/lib/metricsHierarchy";
-import { guessLeagueCountry } from "@/lib/leagueCountry";
+import { guessLeagueCountry, sortLeaguesByCountryAndTier } from "@/lib/leagueCountry";
 
 /* ─────────────────────────── Demarcaciones y sistemas ─────────────────────────── */
 
@@ -206,11 +206,12 @@ function BuilderContent() {
           _mv: p.marketValue ? Math.round(Number(p.marketValue) / 1000) : null,
         }));
         setAllPlayers(list);
-        setLeagueOptions(
-          (json.filters?.leaguesDetailed || []).map((l: any) => ({
-            id: l.name, name: l.name, country: l.country || guessLeagueCountry(l.name),
-          }))
-        );
+        const rawLeagues = (json.filters?.leaguesDetailed || []).map((l: any) => ({
+          id: l.name,
+          name: l.name,
+          country: l.country || guessLeagueCountry(l.name),
+        }));
+        setLeagueOptions(sortLeaguesByCountryAndTier(rawLeagues));
         setTeamOptions((json.filters?.teamsDetailed || []).map((t: any) => ({ id: t.name, name: t.name, badgeUrl: t.badgeUrl })));
       } catch (err) {
         console.error("Failed to fetch players for 11 Builder", err);

@@ -16,7 +16,7 @@ import { notaClases } from "@/lib/notaColor";
 import { getPositionBadge } from "@/lib/positions";
 import { OptaLogo } from "@/components/scouting/OptaLogo";
 import { CamisetaDorsal } from "@/components/scouting/CamisetaDorsal";
-import { guessLeagueCountry } from "@/lib/leagueCountry";
+import { guessLeagueCountry, sortLeaguesByCountryAndTier } from "@/lib/leagueCountry";
 
 interface PlayerRow {
   id: string;
@@ -83,14 +83,49 @@ function MultiSelectDropdown<T extends { id: string; name: string; badgeUrl?: st
   const filteredOptions = React.useMemo(() => {
     if (!search.trim()) return options;
     const s = search.toLowerCase();
-    return options.filter((o) => o.name.toLowerCase().includes(s));
+    return options.filter(
+      (o) =>
+        o.name.toLowerCase().includes(s) ||
+        (o.country && o.country.toLowerCase().includes(s))
+    );
   }, [options, search]);
+
+  // Si las opciones tienen país definido (como las ligas), agruparlas ordenadas por país
+  const groupedByCountry = React.useMemo(() => {
+    const hasAnyCountry = options.some((o) => !!o.country);
+    if (!hasAnyCountry) return null;
+
+    const groups: { country: string; items: T[] }[] = [];
+    const map = new Map<string, T[]>();
+
+    for (const opt of filteredOptions) {
+      const c = opt.country || "Otras Competiciones";
+      if (!map.has(c)) {
+        const list: T[] = [];
+        map.set(c, list);
+        groups.push({ country: c, items: list });
+      }
+      map.get(c)!.push(opt);
+    }
+    return groups;
+  }, [options, filteredOptions]);
 
   const toggleOption = (id: string) => {
     if (selectedIds.includes(id)) {
       onChange(selectedIds.filter((item) => item !== id));
     } else {
       onChange([...selectedIds, id]);
+    }
+  };
+
+  const toggleCountryGroup = (items: T[]) => {
+    const ids = items.map((x) => x.id);
+    const allSelected = ids.every((id) => selectedIds.includes(id));
+    if (allSelected) {
+      onChange(selectedIds.filter((id) => !ids.includes(id)));
+    } else {
+      const next = new Set([...selectedIds, ...ids]);
+      onChange(Array.from(next));
     }
   };
 
@@ -141,17 +176,75 @@ function MultiSelectDropdown<T extends { id: string; name: string; badgeUrl?: st
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Buscar..."
+                placeholder="Buscar por liga o país..."
                 className="w-full h-8 pl-8 pr-2.5 rounded-lg bg-navy-900/90 text-xs text-white border border-white/10 focus:outline-none focus:border-emerald-500 placeholder:text-muted-foreground/60 transition-colors"
                 autoFocus
               />
             </div>
           </div>
-          <div className="max-h-60 overflow-y-auto p-1.5 space-y-0.5 divide-y divide-white/5">
+          <div className="max-h-72 overflow-y-auto p-1.5 space-y-1">
             {filteredOptions.length === 0 ? (
               <div className="py-5 text-center text-xs text-muted-foreground">
                 No se encontraron resultados
               </div>
+            ) : groupedByCountry ? (
+              groupedByCountry.map((grp) => {
+                const groupIds = grp.items.map((x) => x.id);
+                const countSelected = groupIds.filter((id) => selectedIds.includes(id)).length;
+                const isAllSelected = countSelected === groupIds.length;
+                const isPartiallySelected = countSelected > 0 && !isAllSelected;
+
+                return (
+                  <div key={grp.country} className="rounded-lg bg-white/[0.02] border border-white/5 overflow-hidden">
+                    {/* Cabecera del país con bandera y selección rápida */}
+                    <div className="flex items-center justify-between px-2.5 py-1.5 bg-white/[0.04] border-b border-white/5">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        {grp.country !== "Otras Competiciones" && <Bandera country={grp.country} size="xs" />}
+                        <span className="text-[11px] font-bold text-slate-200 tracking-wide uppercase truncate">
+                          {grp.country}
+                        </span>
+                        <span className="text-[10px] text-slate-500 tabular-nums">({grp.items.length})</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => toggleCountryGroup(grp.items)}
+                        className="text-[10px] font-semibold text-emerald-400 hover:text-emerald-300 transition-colors px-1"
+                        title={isAllSelected ? "Deseleccionar país" : "Seleccionar todo el país"}
+                      >
+                        {isAllSelected ? "Deseleccionar" : isPartiallySelected ? `${countSelected}/${groupIds.length}` : "Todo"}
+                      </button>
+                    </div>
+
+                    {/* Ligas de este país (ordenadas por importancia) */}
+                    <div className="p-1 space-y-0.5">
+                      {grp.items.map((opt) => {
+                        const isSelected = selectedIds.includes(opt.id);
+                        return (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => toggleOption(opt.id)}
+                            className={`w-full py-1.5 px-2 rounded-md flex items-center justify-between text-left text-xs transition-colors ${isSelected
+                                ? "bg-emerald-500/15 text-emerald-300 font-semibold border border-emerald-500/30"
+                                : "text-slate-300 hover:bg-white/5 border border-transparent"
+                              }`}
+                          >
+                            <span className="truncate pr-2">{opt.name}</span>
+                            <div
+                              className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors ${isSelected
+                                  ? "bg-emerald-500 border-emerald-400 text-gray-950 font-black"
+                                  : "border-white/20 bg-navy-950"
+                                }`}
+                            >
+                              {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })
             ) : (
               filteredOptions.map((opt) => {
                 const isSelected = selectedIds.includes(opt.id);
@@ -160,22 +253,20 @@ function MultiSelectDropdown<T extends { id: string; name: string; badgeUrl?: st
                     key={opt.id}
                     type="button"
                     onClick={() => toggleOption(opt.id)}
-                    className={`w-full py-2 px-2.5 rounded-lg flex items-center justify-between text-left text-xs transition-colors ${
-                      isSelected
+                    className={`w-full py-2 px-2.5 rounded-lg flex items-center justify-between text-left text-xs transition-colors ${isSelected
                         ? "bg-emerald-500/15 text-emerald-300 font-semibold border border-emerald-500/30"
                         : "text-slate-300 hover:bg-white/5 border border-transparent"
-                    }`}
+                      }`}
                   >
                     <div className="flex items-center gap-2.5 truncate pr-2">
                       {renderIcon && renderIcon(opt)}
                       <span className="truncate">{opt.name}</span>
                     </div>
                     <div
-                      className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors ${
-                        isSelected
+                      className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors ${isSelected
                           ? "bg-emerald-500 border-emerald-400 text-gray-950 font-black"
                           : "border-white/20 bg-navy-950"
-                      }`}
+                        }`}
                     >
                       {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
                     </div>
@@ -315,10 +406,10 @@ function PlayersDirectoryContent() {
     Object.entries(newParams).forEach(([k, v]) => {
       if (!v || v === "all" || (k === "sortBy" && v === "nota_global") || (k === "order" && v === "desc")) {
         params.delete(k);
-        try { sessionStorage.removeItem(`players_filter_${k}`); } catch {}
+        try { sessionStorage.removeItem(`players_filter_${k}`); } catch { }
       } else {
         params.set(k, v);
-        try { sessionStorage.setItem(`players_filter_${k}`, v); } catch {}
+        try { sessionStorage.setItem(`players_filter_${k}`, v); } catch { }
       }
     });
     const qs = params.toString();
@@ -339,22 +430,20 @@ function PlayersDirectoryContent() {
       }
 
       if (json.filters.leaguesDetailed?.length) {
-        setAvailableLeagues(
-          json.filters.leaguesDetailed.map((l: any) => ({
-            id: l.name,
-            name: l.name,
-            logoUrl: l.logoUrl,
-            country: l.country || guessLeagueCountry(l.name),
-          }))
-        );
+        const mapped = json.filters.leaguesDetailed.map((l: any) => ({
+          id: l.name,
+          name: l.name,
+          logoUrl: l.logoUrl,
+          country: l.country || guessLeagueCountry(l.name),
+        }));
+        setAvailableLeagues(sortLeaguesByCountryAndTier(mapped));
       } else if (json.filters.leagues?.length) {
-        setAvailableLeagues(
-          json.filters.leagues.map((l: string) => ({
-            id: l,
-            name: l,
-            country: guessLeagueCountry(l),
-          }))
-        );
+        const mapped = json.filters.leagues.map((l: string) => ({
+          id: l,
+          name: l,
+          country: guessLeagueCountry(l),
+        }));
+        setAvailableLeagues(sortLeaguesByCountryAndTier(mapped));
       }
 
       if (json.filters.seasons?.length) setAvailableSeasons(json.filters.seasons);
@@ -534,7 +623,7 @@ function PlayersDirectoryContent() {
       ["search", "position", "teams", "leagues", "season", "minRating", "minAge", "maxAge", "sortBy", "order"].forEach((k) => {
         sessionStorage.removeItem(`players_filter_${k}`);
       });
-    } catch {}
+    } catch { }
     setSearchTerm("");
     setPositionFilter("all");
     setSelectedTeams([]);
@@ -584,7 +673,7 @@ function PlayersDirectoryContent() {
 
   const getPositionPill = (posName: string) => {
     const badge = getPositionBadge(posName);
-    
+
     let colorClasses = "bg-slate-800/80 text-slate-300 border-slate-700/60";
     if (badge.category === "GK") {
       colorClasses = "bg-amber-950/40 text-amber-300 border-amber-800/50";

@@ -11,6 +11,8 @@ type BaseData = {
   leagueCountryByCode: Map<string, string>;
   leagueCountryByName: Map<string, string>;
   trendByPlayer: Map<string, "up" | "neutral" | "down">;
+  // Every player (stats or not): the ones without season stats are listed without ratings
+  allPlayers: any[];
 };
 
 type ProcessedSeason = {
@@ -149,10 +151,31 @@ async function loadBaseData(db: any): Promise<BaseData> {
       .select("player_id", { count: "exact", head: true });
 
     // Stats count, sd_leagues and trends all run in parallel
-    const [statsCountRes, sdLRes, trendByPlayer] = await Promise.all([
+    const PLAYER_FIELDS = `id, name, match_name, country, birth_date, photo_url, primary_position, grupo_demarcacion,
+      shirt_number, height, weight, preferred_foot, market_value,
+      fm_team_name, fm_team_badge_url, current_league_name, current_league_logo_url, sd_league_code,
+      teams:current_team_id ( id, name, badge_url, league_name, league_logo_url ),
+      player_ea_ratings ( pace, physicality )`;
+    const fetchAllPlayers = async () => {
+      const { count } = await db.from("players").select("id", { count: "exact", head: true });
+      const offs: number[] = [];
+      for (let from = 0; from < (count || 0); from += PAGE) offs.push(from);
+      const res = await Promise.all(
+        offs.map((from) => db.from("players").select(PLAYER_FIELDS).order("id").range(from, from + PAGE - 1))
+      );
+      const out: any[] = [];
+      for (const r of res as any[]) {
+        if (r.error) throw r.error;
+        if (r.data) out.push(...r.data);
+      }
+      return out;
+    };
+
+    const [statsCountRes, sdLRes, trendByPlayer, allPlayers] = await Promise.all([
       statsCountPromise,
       db.from("sd_leagues").select("code, name, country"),
       fetchTrends(db),
+      fetchAllPlayers(),
     ]);
 
     const totalStats = Math.max(statsCountRes?.count || 0, PAGE);
@@ -176,7 +199,7 @@ async function loadBaseData(db: any): Promise<BaseData> {
       if (item.name && item.country) leagueCountryByName.set(item.name.toLowerCase(), item.country);
     }
 
-    const data: BaseData = { rows, leagueCountryByCode, leagueCountryByName, trendByPlayer };
+    const data: BaseData = { rows, leagueCountryByCode, leagueCountryByName, trendByPlayer, allPlayers };
     baseCache = { timestamp: Date.now(), data };
     processedCache.clear();
     return data;
@@ -204,6 +227,8 @@ export async function GET(req: NextRequest) {
   // season: "all" (accumulated by default) | season name e.g. "2026/2027", "2025/2026"
   const season = url.searchParams.get("season") || "all";
   const minRating = url.searchParams.get("minRating") ? Number(url.searchParams.get("minRating")) : null;
+  // ratings: "all" | "rated" | "unrated"
+  const ratings = url.searchParams.get("ratings") || "all";
   const sortBy = url.searchParams.get("sortBy") || "nota_global";
   const order = url.searchParams.get("order") === "asc" ? "asc" : "desc";
 
@@ -231,7 +256,7 @@ export async function GET(req: NextRequest) {
     if (cachedProcessed && cachedProcessed.timestamp === baseCache?.timestamp) {
       processed = cachedProcessed.value;
     } else {
-    const { rows, leagueCountryByCode, leagueCountryByName, trendByPlayer } = base;
+    const { rows, leagueCountryByCode, leagueCountryByName, trendByPlayer, allPlayers } = base;
 
     // Extract available season names from all rows for the filter dropdown
     const availableSeasons = Array.from(
@@ -328,8 +353,10 @@ export async function GET(req: NextRequest) {
           notaBalonParado: getWeightedVal("nota_balon_parado"),
           notaDisponibilidad: getWeightedVal("nota_disponibilidad"),
           notaFisico,
+          hasRatings: true,
         });
       });
+
     } else {
       // SPECIFIC SEASON FILTER: Only show stats for the selected season
       Array.from(rowsByPlayer.entries()).forEach(([playerId, playerRows]) => {
@@ -378,7 +405,53 @@ export async function GET(req: NextRequest) {
           notaBalonParado: matchingRow.nota_balon_parado,
           notaDisponibilidad: matchingRow.nota_disponibilidad,
           notaFisico,
+          hasRatings: true,
         });
+      });
+    }
+
+    // Players without season stats (e.g. leagues where Opta has no player data): listed without ratings
+    for (const p of allPlayers) {
+      if (rowsByPlayer.has(p.id) || isRetired(p)) continue;
+      const ea = Array.isArray(p.player_ea_ratings) ? p.player_ea_ratings[0] : p.player_ea_ratings;
+      const notaFisico =
+        ea?.pace != null && ea?.physicality != null
+          ? Math.round(Number(ea.pace) * 0.45 + Number(ea.physicality) * 0.55)
+          : ea?.pace != null ? Number(ea.pace) : ea?.physicality != null ? Number(ea.physicality) : null;
+      list.push({
+        id: p.id,
+        name: p.name,
+        matchName: p.match_name || p.name,
+        country: p.country,
+        birthDate: p.birth_date,
+        photoUrl: p.photo_url,
+        position: p.primary_position || "Centrocampista",
+        grupoDemarcacion: p.grupo_demarcacion || "General",
+        shirtNumber: p.shirt_number,
+        height: p.height,
+        weight: p.weight,
+        preferredFoot: p.preferred_foot,
+        marketValue: p.market_value,
+        teamId: p.teams?.id,
+        teamName: p.fm_team_name || p.teams?.name || "Unattached",
+        badgeUrl: (p.fm_team_name ? p.fm_team_badge_url : null) || p.teams?.badge_url,
+        leagueName: p.current_league_name || p.teams?.league_name || "Primera División Femenina",
+        leagueLogoUrl: p.current_league_logo_url || p.teams?.league_logo_url,
+        leagueCountry: (p.sd_league_code ? leagueCountryByCode.get(p.sd_league_code) : null) ||
+          leagueCountryByName.get((p.current_league_name || p.teams?.league_name || "").toLowerCase()) ||
+          null,
+        seasonName: null,
+        isAccumulated: false,
+        minutesPlayed: 0,
+        matchesPlayed: 0,
+        notaGlobal: null,
+        notaAtaque: null,
+        notaConstruccion: null,
+        notaDefensa: null,
+        notaBalonParado: null,
+        notaDisponibilidad: null,
+        notaFisico,
+        hasRatings: false,
       });
     }
 
@@ -479,6 +552,9 @@ export async function GET(req: NextRequest) {
         return true;
       });
     }
+
+    if (ratings === "rated") list = list.filter((p: any) => p.hasRatings);
+    else if (ratings === "unrated") list = list.filter((p: any) => !p.hasRatings);
 
     if (minRating != null && !isNaN(minRating)) {
       list = list.filter((p: any) => (p.notaGlobal || 0) >= minRating);

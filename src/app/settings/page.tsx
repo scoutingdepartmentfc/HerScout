@@ -66,7 +66,7 @@ export default function SettingsPage() {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-xl font-bold tracking-tight text-white">Club Workspace & Branding</h1>
+            <h1 className="text-3xl font-extrabold tracking-tight text-white">Club Workspace & Branding</h1>
             <Badge variant="default" size="sm">Enterprise Plan</Badge>
           </div>
           <p className="text-xs text-muted-foreground mt-0.5">

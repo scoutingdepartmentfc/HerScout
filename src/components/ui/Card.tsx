@@ -8,7 +8,7 @@ export const Card: React.FC<React.HTMLAttributes<HTMLDivElement>> = ({
 }) => (
   <div
     className={cn(
-      "rounded-lg border border-border/80 bg-card/90 text-card-foreground shadow-sm backdrop-blur-sm",
+      "relative rounded-sm border border-border/80 border-t-2 border-t-primary bg-card/90 text-card-foreground shadow-lg shadow-black/30 backdrop-blur-sm",
       className
     )}
     {...props}
@@ -22,7 +22,7 @@ export const CardHeader: React.FC<React.HTMLAttributes<HTMLDivElement>> = ({
   children,
   ...props
 }) => (
-  <div className={cn("flex flex-col space-y-1.5 p-4 border-b border-border/50", className)} {...props}>
+  <div className={cn("flex flex-col gap-1.5 p-4 border-b border-primary/30 bg-gradient-to-r from-primary/20 via-primary/[0.06] to-transparent", className)} {...props}>
     {children}
   </div>
 );
@@ -32,7 +32,7 @@ export const CardTitle: React.FC<React.HTMLAttributes<HTMLHeadingElement>> = ({
   children,
   ...props
 }) => (
-  <h3 className={cn("text-base font-semibold leading-none tracking-tight text-white", className)} {...props}>
+  <h3 className={cn("font-display text-lg font-bold uppercase leading-none tracking-wide text-white", className)} {...props}>
     {children}
   </h3>
 );

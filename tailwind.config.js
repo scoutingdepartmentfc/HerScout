@@ -63,6 +63,9 @@ module.exports = {
           white: "#FFFFFF",
         },
       },
+      fontFamily: {
+        display: ["var(--font-display)", "Arial Narrow", "sans-serif"],
+      },
       borderRadius: {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",

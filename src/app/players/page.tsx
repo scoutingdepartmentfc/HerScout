@@ -612,7 +612,7 @@ function PlayersDirectoryContent() {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div>
           <div className="flex items-center gap-2.5">
-            <h1 className="text-2xl font-black tracking-tight text-white">Player Database</h1>
+            <h1 className="text-4xl font-extrabold tracking-tight text-white">Player Database</h1>
             <OptaLogo size="xs" label="Verified" className="bg-sky-500/10 border-sky-400/30 text-sky-300" />
           </div>
           <p className="text-xs text-muted-foreground mt-1">

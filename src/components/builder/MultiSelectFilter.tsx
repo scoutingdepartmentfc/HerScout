@@ -24,7 +24,7 @@ interface MultiSelectFilterProps {
 
 export const MultiSelectFilter: React.FC<MultiSelectFilterProps> = ({
   label,
-  placeholder = "Seleccionar...",
+  placeholder = "Select...",
   options,
   selectedIds,
   onChange,
@@ -81,7 +81,7 @@ export const MultiSelectFilter: React.FC<MultiSelectFilterProps> = ({
               {selectedIds[0]}
             </span>
           ) : (
-            <span className="text-emerald-400 font-semibold">{selectedIds.length} seleccionados</span>
+            <span className="text-emerald-400 font-semibold">{selectedIds.length} selected</span>
           )}
         </span>
         <div className="flex items-center gap-1 shrink-0">
@@ -107,7 +107,7 @@ export const MultiSelectFilter: React.FC<MultiSelectFilterProps> = ({
               <Search className="w-3.5 h-3.5 text-muted-foreground absolute left-2.5 top-2.5 pointer-events-none" />
               <input
                 type="text"
-                placeholder={`Buscar en ${label.toLowerCase()}...`}
+                placeholder={`Search ${label.toLowerCase()}...`}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="w-full h-8 pl-8 pr-2 bg-black/40 border border-white/10 rounded-md text-xs text-white placeholder:text-muted-foreground focus:outline-none focus:border-emerald-500"
@@ -119,7 +119,7 @@ export const MultiSelectFilter: React.FC<MultiSelectFilterProps> = ({
           <div className="max-h-60 overflow-y-auto p-1.5 space-y-0.5 divide-y divide-white/5">
             {filteredOptions.length === 0 ? (
               <div className="py-4 text-center text-xs text-muted-foreground">
-                No hay resultados
+                No results
               </div>
             ) : (
               filteredOptions.map((opt) => {
@@ -165,13 +165,13 @@ export const MultiSelectFilter: React.FC<MultiSelectFilterProps> = ({
 
           {selectedIds.length > 0 && (
             <div className="p-2 border-t border-white/10 bg-navy-950 flex justify-between items-center text-[11px] px-3">
-              <span className="text-muted-foreground">{selectedIds.length} seleccionados</span>
+              <span className="text-muted-foreground">{selectedIds.length} selected</span>
               <button
                 type="button"
                 onClick={() => onChange([])}
                 className="text-emerald-400 hover:text-emerald-300 font-semibold"
               >
-                Limpiar
+                Clear
               </button>
             </div>
           )}

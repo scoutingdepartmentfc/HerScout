@@ -85,7 +85,7 @@ export const RangeSlider: React.FC<RangeSliderProps> = ({
             onBlur={commit}
             onKeyDown={(e) => e.key === "Enter" && commit()}
             className="w-11 h-5 rounded bg-black/40 border border-white/10 text-[10px] text-center tabular-nums text-slate-200 focus:outline-none focus:border-white/30"
-            aria-label={`${label} mínimo`}
+            aria-label={`${label} minimum`}
           />
           <span className="text-[10px] text-slate-600">–</span>
           <input
@@ -94,14 +94,14 @@ export const RangeSlider: React.FC<RangeSliderProps> = ({
             onBlur={commit}
             onKeyDown={(e) => e.key === "Enter" && commit()}
             className="w-11 h-5 rounded bg-black/40 border border-white/10 text-[10px] text-center tabular-nums text-slate-200 focus:outline-none focus:border-white/30"
-            aria-label={`${label} máximo`}
+            aria-label={`${label} maximum`}
           />
           {(active || onRemove) && (
             <button
               type="button"
               onClick={() => (onRemove ? onRemove() : onChange(null))}
               className="ml-0.5 p-0.5 rounded text-slate-500 hover:text-white hover:bg-white/10"
-              title={onRemove ? "Quitar filtro" : "Restablecer"}
+              title={onRemove ? "Remove filter" : "Reset"}
             >
               <X className="w-3 h-3" />
             </button>
@@ -128,7 +128,7 @@ export const RangeSlider: React.FC<RangeSliderProps> = ({
           value={lo}
           onChange={(e) => emit(Math.min(Number(e.target.value), hi), hi)}
           style={{ ["--thumb" as any]: active ? color : "#94a3b8", zIndex: lo > max - span * 0.1 ? 5 : 3 }}
-          aria-label={`${label} mínimo`}
+          aria-label={`${label} minimum`}
         />
         <input
           type="range"
@@ -138,7 +138,7 @@ export const RangeSlider: React.FC<RangeSliderProps> = ({
           value={hi}
           onChange={(e) => emit(lo, Math.max(Number(e.target.value), lo))}
           style={{ ["--thumb" as any]: active ? color : "#94a3b8", zIndex: 4 }}
-          aria-label={`${label} máximo`}
+          aria-label={`${label} maximum`}
         />
       </div>
 

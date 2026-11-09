@@ -45,7 +45,7 @@ export const MinMaxSlider: React.FC<MinMaxSliderProps> = ({
       <div className="space-y-1.5 mt-1">
         {/* Min slider */}
         <div className="flex items-center gap-2">
-          <span className="text-[9px] text-slate-400 w-6">Mín</span>
+          <span className="text-[9px] text-slate-400 w-6">Min</span>
           <input
             type="range"
             min={min}
@@ -60,7 +60,7 @@ export const MinMaxSlider: React.FC<MinMaxSliderProps> = ({
 
         {/* Max slider */}
         <div className="flex items-center gap-2">
-          <span className="text-[9px] text-slate-400 w-6">Máx</span>
+          <span className="text-[9px] text-slate-400 w-6">Max</span>
           <input
             type="range"
             min={currentMin}

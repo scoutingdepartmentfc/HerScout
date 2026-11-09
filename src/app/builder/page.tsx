@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useMemo, useRef, Suspense } from "react";
 import Link from "next/link";
-import { StadiumPitch } from "@/components/builder/StadiumPitch";
+import { StadiumPitch, EmptyPitchSlot } from "@/components/builder/StadiumPitch";
 import { PitchCard } from "@/components/builder/PitchCard";
 import { MultiSelectFilter } from "@/components/builder/MultiSelectFilter";
 import { RangeSlider } from "@/components/builder/RangeSlider";
@@ -20,13 +20,13 @@ type GroupId = "Porteros" | "Centrales" | "Laterales" | "Medios" | "Mediapuntas"
 type ScopeId = "all" | GroupId;
 
 const GROUPS: { id: GroupId; label: string; short: string; color: string }[] = [
-  { id: "Porteros", label: "Porteras", short: "POR", color: "#f59e0b" },
-  { id: "Centrales", label: "Centrales", short: "DFC", color: "#3b82f6" },
-  { id: "Laterales", label: "Laterales", short: "LAT", color: "#06b6d4" },
-  { id: "Medios", label: "Mediocentros", short: "MC", color: "#10b981" },
-  { id: "Mediapuntas", label: "Mediapuntas", short: "MP", color: "#84cc16" },
-  { id: "Extremos", label: "Extremas", short: "EXT", color: "#f43f5e" },
-  { id: "Delanteros", label: "Delanteras", short: "DC", color: "#ef4444" },
+  { id: "Porteros", label: "Goalkeepers", short: "GK", color: "#f59e0b" },
+  { id: "Centrales", label: "Centre-backs", short: "CB", color: "#3b82f6" },
+  { id: "Laterales", label: "Full-backs", short: "FB", color: "#06b6d4" },
+  { id: "Medios", label: "Midfielders", short: "CM", color: "#10b981" },
+  { id: "Mediapuntas", label: "Attacking mids", short: "AM", color: "#84cc16" },
+  { id: "Extremos", label: "Wingers", short: "W", color: "#f43f5e" },
+  { id: "Delanteros", label: "Strikers", short: "ST", color: "#ef4444" },
 ];
 const GROUP_BY_ID = Object.fromEntries(GROUPS.map((g) => [g.id, g])) as Record<GroupId, (typeof GROUPS)[number]>;
 
@@ -92,21 +92,21 @@ const emptyScopes = (): Record<ScopeId, FilterSet> =>
   Object.fromEntries(SCOPES.map((s) => [s, emptyFilters()])) as Record<ScopeId, FilterSet>;
 
 const FEET = [
-  { id: "right", label: "Diestra" },
-  { id: "left", label: "Zurda" },
-  { id: "both", label: "Ambidiestra" },
+  { id: "right", label: "Right" },
+  { id: "left", label: "Left" },
+  { id: "both", label: "Both" },
 ];
 
 // Campos básicos (límites calculados a partir de los datos)
 interface BasicField { key: string; label: string; unit?: string; step: number; get: (p: any) => number | null; color: string; format?: (v: number) => string }
 const fmtMoney = (v: number) => (v >= 1000 ? `${(v / 1000).toFixed(v >= 10000 ? 0 : 1)}M€` : `${v}k€`);
 const BASIC_FIELDS: BasicField[] = [
-  { key: "age", label: "Edad", unit: "años", step: 1, get: (p) => p._age, color: "#38bdf8" },
-  { key: "height", label: "Altura", unit: "cm", step: 1, get: (p) => p.height || null, color: "#a78bfa" },
-  { key: "weight", label: "Peso", unit: "kg", step: 1, get: (p) => p.weight || null, color: "#a78bfa" },
-  { key: "minutes", label: "Minutos jugados", step: 50, get: (p) => p.minutesPlayed ?? null, color: "#22d3ee" },
-  { key: "matches", label: "Partidos jugados", step: 1, get: (p) => p.matchesPlayed ?? null, color: "#22d3ee" },
-  { key: "marketValue", label: "Valor de mercado", step: 5, get: (p) => p._mv, color: "#facc15", format: fmtMoney },
+  { key: "age", label: "Age", unit: "years", step: 1, get: (p) => p._age, color: "#38bdf8" },
+  { key: "height", label: "Height", unit: "cm", step: 1, get: (p) => p.height || null, color: "#a78bfa" },
+  { key: "weight", label: "Weight", unit: "kg", step: 1, get: (p) => p.weight || null, color: "#a78bfa" },
+  { key: "minutes", label: "Minutes played", step: 50, get: (p) => p.minutesPlayed ?? null, color: "#22d3ee" },
+  { key: "matches", label: "Matches played", step: 1, get: (p) => p.matchesPlayed ?? null, color: "#22d3ee" },
+  { key: "marketValue", label: "Market value", step: 5, get: (p) => p._mv, color: "#facc15", format: fmtMoney },
 ];
 const BASIC_BY_KEY = Object.fromEntries(BASIC_FIELDS.map((f) => [f.key, f]));
 
@@ -133,7 +133,7 @@ const hierarchyForScope = (scope: ScopeId): CategoryDef[] => (scope === "Portero
 
 // Etiqueta de cualquier clave (para chips y selects)
 const LABELS: Record<string, string> = (() => {
-  const out: Record<string, string> = { nota_global: "Nota global", nota_fisico: "Físico (EA)" };
+  const out: Record<string, string> = { nota_global: "Overall rating", nota_fisico: "Physical (EA)" };
   BASIC_FIELDS.forEach((f) => (out[f.key] = f.label));
   for (const [h, gk] of [[METRICS_HIERARCHY, false], [GOALKEEPER_HIERARCHY, true]] as const) {
     for (const c of h) {
@@ -437,12 +437,12 @@ function BuilderContent() {
   // Chips de filtros activos (todas las pestañas)
   const chips = SCOPES.flatMap((s) => {
     const fs = scopes[s];
-    const tag = s === "all" ? "Todas" : GROUP_BY_ID[s].label;
+    const tag = s === "all" ? "All" : GROUP_BY_ID[s].label;
     const color = s === "all" ? "#10b981" : GROUP_BY_ID[s].color;
     const out: { id: string; scope: ScopeId; tag: string; color: string; text: string; clear: () => void }[] = [];
-    if (fs.leagues.length) out.push({ id: `${s}-lg`, scope: s, tag, color, text: fs.leagues.length === 1 ? fs.leagues[0] : `${fs.leagues.length} ligas`, clear: () => updateScope(s, { leagues: [] }) });
-    if (fs.teams.length) out.push({ id: `${s}-tm`, scope: s, tag, color, text: fs.teams.length === 1 ? fs.teams[0] : `${fs.teams.length} equipos`, clear: () => updateScope(s, { teams: [] }) });
-    if (fs.countries.length) out.push({ id: `${s}-ct`, scope: s, tag, color, text: fs.countries.length === 1 ? fs.countries[0] : `${fs.countries.length} países`, clear: () => updateScope(s, { countries: [] }) });
+    if (fs.leagues.length) out.push({ id: `${s}-lg`, scope: s, tag, color, text: fs.leagues.length === 1 ? fs.leagues[0] : `${fs.leagues.length} leagues`, clear: () => updateScope(s, { leagues: [] }) });
+    if (fs.teams.length) out.push({ id: `${s}-tm`, scope: s, tag, color, text: fs.teams.length === 1 ? fs.teams[0] : `${fs.teams.length} teams`, clear: () => updateScope(s, { teams: [] }) });
+    if (fs.countries.length) out.push({ id: `${s}-ct`, scope: s, tag, color, text: fs.countries.length === 1 ? fs.countries[0] : `${fs.countries.length} countries`, clear: () => updateScope(s, { countries: [] }) });
     if (fs.feet.length) out.push({ id: `${s}-ft`, scope: s, tag, color, text: fs.feet.map((x) => FEET.find((y) => y.id === x)?.label).join(" / "), clear: () => updateScope(s, { feet: [] }) });
     for (const [k, [lo, hi]] of Object.entries(fs.ranges)) {
       const basic = BASIC_BY_KEY[k];
@@ -451,7 +451,7 @@ function BuilderContent() {
       const text = lo > bLo && hi < bHi ? `${fmt(lo)}–${fmt(hi)}` : lo > bLo ? `≥ ${fmt(lo)}` : `≤ ${fmt(hi)}`;
       out.push({ id: `${s}-${k}`, scope: s, tag, color, text: `${LABELS[k] || k} ${text}`, clear: () => setRange(s, k, null) });
     }
-    if (fs.sortBy) out.push({ id: `${s}-sort`, scope: s, tag, color, text: `Orden: ${LABELS[fs.sortBy] || fs.sortBy}`, clear: () => updateScope(s, { sortBy: "" }) });
+    if (fs.sortBy) out.push({ id: `${s}-sort`, scope: s, tag, color, text: `Sort: ${LABELS[fs.sortBy] || fs.sortBy}`, clear: () => updateScope(s, { sortBy: "" }) });
     return out;
   });
 
@@ -463,14 +463,14 @@ function BuilderContent() {
         <div className="flex items-center justify-between mb-2.5">
           <div className="flex items-center gap-2 text-xs font-bold text-slate-200 uppercase tracking-wider">
             <SlidersHorizontal className="w-4 h-4 text-emerald-400" />
-            Filtros
+            Filters
             {totalActive > 0 && (
               <span className="px-1.5 py-0.5 rounded-md bg-emerald-500/15 text-emerald-300 text-[10px] tabular-nums">{totalActive}</span>
             )}
           </div>
           {totalActive > 0 && (
             <button onClick={() => setScopes(emptyScopes())} className="text-[10px] text-rose-400 hover:text-rose-300 font-semibold flex items-center gap-1">
-              <RotateCcw className="w-3 h-3" /> Resetear todo
+              <RotateCcw className="w-3 h-3" /> Reset all
             </button>
           )}
         </div>
@@ -488,10 +488,10 @@ function BuilderContent() {
                   on ? "text-white shadow-lg" : "text-slate-400 border-white/5 bg-black/20 hover:text-slate-200 hover:border-white/15"
                 }`}
                 style={on ? { borderColor: `${color}80`, background: `${color}22`, boxShadow: `0 0 18px ${color}25` } : undefined}
-                title={g ? `Filtros solo para ${g.label}` : "Filtros para todas las demarcaciones"}
+                title={g ? `Filters for ${g.label} only` : "Filters for all positions"}
               >
                 {g ? <span className="w-1.5 h-1.5 rounded-full" style={{ background: color }} /> : <Layers className="w-3 h-3" />}
-                {g ? g.short : "Todas"}
+                {g ? g.short : "All"}
                 {n > 0 && (
                   <span className="min-w-[16px] h-4 px-1 rounded-full text-[9px] flex items-center justify-center text-gray-950" style={{ background: color }}>
                     {n}
@@ -504,11 +504,11 @@ function BuilderContent() {
         <div className="mt-2.5 flex items-start gap-1.5 text-[10.5px] text-slate-400 leading-snug">
           <Info className="w-3 h-3 mt-0.5 shrink-0" style={{ color: scopeColor }} />
           {activeScope === "all" ? (
-            <span>Se aplican a <b className="text-slate-200">todas las demarcaciones</b>. Las métricas de campo no afectan a las porteras.</span>
+            <span>Applied to <b className="text-slate-200">all positions</b>. Outfield metrics don't affect goalkeepers.</span>
           ) : (
             <span>
-              Solo para <b style={{ color: scopeColor }}>{GROUP_BY_ID[activeScope].label}</b>, sumados a los de «Todas».{" "}
-              <span className="text-slate-300 tabular-nums">{candidatesByGroup[activeScope]?.filter((p) => p.grupoDemarcacion === activeScope).length ?? 0}</span> candidatas.
+              Only for <b style={{ color: scopeColor }}>{GROUP_BY_ID[activeScope].label}</b>, on top of the “All” filters.{" "}
+              <span className="text-slate-300 tabular-nums">{candidatesByGroup[activeScope]?.filter((p) => p.grupoDemarcacion === activeScope).length ?? 0}</span> candidates.
             </span>
           )}
         </div>
@@ -517,7 +517,7 @@ function BuilderContent() {
       <div className="overflow-y-auto p-3 space-y-4 flex-1">
         {/* Orden propio */}
         {activeScope !== "all" && (
-          <Section title="Ordenar esta demarcación por">
+          <Section title="Sort this position by">
             <MetricSelect
               value={f.sortBy}
               onChange={(v) => updateScope(activeScope, { sortBy: v })}
@@ -528,13 +528,13 @@ function BuilderContent() {
           </Section>
         )}
 
-        <Section title="Competición y perfil">
+        <Section title="Competition & profile">
           <div className="grid grid-cols-1 gap-2">
-            <MultiSelectFilter label="Ligas" placeholder="Todas las ligas" options={leagueOpts} selectedIds={f.leagues} onChange={(v) => updateScope(activeScope, { leagues: v })} showFlag />
-            <MultiSelectFilter label="Equipos" placeholder="Todos los equipos" options={teamOpts} selectedIds={f.teams} onChange={(v) => updateScope(activeScope, { teams: v })} />
-            <MultiSelectFilter label="Nacionalidad" placeholder="Todas las naciones" options={countryOpts} selectedIds={f.countries} onChange={(v) => updateScope(activeScope, { countries: v })} showFlag />
+            <MultiSelectFilter label="Leagues" placeholder="All leagues" options={leagueOpts} selectedIds={f.leagues} onChange={(v) => updateScope(activeScope, { leagues: v })} showFlag />
+            <MultiSelectFilter label="Teams" placeholder="All teams" options={teamOpts} selectedIds={f.teams} onChange={(v) => updateScope(activeScope, { teams: v })} />
+            <MultiSelectFilter label="Nationality" placeholder="All nations" options={countryOpts} selectedIds={f.countries} onChange={(v) => updateScope(activeScope, { countries: v })} showFlag />
             <div>
-              <span className="text-[10px] font-semibold text-slate-300 uppercase tracking-wider block mb-1">Pie dominante</span>
+              <span className="text-[10px] font-semibold text-slate-300 uppercase tracking-wider block mb-1">Preferred foot</span>
               <div className="grid grid-cols-3 gap-1.5">
                 {FEET.map((ft) => {
                   const on = f.feet.includes(ft.id);
@@ -555,7 +555,7 @@ function BuilderContent() {
           </div>
         </Section>
 
-        <Section title="Datos físicos y de juego">
+        <Section title="Physical & playing data">
           <div className="space-y-1.5">
             {BASIC_FIELDS.map((bf) => {
               const [lo, hi] = boundsFor(bf.key);
@@ -576,10 +576,10 @@ function BuilderContent() {
           </div>
         </Section>
 
-        <Section title="Rendimiento (notas 0–100)">
+        <Section title="Performance (ratings 0–100)">
           <div className="space-y-1.5">
-            <RangeSlider label="Nota global" min={0} max={100} value={f.ranges.nota_global || null} onChange={(v) => setRange(activeScope, "nota_global", v)} color="#fbbf24" />
-            <RangeSlider label="Físico (EA)" min={0} max={100} value={f.ranges.nota_fisico || null} onChange={(v) => setRange(activeScope, "nota_fisico", v)} color="#fb923c" />
+            <RangeSlider label="Overall rating" min={0} max={100} value={f.ranges.nota_global || null} onChange={(v) => setRange(activeScope, "nota_global", v)} color="#fbbf24" />
+            <RangeSlider label="Physical (EA)" min={0} max={100} value={f.ranges.nota_fisico || null} onChange={(v) => setRange(activeScope, "nota_fisico", v)} color="#fb923c" />
           </div>
           <div className="mt-2 space-y-2">
             {hierarchyForScope(activeScope).map((cat) => (
@@ -591,7 +591,7 @@ function BuilderContent() {
                 onRange={(k, v) => setRange(activeScope, k, v)}
                 onAddMetric={(k) => addMetric(activeScope, k)}
                 onRemoveMetric={(k) => removeMetric(activeScope, k)}
-                dimmed={activeScope === "all" && cat.id !== "disponibilidad" ? "No se aplica a porteras" : undefined}
+                dimmed={activeScope === "all" && cat.id !== "disponibilidad" ? "Does not apply to goalkeepers" : undefined}
               />
             ))}
           </div>
@@ -602,7 +602,7 @@ function BuilderContent() {
             onClick={() => setScopes((prev) => ({ ...prev, [activeScope]: emptyFilters() }))}
             className="w-full h-8 rounded-lg border border-white/10 text-[11px] text-slate-300 hover:text-white hover:border-white/25 flex items-center justify-center gap-1.5"
           >
-            <RotateCcw className="w-3 h-3" /> Limpiar filtros de {activeScope === "all" ? "«Todas»" : GROUP_BY_ID[activeScope].label}
+            <RotateCcw className="w-3 h-3" /> Clear {activeScope === "all" ? "“All”" : GROUP_BY_ID[activeScope].label} filters
           </button>
         )}
       </div>
@@ -618,19 +618,19 @@ function BuilderContent() {
             <Trophy className="w-6 h-6" />
           </div>
           <div>
-            <h1 className="text-2xl md:text-3xl font-black tracking-tight text-white flex items-center gap-2">
+            <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight text-white flex items-center gap-2">
               11 BUILDER
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">ELITE TACTICAL</span>
             </h1>
-            <p className="text-xs text-slate-400 mt-0.5">El mejor once según tu sistema, con filtros globales y por demarcación.</p>
+            <p className="text-xs text-slate-400 mt-0.5">The best XI for your system, with global and per-position filters.</p>
           </div>
         </div>
 
         <div className="flex items-stretch gap-0 bg-navy-950/80 border border-white/10 rounded-xl shadow-lg divide-x divide-white/10">
-          <Stat label="Formación" value={formation} className="text-emerald-400" />
-          <Stat label="Rating medio" value={squadOvr} className="text-amber-400" />
-          <Stat label="Candidatas" value={globalCount} className="text-sky-400" />
-          <Stat label="Filtros" value={totalActive} className="text-fuchsia-400" />
+          <Stat label="Formation" value={formation} className="text-emerald-400" />
+          <Stat label="Avg rating" value={squadOvr} className="text-amber-400" />
+          <Stat label="Candidates" value={globalCount} className="text-sky-400" />
+          <Stat label="Filters" value={totalActive} className="text-fuchsia-400" />
         </div>
       </div>
 
@@ -642,7 +642,7 @@ function BuilderContent() {
             className="lg:hidden w-full mb-3 h-10 rounded-xl border border-white/10 bg-[#0b1322] text-xs font-bold flex items-center justify-center gap-2"
           >
             <SlidersHorizontal className="w-4 h-4 text-emerald-400" />
-            {showFiltersMobile ? "Ocultar filtros" : `Mostrar filtros${totalActive ? ` (${totalActive})` : ""}`}
+            {showFiltersMobile ? "Hide filters" : `Show filters${totalActive ? ` (${totalActive})` : ""}`}
           </button>
           <div className={`${showFiltersMobile ? "block" : "hidden"} lg:block`}>{filtersPanel}</div>
         </aside>
@@ -666,7 +666,7 @@ function BuilderContent() {
               ))}
             </div>
             <div className="flex items-center gap-2 md:w-80">
-              <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">Elegir por</span>
+              <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">Pick by</span>
               <MetricSelect value={metricSort} onChange={setMetricSort} scope="all" loading={loadingKeys.has(metricSort)} />
             </div>
           </div>
@@ -682,12 +682,12 @@ function BuilderContent() {
                     onClick={() => setActiveScope(c.scope)}
                     className="px-1.5 h-4 rounded-full text-[9px] font-bold text-gray-950"
                     style={{ background: c.color }}
-                    title="Ir a la pestaña"
+                    title="Go to tab"
                   >
                     {c.tag}
                   </button>
                   {c.text}
-                  <button onClick={c.clear} className="text-slate-500 hover:text-white" aria-label="Quitar filtro">
+                  <button onClick={c.clear} className="text-slate-500 hover:text-white" aria-label="Remove filter">
                     <X className="w-3 h-3" />
                   </button>
                 </span>
@@ -697,26 +697,27 @@ function BuilderContent() {
 
           {isLoading ? (
             <div className="min-h-[500px] flex items-center justify-center">
-              <LoadingState message="Calculando el 11 ideal y posicionando a las mejores jugadoras..." />
+              <LoadingState message="Building the ideal XI and placing the best players..." />
             </div>
           ) : (
-            <StadiumPitch>
+            <StadiumPitch maxPerLine={Math.max(1, ...bestEleven.map((line) => line.length))}>
               {bestEleven.map((line, lineIndex) => (
-                <div key={`line-${lineIndex}`} className="w-full flex items-center justify-around px-2 sm:px-6 my-2">
+                <div key={`line-${lineIndex}`} className="w-full flex items-center justify-around sm:px-6 my-1 sm:my-2">
                   {line.map(({ role, meta, player, bench }, slotIndex) => {
                     const g = GROUP_BY_ID[meta.group];
                     if (!player) {
                       return (
+                        <EmptyPitchSlot key={`empty-${lineIndex}-${slotIndex}`}>
                         <button
-                          key={`empty-${lineIndex}-${slotIndex}`}
                           onClick={() => { setActiveScope(meta.group); setShowFiltersMobile(true); }}
                           className="flex flex-col items-center justify-center w-24 h-36 rounded-xl border-2 border-dashed bg-black/40 backdrop-blur-sm p-2 text-center hover:bg-black/60 transition-colors"
                           style={{ borderColor: `${g.color}66` }}
                         >
                           <span className="text-[11px] font-black uppercase" style={{ color: g.color }}>{role}</span>
-                          <span className="text-[10px] text-slate-400 mt-2">Sin candidata con estos filtros</span>
-                          <span className="text-[9px] text-slate-500 mt-1 underline">Ajustar {g.label}</span>
+                          <span className="text-[10px] text-slate-400 mt-2">No candidate matches these filters</span>
+                          <span className="text-[9px] text-slate-500 mt-1 underline">Adjust {g.label}</span>
                         </button>
+                        </EmptyPitchSlot>
                       );
                     }
                     const sortKey = scopes[meta.group].sortBy || metricSort;
@@ -782,10 +783,10 @@ function BuilderContent() {
               </div>
               <div className="grid grid-cols-2 gap-2 text-xs">
                 {[
-                  ["Ataque", selectedPlayerModal.notaAtaque, "text-emerald-400"],
-                  ["Construcción", selectedPlayerModal.notaConstruccion, "text-sky-400"],
-                  ["Defensa", selectedPlayerModal.notaDefensa, "text-indigo-400"],
-                  ["Físico EA", selectedPlayerModal.notaFisico, "text-amber-400"],
+                  ["Attack", selectedPlayerModal.notaAtaque, "text-emerald-400"],
+                  ["Build-Up", selectedPlayerModal.notaConstruccion, "text-sky-400"],
+                  ["Defense", selectedPlayerModal.notaDefensa, "text-indigo-400"],
+                  ["Physical EA", selectedPlayerModal.notaFisico, "text-amber-400"],
                 ].map(([label, v, cls]) => (
                   <div key={label as string} className="p-2 rounded bg-white/5 border border-white/5">
                     <span className="text-[10px] text-slate-400 block uppercase">{label}</span>
@@ -804,7 +805,7 @@ function BuilderContent() {
                 className="mt-4 w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-gray-950 font-bold text-xs transition-colors shadow-lg shadow-emerald-500/20"
               >
                 <Eye className="w-4 h-4" />
-                <span>Ver Expediente Completo de Scouting</span>
+                <span>View Full Scouting Dossier</span>
                 <ChevronRight className="w-3.5 h-3.5" />
               </Link>
             </div>
@@ -854,12 +855,12 @@ function SlotWithBench({
           >
             <div className="px-3 py-2 flex items-center justify-between border-b border-white/10" style={{ background: `${color}14` }}>
               <span className="text-[10px] font-black uppercase tracking-wider" style={{ color }}>
-                Suplentes · {role}
+                Bench · {role}
               </span>
               <span className="text-[9px] text-slate-400 truncate max-w-[110px]" title={sortLabel}>{sortLabel}</span>
             </div>
             {bench.length === 0 ? (
-              <div className="px-3 py-4 text-center text-[11px] text-slate-500">No hay más candidatas con estos filtros</div>
+              <div className="px-3 py-4 text-center text-[11px] text-slate-500">No more candidates match these filters</div>
             ) : (
               <ol className="p-1.5 space-y-0.5">
                 {bench.map((p, i) => (
@@ -933,26 +934,26 @@ function MetricSelect({
         onChange={(e) => onChange(e.target.value)}
         className="w-full h-8 pl-3 pr-8 rounded-lg border border-white/10 bg-navy-950/90 text-xs text-emerald-300 font-semibold focus:outline-none focus:border-emerald-500 appearance-none"
       >
-        {allowInherit && <option value="" className="bg-[#0b1322] text-white">Igual que el global</option>}
+        {allowInherit && <option value="" className="bg-[#0b1322] text-white">Same as global</option>}
         <optgroup label="General" className="bg-[#0b1322]">
-          <option value="nota_global">Nota global</option>
-          <option value="nota_fisico">Físico (EA)</option>
-          <option value="minutes">Minutos jugados</option>
-          <option value="matches">Partidos jugados</option>
-          <option value="marketValue">Valor de mercado</option>
+          <option value="nota_global">Overall rating</option>
+          <option value="nota_fisico">Physical (EA)</option>
+          <option value="minutes">Minutes played</option>
+          <option value="matches">Matches played</option>
+          <option value="marketValue">Market value</option>
         </optgroup>
-        <optgroup label="Categorías" className="bg-[#0b1322]">
+        <optgroup label="Categories" className="bg-[#0b1322]">
           {hierarchy.map((c) => (
             <option key={c.noteKey} value={c.noteKey}>{c.name}</option>
           ))}
         </optgroup>
-        <optgroup label="Subcategorías" className="bg-[#0b1322]">
+        <optgroup label="Subcategories" className="bg-[#0b1322]">
           {hierarchy.flatMap((c) => c.subcategories.map((s) => (
             <option key={s.id} value={`_sub_${s.id}`}>{c.name} › {s.name}</option>
           )))}
         </optgroup>
         {hierarchy.flatMap((c) => c.subcategories.map((s) => (
-          <optgroup key={`m-${c.id}-${s.id}`} label={`Métricas · ${c.name} › ${s.name}`} className="bg-[#0b1322]">
+          <optgroup key={`m-${c.id}-${s.id}`} label={`Metrics · ${c.name} › ${s.name}`} className="bg-[#0b1322]">
             {s.metrics.map((m) => (
               <option key={m.key} value={m.key}>{m.name}</option>
             ))}
@@ -999,14 +1000,14 @@ function CategoryBlock({
           {active > 0 && (
             <span className="px-1.5 h-4 rounded-full text-[9px] font-bold flex items-center text-gray-950" style={{ background: cat.color }}>{active}</span>
           )}
-          {dimmed && <span className="text-[9px] text-slate-500" title={dimmed}>· campo</span>}
+          {dimmed && <span className="text-[9px] text-slate-500" title={dimmed}>· outfield</span>}
         </div>
         <ChevronDown className={`w-3.5 h-3.5 text-slate-500 transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
 
       {open && (
         <div className="px-2.5 pb-2.5 space-y-1.5">
-          <RangeSlider label={`${cat.name} (categoría)`} min={0} max={100} value={filters.ranges[cat.noteKey] || null} onChange={(v) => onRange(cat.noteKey, v)} color={cat.color} compact />
+          <RangeSlider label={`${cat.name} (category)`} min={0} max={100} value={filters.ranges[cat.noteKey] || null} onChange={(v) => onRange(cat.noteKey, v)} color={cat.color} compact />
           <div className="pl-2 border-l border-white/10 space-y-1.5">
             {cat.subcategories.map((s) => {
               const key = `_sub_${s.id}`;
@@ -1027,7 +1028,7 @@ function CategoryBlock({
               <RangeSlider
                 key={k}
                 label={`${LABELS[k] || k}${loadingKeys.has(k) ? " …" : ""}`}
-                hint="Nota 0–100 de la métrica (comparada con su demarcación y liga)"
+                hint="Metric rating 0–100 (compared with her position and league)"
                 min={0}
                 max={100}
                 value={filters.ranges[k] || null}
@@ -1044,7 +1045,7 @@ function CategoryBlock({
               onClick={() => setPicker((v) => !v)}
               className="w-full h-7 rounded-lg border border-dashed border-white/15 text-[10.5px] text-slate-400 hover:text-white hover:border-white/30 flex items-center justify-center gap-1"
             >
-              <Plus className="w-3 h-3" /> Añadir métrica de {cat.name}
+              <Plus className="w-3 h-3" /> Add {cat.name} metric
             </button>
             {picker && (
               <div className="absolute z-40 left-0 right-0 mt-1 rounded-xl border border-white/15 bg-[#0a1224]/95 backdrop-blur-xl shadow-2xl overflow-hidden">
@@ -1055,7 +1056,7 @@ function CategoryBlock({
                       autoFocus
                       value={q}
                       onChange={(e) => setQ(e.target.value)}
-                      placeholder="Buscar métrica…"
+                      placeholder="Search metric…"
                       className="w-full h-7 pl-8 pr-2 bg-black/40 border border-white/10 rounded-md text-xs text-white focus:outline-none focus:border-emerald-500"
                     />
                   </div>
@@ -1095,7 +1096,7 @@ function CategoryBlock({
 
 export default function BuilderPage() {
   return (
-    <Suspense fallback={<LoadingState message="Cargando 11 Builder..." />}>
+    <Suspense fallback={<LoadingState message="Loading 11 Builder..." />}>
       <BuilderContent />
     </Suspense>
   );

@@ -1,7 +1,14 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { Barlow_Condensed } from "next/font/google";
 import { ThemeProvider } from "@/context/ThemeContext";
 import { AppShell } from "@/components/layout/AppShell";
+
+const display = Barlow_Condensed({
+  subsets: ["latin"],
+  weight: ["500", "600", "700", "800"],
+  variable: "--font-display",
+});
 
 export const metadata: Metadata = {
   title: "SPONDA | Premium Women's Football Scouting & Intelligence",
@@ -23,7 +30,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="dark">
+    <html lang="en" className={`dark ${display.variable}`}>
       <body className="bg-background text-foreground">
         <ThemeProvider>
           <AppShell>{children}</AppShell>

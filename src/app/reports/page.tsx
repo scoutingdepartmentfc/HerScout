@@ -152,7 +152,7 @@ export default function ReportsListPage() {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-xl font-bold tracking-tight text-white">Reports & Analysis</h1>
+            <h1 className="text-3xl font-extrabold tracking-tight text-white">Reports & Analysis</h1>
             <Badge variant="default" size="sm">Workspace Dossiers</Badge>
           </div>
           <p className="text-xs text-muted-foreground mt-0.5">

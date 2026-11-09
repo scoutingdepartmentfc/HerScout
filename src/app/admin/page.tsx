@@ -28,7 +28,7 @@ export default function AdminPage() {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-lg font-bold text-white">Global Administration Console</h1>
+              <h1 className="text-3xl font-extrabold text-white">Global Administration Console</h1>
               <Badge variant="default" size="sm">Owner Access</Badge>
             </div>
             <p className="text-xs text-muted-foreground mt-0.5">

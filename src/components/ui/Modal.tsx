@@ -57,13 +57,13 @@ export const Modal: React.FC<ModalProps> = ({
       {/* Modal Dialog */}
       <div
         className={cn(
-          "relative w-full rounded-lg border border-border bg-card shadow-xl transition-all duration-200 z-10 flex flex-col max-h-[90vh]",
+          "relative w-full rounded-sm border border-border border-t-2 border-t-primary bg-card shadow-xl transition-all duration-200 z-10 flex flex-col max-h-[90vh]",
           sizeClasses[size]
         )}
       >
-        <div className="flex items-center justify-between border-b border-border/60 p-4">
+        <div className="flex items-center justify-between border-b border-primary/30 bg-gradient-to-r from-primary/20 to-transparent p-4">
           <div>
-            <h2 className="text-base font-semibold text-white">{title}</h2>
+            <h2 className="font-display text-xl font-bold uppercase tracking-wide text-white">{title}</h2>
             {description && (
               <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
             )}

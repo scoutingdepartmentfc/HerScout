@@ -90,53 +90,71 @@ export default function HubPage() {
   const alerts = data?.alerts || [];
 
   return (
-    <div className="space-y-6">
-      {/* 1. Welcome Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-5 rounded-lg border border-border/80 bg-gradient-to-r from-card to-secondary/30 backdrop-blur-md">
-        <div>
-          <div className="flex items-center gap-2">
-            <Badge variant="default" size="sm">Active Workspace</Badge>
-            <h1 className="text-xl font-bold tracking-tight text-white">
-              Welcome back, {user.name}
-            </h1>
+    <div className="space-y-3">
+      {/* 1. Welcome hero + 9. Quick actions, as career-hub tiles */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="tile-cut relative col-span-2 lg:row-span-2 min-h-[220px] overflow-hidden border-t-2 border-primary bg-gradient-to-br from-card via-navy-900 to-black">
+          <img
+            src="/logo2.png"
+            alt=""
+            className="absolute inset-y-0 right-0 h-full w-3/5 object-cover object-right opacity-70 [mask-image:linear-gradient(to_right,transparent,black_45%)]"
+          />
+          <div className="absolute inset-0 bg-gradient-to-r from-primary/25 via-transparent to-transparent" />
+          <div className="relative flex h-full flex-col justify-between p-5">
+            <div>
+              <span className="inline-block bg-primary px-2 py-0.5 font-display text-xs font-bold uppercase tracking-wider text-white">
+                Active Workspace
+              </span>
+              <h1 className="mt-3 font-display text-4xl sm:text-5xl font-extrabold uppercase leading-[0.9] tracking-tight text-white">
+                Welcome back
+                {user.name && <span className="block text-primary">{user.name}</span>}
+              </h1>
+            </div>
+            <div className="mt-6 space-y-1 font-display text-sm font-semibold uppercase tracking-wide">
+              <div className="text-white">
+                <span className="text-muted-foreground">Club </span>
+                {currentClub.name}
+              </div>
+              <div className="text-white">
+                <span className="text-muted-foreground">Role </span>
+                <span className="text-primary">{userRole.replace("_", " ")}</span>
+              </div>
+              <div className="text-white">
+                <span className="text-muted-foreground">Alerts </span>
+                {alerts.length} active
+              </div>
+            </div>
           </div>
-          <p className="text-xs text-muted-foreground mt-1">
-            Signed in to <strong className="text-white">{currentClub.name}</strong> • Role:{" "}
-            <span className="capitalize text-primary font-medium">{userRole.replace("_", " ")}</span>
-          </p>
         </div>
 
-        {/* 9. Quick Actions */}
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            size="sm"
-            onClick={() => setActiveModal("player")}
-            leftIcon={<UserPlus className="w-3.5 h-3.5" />}
-          >
-            Add Player
-          </Button>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => setActiveModal("report")}
-            leftIcon={<Plus className="w-3.5 h-3.5" />}
-          >
-            Create Report
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setActiveModal("match")}
-            leftIcon={<Calendar className="w-3.5 h-3.5" />}
-          >
-            Add Match
-          </Button>
-          <Link href="/watchlist">
-            <Button variant="ghost" size="sm" leftIcon={<Bookmark className="w-3.5 h-3.5 text-primary" />}>
-              Open Watchlist
-            </Button>
-          </Link>
-        </div>
+        {[
+          { label: "Add Player", hint: "Register a new talent profile", icon: UserPlus, onClick: () => setActiveModal("player") },
+          { label: "Create Report", hint: "File an observation dossier", icon: Plus, onClick: () => setActiveModal("report") },
+          { label: "Add Match", hint: "Schedule a scouting assignment", icon: Calendar, onClick: () => setActiveModal("match") },
+          { label: "Open Watchlist", hint: "Your tracked targets", icon: Bookmark, href: "/watchlist" },
+        ].map((tile) => {
+          const Icon = tile.icon;
+          const body = (
+            <>
+              <div className="font-display text-xl sm:text-2xl font-extrabold uppercase leading-none tracking-wide text-white">
+                {tile.label}
+              </div>
+              <div className="mt-1 pr-10 sm:pr-14 text-[11px] leading-snug text-white/70">{tile.hint}</div>
+              <Icon className="absolute bottom-3 right-3 h-8 w-8 sm:h-12 sm:w-12 text-white/90 transition-transform group-hover:scale-110" strokeWidth={2.5} />
+            </>
+          );
+          const cls =
+            "group relative block min-h-[104px] overflow-hidden border border-white/10 bg-gradient-to-br from-primary to-primary/60 p-3 text-left shadow-lg shadow-black/30 transition-[filter] hover:brightness-110";
+          return tile.href ? (
+            <Link key={tile.label} href={tile.href} className={cls}>
+              {body}
+            </Link>
+          ) : (
+            <button key={tile.label} onClick={tile.onClick} className={cls}>
+              {body}
+            </button>
+          );
+        })}
       </div>
 
       {actionSuccess && (
@@ -152,9 +170,9 @@ export default function HubPage() {
       )}
 
       {/* Main Grid: 2 Columns on Desktop */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
         {/* Left Column (2 Cols wide): Trending Players & Matches */}
-        <div className="lg:col-span-2 space-y-6">
+        <div className="lg:col-span-2 space-y-3">
           {/* 2. Trending Players */}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between py-3">
@@ -348,7 +366,7 @@ export default function HubPage() {
         </div>
 
         {/* Right Column (1 Col wide): Alerts, News, Activity */}
-        <div className="space-y-6">
+        <div className="space-y-3">
           {/* 6. Alerts & Notifications */}
           <Card>
             <CardHeader className="py-3">

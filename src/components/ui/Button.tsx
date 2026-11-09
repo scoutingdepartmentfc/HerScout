@@ -26,10 +26,10 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     ref
   ) => {
     const sizeStyles = {
-      xs: "h-7 px-2.5 text-xs font-medium rounded",
-      sm: "h-8 px-3 text-xs font-medium rounded-md",
-      md: "h-9 px-4 text-sm font-medium rounded-md",
-      lg: "h-11 px-6 text-base font-semibold rounded-lg",
+      xs: "h-7 px-2.5 text-xs rounded-sm",
+      sm: "h-8 px-3 text-sm rounded-sm",
+      md: "h-9 px-4 text-sm rounded-sm",
+      lg: "h-11 px-6 text-base rounded-sm",
     };
 
     const variantStyles = {
@@ -52,7 +52,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         ref={ref}
         disabled={disabled || isLoading}
         className={cn(
-          "inline-flex items-center justify-center gap-2 transition-all duration-150 outline-none select-none focus-visible:ring-2 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98]",
+          "inline-flex items-center justify-center gap-2 font-display font-bold uppercase tracking-wider transition-all duration-150 outline-none select-none focus-visible:ring-2 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98]",
           sizeStyles[size],
           variantStyles[variant],
           className

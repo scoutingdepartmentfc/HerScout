@@ -34,7 +34,7 @@
     --input: 224 28% 18%;
     --ring: 217 91% 60%;
 
-    --radius: 0.5rem;
+    --radius: 0.25rem;
 
     /* Pitch accents */
     --pitch: 160 84% 39%;
@@ -48,6 +48,36 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
+
+/* Career-mode headings: condensed, uppercase */
+@layer base {
+  main h1 {
+    font-family: var(--font-display), "Arial Narrow", sans-serif;
+    text-transform: uppercase;
+    letter-spacing: 0.01em;
+    line-height: 0.95;
+  }
+}
+
+/* Career-mode backdrop: primary glow + diagonal broadcast stripes */
+.app-backdrop {
+  background:
+    radial-gradient(ellipse 70% 50% at 15% 0%, hsl(var(--primary) / 0.22), transparent 70%),
+    radial-gradient(ellipse 50% 40% at 100% 100%, hsl(var(--primary) / 0.12), transparent 70%),
+    repeating-linear-gradient(-45deg, rgba(255, 255, 255, 0.018) 0 2px, transparent 2px 14px),
+    hsl(var(--background));
+}
+
+/* Angled tab (parallelogram) */
+.tab-angled {
+  clip-path: polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%);
+}
+/* Tile with a cut corner, like the career hub panels */
+.tile-cut {
+  clip-path: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 0 100%);
+}
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { scrollbar-width: none; }
 
 /* Custom scrollbars for compact scouting tables */
 ::-webkit-scrollbar {

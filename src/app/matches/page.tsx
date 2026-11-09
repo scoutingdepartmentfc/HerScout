@@ -136,7 +136,7 @@ export default function MatchesPage() {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-xl font-bold tracking-tight text-white">Matches & Fixtures</h1>
+            <h1 className="text-3xl font-extrabold tracking-tight text-white">Matches & Fixtures</h1>
             <OptaLogo variant="icon" size="xs" />
           </div>
           <div className="flex flex-wrap items-center gap-2 mt-1">

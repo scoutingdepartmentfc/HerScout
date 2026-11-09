@@ -4,6 +4,7 @@ import React from "react";
 import { Bandera } from "@/components/scouting/Bandera";
 import { EscudoEquipo } from "@/components/scouting/EscudoEquipo";
 import { getClubTheme } from "@/lib/clubThemes";
+import { usePitchScale, PITCH_CARD_W, PITCH_CARD_H } from "./StadiumPitch";
 
 export interface PitchCardPlayer {
   id: string;
@@ -46,15 +47,23 @@ export const PitchCard: React.FC<PitchCardProps> = ({ player, assignedRole, onCl
       : 75;
 
   const clubTheme = getClubTheme(player.teamName);
+  // The card is laid out at its full design size and scaled to the space the pitch gives it.
+  const scale = usePitchScale();
+  // Keep the name legible when the card shrinks (never below ~7px on screen)
+  const nameSize = Math.max(10, 7 / scale);
 
   const cardClipPath =
     "polygon(0% 12%, 8% 4%, 22% 1.5%, 50% 0%, 78% 1.5%, 92% 4%, 100% 12%, 100% 92%, 92% 98.5%, 78% 100%, 22% 100%, 8% 98.5%, 0% 92%)";
 
   return (
+    <div style={{ width: PITCH_CARD_W * scale, height: PITCH_CARD_H * scale }}>
     <div
       onClick={onClick}
       className="group relative flex flex-col items-center cursor-pointer select-none transition-transform duration-200 hover:scale-110 hover:z-40"
       style={{
+        width: PITCH_CARD_W,
+        transform: `scale(${scale})`,
+        transformOrigin: "top left",
         filter: "drop-shadow(0 14px 22px rgba(0, 0, 0, 0.75))",
       }}
     >
@@ -64,7 +73,7 @@ export const PitchCard: React.FC<PitchCardProps> = ({ player, assignedRole, onCl
       </div>
 
       {/* Main FUT-Style Card */}
-      <div className="relative w-28 h-40 sm:w-32 sm:h-44 md:w-36 md:h-52">
+      <div className="relative w-36 h-52">
         {/* Trend Indicator */}
         {player.trend && (
           <div
@@ -127,11 +136,11 @@ export const PitchCard: React.FC<PitchCardProps> = ({ player, assignedRole, onCl
                 textShadow: clubTheme.textLight ? "0 2px 4px rgba(0,0,0,0.8)" : "0 1px 2px rgba(255,255,255,0.8)",
               }}
             >
-              <span className="font-black text-xl sm:text-2xl tracking-tighter">
+              <span className="font-black text-2xl tracking-tighter">
                 {ovr}
               </span>
               <span
-                className={`mt-0.5 font-black text-[10px] sm:text-xs tracking-wider uppercase ${
+                className={`mt-0.5 font-black text-xs tracking-wider uppercase ${
                   clubTheme.textLight ? "text-amber-300" : "text-[#1e2530]"
                 }`}
               >
@@ -142,7 +151,8 @@ export const PitchCard: React.FC<PitchCardProps> = ({ player, assignedRole, onCl
             {/* Name Banner: escorado ligeramente hacia la izquierda para centrarse mejor sobre la cabeza */}
             <div className="flex-1 flex justify-center pl-2 pr-1 pt-0.5 max-w-[70%]">
               <span
-                className={`text-[9px] sm:text-[10px] font-black uppercase tracking-tight text-center leading-tight line-clamp-2 px-1.5 py-0.5 rounded backdrop-blur-md border ${
+                style={{ fontSize: nameSize }}
+                className={`font-black uppercase tracking-tight text-center leading-tight line-clamp-2 px-1.5 py-0.5 rounded backdrop-blur-md border ${
                   clubTheme.textLight
                     ? "bg-black/60 border-white/20 text-white shadow-[0_2px_6px_rgba(0,0,0,0.7)]"
                     : "bg-white/80 border-black/20 text-slate-950 shadow-[0_2px_6px_rgba(0,0,0,0.25)]"
@@ -155,7 +165,7 @@ export const PitchCard: React.FC<PitchCardProps> = ({ player, assignedRole, onCl
           </div>
 
           {/* Player Photo */}
-          <div className="absolute inset-x-0 bottom-6 sm:bottom-7 top-7 sm:top-8 z-10 flex items-end justify-center overflow-hidden pointer-events-none">
+          <div className="absolute inset-x-0 bottom-7 top-8 z-10 flex items-end justify-center overflow-hidden pointer-events-none">
             {player.photoUrl ? (
               <img
                 src={player.photoUrl}
@@ -173,7 +183,7 @@ export const PitchCard: React.FC<PitchCardProps> = ({ player, assignedRole, onCl
           {/* Bottom U-Base Badges (Flag, Club, League) */}
           <div className="absolute bottom-0.5 inset-x-0 z-20 flex justify-center pb-0.5 px-1.5">
             <div
-              className="w-[94%] h-7 sm:h-8 flex items-center justify-around px-1.5 border border-white/95 shadow-lg backdrop-blur-md"
+              className="w-[94%] h-8 flex items-center justify-around px-1.5 border border-white/95 shadow-lg backdrop-blur-md"
               style={{
                 background: "linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(235, 240, 248, 0.95) 100%)",
                 borderRadius: "4px 4px 14px 14px",
@@ -181,7 +191,7 @@ export const PitchCard: React.FC<PitchCardProps> = ({ player, assignedRole, onCl
               }}
             >
               {/* Country Flag */}
-              <div className="flex items-center justify-center shrink-0 scale-90 sm:scale-100">
+              <div className="flex items-center justify-center shrink-0">
                 <Bandera country={player.country} size="sm" />
               </div>
 
@@ -222,6 +232,7 @@ export const PitchCard: React.FC<PitchCardProps> = ({ player, assignedRole, onCl
           </div>
         </div>
       </div>
+    </div>
     </div>
   );
 };

@@ -245,6 +245,9 @@ def descargar(store: Store, sd: SDClient, liga_code: Optional[str], limit: Optio
                         cat = liga
                     row["current_league_name"] = cat["name"]
                     cod = cat["code"]
+                    # La liga del club actual, no la que se está descargando (si fichó por otra liga, su
+                    # bandera y logo deben ser los de la nueva)
+                    row["sd_league_code"] = cod
                     row["current_league_logo_url"] = (catalogo_sd.get(cod) or {}).get("logo_url") or \
                         imagen_sd(store, sd, prof.get("liga_actual_logo"), f"ligas/sd-{cod}.jpg")
                 if p["id"].startswith("sd-"):  # las unidas a Opta conservan el equipo Opta (estadísticas)
@@ -391,11 +394,17 @@ def vincular(store: Store, liga_code: Optional[str]):
             logger.info(f"Vincular: terminada la unión a medias de {p['name']} ({p['id']} → {o['id']})")
     unidas, unidas_ids, opta_unidas = 0, set(), set()
     for liga in ligas:
-        # Equipos Opta de la liga: escudo y liga del club de Soccerdonna con el nombre más parecido
-        sd_eq = [t for t in equipos.values() if t.get("sd_league_code") == liga["code"] and t["id"].startswith("sd-")]
+        # Equipos Opta de la liga: escudo y liga del club de Soccerdonna con el MISMO nombre normalizado
+        # (no el más parecido: "Levante" no es "Levante Badalona"); si hay dos, ninguno
+        from .escudos import norm_club
+        sd_eq: Dict[str, List[Dict[str, Any]]] = {}
+        for x in equipos.values():
+            if x.get("sd_league_code") == liga["code"] and x["id"].startswith("sd-"):
+                sd_eq.setdefault(norm_club(x["name"]), []).append(x)
         for t in [t for t in equipos.values() if t.get("competition_id") == liga["opta_competition_id"]]:
-            par = max(sd_eq, key=lambda x: fuzz.token_set_ratio(normalizar_club(t["name"]), normalizar_club(x["name"])), default=None)
-            if par and fuzz.token_set_ratio(normalizar_club(t["name"]), normalizar_club(par["name"])) >= 60:
+            pares_sd = sd_eq.get(norm_club(t["name"]), [])
+            par = pares_sd[0] if len(pares_sd) == 1 else None
+            if par:
                 cambios = {k: par[k] for k in ("league_name", "league_logo_url") if par.get(k)}
                 if par.get("badge_url") and "/fotmob/" not in (t.get("badge_url") or ""):
                     cambios["badge_url"] = par["badge_url"]
@@ -688,84 +697,10 @@ def jugadoras_activas(store: Store) -> set:
             if m["season_id"] in actuales and m.get("active")}
 
 
-def _sin_w(nombre: Optional[str]) -> str:
-    return normalizar_club(re.sub(r"\s*\(W\)$", "", nombre or ""))
-
-
-def _emparejar(nuestros: Dict[str, str], fotmob: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
-    """{clave: nombre} ↔ equipos FotMob, uno a uno de mejor a peor parecido ('Barcelona' no va al Espanyol)."""
-    pares = sorted(((fuzz.token_set_ratio(_sin_w(n), _sin_w(f["name"])) * 2 + fuzz.ratio(_sin_w(n), _sin_w(f["name"])), k, f)
-                    for k, n in nuestros.items() for f in fotmob), key=lambda t: -t[0])
-    res, usados = {}, set()
-    for puntos, k, f in pares:
-        if puntos >= 200 and k not in res and f["id"] not in usados:
-            res[k] = f
-            usados.add(f["id"])
-    return res
-
-
 def escudos(store: Store, liga_code: Optional[str]):
-    """Escudos transparentes de FotMob (los de Soccerdonna son JPG con fondo blanco)."""
-    fotmob = FotMobClient()
-    ligas = [l for l in store.select_all("sd_leagues", "code,name,enabled,opta_competition_id")
-             if (l["code"] == liga_code if liga_code else l["enabled"])]
-    equipos = store.select_all("teams", "id,name,competition_id,sd_league_code")
-    subidos: Dict[int, Optional[str]] = {}
-
-    def logo(fm_id: int) -> Optional[str]:
-        if fm_id not in subidos:
-            img = fotmob.image(FOTMOB_TEAM_IMG.format(id=fm_id))
-            url = store.upload(BUCKET_TEAM_BADGES, f"fotmob/{fm_id}.png", img, "image/png") if img else None
-            subidos[fm_id] = f"{url}?v={int(time.time())}" if url else None
-        return subidos[fm_id]
-
-    def buscar_equipo(nombre: str) -> Optional[Dict[str, Any]]:
-        sugerencias = []
-        for termino in {nombre, _sin_w(nombre)}:
-            for g in fotmob._json("search/suggest", term=termino, lang="en") or []:
-                sugerencias += [{"id": int(x["id"]), "name": x["name"], "leagueId": x.get("leagueId")}
-                                for x in g.get("suggestions") or [] if x.get("type") == "team" and x["name"].endswith("(W)")]
-        return _emparejar({"x": nombre}, sugerencias).get("x")
-
-    for liga in ligas:
-        mios = {t["id"]: t["name"] for t in equipos if t.get("sd_league_code") == liga["code"]
-                or (liga.get("opta_competition_id") and t.get("competition_id") == liga["opta_competition_id"])}
-        comp = store.select_all("competitions", "id,fotmob_id", id=liga["opta_competition_id"]) if liga.get("opta_competition_id") else []
-        liga_fm = comp[0].get("fotmob_id") if comp else None
-        if not liga_fm:  # la liga FotMob se deduce del primer club que aparezca en el buscador
-            liga_fm = next((m["leagueId"] for n in list(mios.values())[:5] if (m := buscar_equipo(n)) and m.get("leagueId")), None)
-        fm_equipos = fotmob.league_teams(int(liga_fm)) if liga_fm else []
-        # Clubes de Soccerdonna y equipos Opta por separado: son los mismos 16 clubes dos veces
-        pares = {**_emparejar({k: v for k, v in mios.items() if k.startswith("sd-")}, fm_equipos),
-                 **_emparejar({k: v for k, v in mios.items() if not k.startswith("sd-")}, fm_equipos)}
-        for tid, f in pares.items():
-            url = logo(f["id"])
-            if url:
-                store.update("teams", {"badge_url": url}, id=tid)
-                logger.info(f"  {mios[tid]} → {f['name']}")
-        logger.info(f"Escudos {liga['name']}: {len(pares)}/{len(mios)} clubes con escudo FotMob (liga FotMob {liga_fm})")
-
-        # Club actual de cada jugadora (puede ser de otra liga). Los filiales (B, II, C...) llevan el escudo del
-        # primer equipo; primero se busca entre los clubes de la liga ya emparejados, luego en el buscador
-        por_nombre = {mios[t]: subidos.get(f["id"]) for t, f in pares.items()}
-        de_liga = [{"id": t, "name": mios[t]} for t in pares]
-        jugadoras = [p for p in store.select_all("players", "id,fm_team_name,fm_team_badge_url,sd_league_code")
-                     if p.get("sd_league_code") == liga["code"] and p.get("fm_team_name")]
-        for nombre in {p["fm_team_name"] for p in jugadoras}:
-            base = re.sub(r"\s+(B|II|III|C|Cadete|Juvenil|U\d{2}|Femenino B)$", "", nombre).strip()
-            url = por_nombre.get(nombre) or por_nombre.get(base)
-            if not url:
-                par = _emparejar({"x": base}, de_liga).get("x")
-                url = por_nombre.get(mios[par["id"]]) if par else None
-            if not url:
-                cand = buscar_equipo(base)
-                url = logo(cand["id"]) if cand else None
-            por_nombre[nombre] = url
-            if url:
-                for p in jugadoras:
-                    if p["fm_team_name"] == nombre and p.get("fm_team_badge_url") != url:
-                        store.update("players", {"fm_team_badge_url": url}, id=p["id"])
-        logger.info(f"Escudos {liga['name']}: {sum(1 for v in por_nombre.values() if v)} clubes actuales con escudo FotMob")
+    """Escudos verificados por partidos en común (pipeline/escudos.py), nunca por parecido de nombre."""
+    from .escudos import escudos as escudos_verificados
+    escudos_verificados(store, liga_code)
 
 
 def fotos(store: Store, liga_code: Optional[str], limit: Optional[int] = None):

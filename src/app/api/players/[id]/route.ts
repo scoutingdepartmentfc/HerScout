@@ -147,7 +147,7 @@ export async function GET(
           matches ( home_score, away_score, home_team_id, away_team_id, has_events, has_stats,
             home_team:teams!home_team_id ( id, name, badge_url ),
             away_team:teams!away_team_id ( id, name, badge_url ),
-            competitions ( name ) )
+            competitions ( id, name, logo_url ) )
         `)
         .eq("player_id", playerId)
         .order("match_date", { ascending: false })
@@ -185,7 +185,8 @@ export async function GET(
       return {
         matchId: r.match_id,
         seasonId: r.season_id,
-        competitionId: r.competition_id,
+        competitionId: r.competition_id || m.competitions?.id,
+        competitionLogoUrl: m.competitions?.logo_url || null,
         hasEvents: !!m.has_events,
         hasStats: m.has_stats !== false,
         date: r.match_date,

@@ -13,6 +13,7 @@ import { TemporadasOpta, CoberturaBadges, claveTemporada } from "@/components/sc
 import { notaClases } from "@/lib/notaColor";
 import { Bandera } from "@/components/scouting/Bandera";
 import { EscudoEquipo } from "@/components/scouting/EscudoEquipo";
+import { LogoLiga } from "@/components/scouting/LogoLiga";
 import { CamisetaDorsal } from "@/components/scouting/CamisetaDorsal";
 import { MarketValueChart } from "@/components/scouting/MarketValueChart";
 import { TransferTimeline } from "@/components/scouting/TransferTimeline";
@@ -599,55 +600,142 @@ export default function PlayerProfilePage() {
       </section>
 
       {/* Match-by-match ratings (FotMob-like scale: average 6.5, vs. same position group; pipeline/scoring.py) */}
-      <Card className="bg-[#0b1329]">
-        <CardHeader className="py-3">
-          <CardTitle className="text-sm">Match Ratings</CardTitle>
-          <CardDescription>
-            {selected ? `${selected.competitions?.name || ""} ${selected.seasons?.name || ""} · ` : ""}Rating for every match played (0–10), latest first
-          </CardDescription>
+      <Card className="bg-[#0b1329] border-border/60 shadow-xl overflow-hidden">
+        <CardHeader className="py-3 px-5 border-b border-border/40">
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-sm font-bold text-white flex items-center gap-2">
+                <span>Match Ratings</span>
+              </CardTitle>
+              <CardDescription className="text-xs mt-0.5">
+                {selected ? `${selected.competitions?.name || ""} ${selected.seasons?.name || ""} · ` : ""}
+                Rating for every match played (0–10), latest first
+              </CardDescription>
+            </div>
+            {matchLog.length > 0 && (
+              <span className="text-[11px] font-medium text-slate-400 bg-white/5 border border-white/10 px-2.5 py-0.5 rounded-full">
+                {matchLog.length} {matchLog.length === 1 ? "match" : "matches"}
+              </span>
+            )}
+          </div>
         </CardHeader>
         <CardContent className="p-0">
           {matchLog.length === 0 ? (
-            <p className="p-4 text-xs text-muted-foreground">No matches played yet.</p>
+            <p className="p-6 text-center text-xs text-muted-foreground">No matches played yet in this period.</p>
           ) : (
-            <div className="max-h-[410px] overflow-y-auto divide-y divide-border/40 text-xs pr-1 scrollbar-thin scrollbar-thumb-white/10 hover:scrollbar-thumb-white/20">
-              {matchLog.map((m: any) => (
-                <div key={m.matchId} className="px-4 py-2.5 flex items-center justify-between gap-3 hover:bg-white/[0.02] transition-colors">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <span className="font-mono text-[11px] text-muted-foreground w-20 shrink-0">{fmtDate(m.date)}</span>
-                    <span
-                      className={`text-[9px] font-bold w-6 shrink-0 ${m.hasEvents ? "text-emerald-400" : "text-sky-400"}`}
-                      title={m.hasEvents ? "Opta eventing + matchstats" : "Opta matchstats only"}
-                    >
-                      {m.hasEvents ? "EV" : "MS"}
-                    </span>
-                    <span className="text-[10px] text-muted-foreground w-4 shrink-0">{m.isHome ? "H" : "A"}</span>
-                    <EscudoEquipo teamId={m.opponent.id} badgeUrl={m.opponent.badgeUrl} name={m.opponent.name} size={18} />
-                    <span className="truncate text-white">{m.opponent.name || "—"}</span>
-                    <span className="font-mono text-muted-foreground shrink-0">
-                      {m.goalsFor ?? "-"}–{m.goalsAgainst ?? "-"}
-                    </span>
+            <div className="max-h-[460px] overflow-y-auto divide-y divide-border/30 text-xs scrollbar-thin scrollbar-thumb-white/10 hover:scrollbar-thumb-white/20">
+              {matchLog.map((m: any) => {
+                const posEnglish = translatePosition(m.position);
+                const scoreColor = notaClases(Math.round(Number(m.rating || 0) * 10));
+
+                return (
+                  <div
+                    key={m.matchId}
+                    className="px-4 py-2.5 flex items-center justify-between gap-3 hover:bg-white/[0.03] transition-colors"
+                  >
+                    {/* Left: Date, Competition Logo, Venue (Home/Away), Opponent badge + Name & Score */}
+                    <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+                      {/* Date */}
+                      <span className="font-mono text-[11px] text-slate-400 w-[74px] shrink-0 font-medium">
+                        {fmtDate(m.date)}
+                      </span>
+
+                      {/* Competition Badge/Logo */}
+                      <div className="shrink-0" title={m.competition || "Competition"}>
+                        <LogoLiga
+                          competitionId={m.competitionId}
+                          competitionName={m.competition}
+                          logoUrl={m.competitionLogoUrl}
+                          size={19}
+                        />
+                      </div>
+
+                      {/* Venue badge: H (Home) / A (Away) */}
+                      <span
+                        className={`text-[10px] font-semibold px-1.5 py-0.5 rounded text-center shrink-0 border ${
+                          m.isHome
+                            ? "bg-emerald-500/10 text-emerald-300 border-emerald-500/30"
+                            : "bg-slate-800 text-slate-300 border-slate-700"
+                        }`}
+                        title={m.isHome ? "Home match" : "Away match"}
+                      >
+                        {m.isHome ? "H" : "A"}
+                      </span>
+
+                      {/* Opponent Crest & Name */}
+                      <div className="flex items-center gap-2 min-w-0">
+                        <EscudoEquipo
+                          teamId={m.opponent?.id}
+                          badgeUrl={m.opponent?.badgeUrl}
+                          name={m.opponent?.name}
+                          size={19}
+                        />
+                        <span className="truncate text-white font-medium max-w-[120px] sm:max-w-[190px] md:max-w-[240px]">
+                          {m.opponent?.name || "—"}
+                        </span>
+                      </div>
+
+                      {/* Match Score */}
+                      <span className="font-mono text-xs font-semibold text-slate-300 bg-white/[0.04] px-1.5 py-0.5 rounded shrink-0 border border-white/5">
+                        {m.goalsFor ?? "-"}–{m.goalsAgainst ?? "-"}
+                      </span>
+                    </div>
+
+                    {/* Right: English Position, Minutes played, Goal/Assist Icons, Rating score */}
+                    <div className="flex items-center gap-2.5 sm:gap-4 shrink-0 text-right">
+                      {/* Demarcation in English */}
+                      <span
+                        className="hidden md:inline-block text-[11px] text-slate-400 font-medium max-w-[130px] truncate text-right"
+                        title={posEnglish}
+                      >
+                        {posEnglish}
+                      </span>
+
+                      {/* Minutes played */}
+                      <span className="font-mono text-slate-200 w-9 text-right font-semibold">
+                        {m.minutes ?? 0}&apos;
+                      </span>
+
+                      {/* Goals & Assists visual icons */}
+                      <div className="flex items-center justify-end gap-1.5 min-w-[58px]">
+                        {m.goals > 0 && (
+                          <span
+                            className="inline-flex items-center gap-0.5 bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 px-1.5 py-0.5 rounded text-[11px] font-bold"
+                            title={`${m.goals} ${m.goals === 1 ? "Goal" : "Goals"}`}
+                          >
+                            <span className="text-[12px] leading-none">⚽</span>
+                            {m.goals > 1 && <span>{m.goals}</span>}
+                          </span>
+                        )}
+                        {m.assists > 0 && (
+                          <span
+                            className="inline-flex items-center gap-0.5 bg-cyan-500/15 border border-cyan-500/30 text-cyan-300 px-1.5 py-0.5 rounded text-[11px] font-bold"
+                            title={`${m.assists} ${m.assists === 1 ? "Assist" : "Assists"}`}
+                          >
+                            <span className="text-[11px] leading-none">👟</span>
+                            {m.assists > 1 && <span>{m.assists}</span>}
+                          </span>
+                        )}
+                        {!m.goals && !m.assists && (
+                          <span className="text-slate-600 text-xs select-none">—</span>
+                        )}
+                      </div>
+
+                      {/* Score Badge (maintains exact rating color scale) */}
+                      <span
+                        className={`w-10 rounded-md border px-1.5 py-0.5 text-center font-bold font-mono text-[11.5px] shadow-sm ${
+                          m.rating == null
+                            ? "text-muted-foreground border-transparent bg-white/5"
+                            : `${scoreColor.box} ${scoreColor.text}`
+                        }`}
+                        title={m.rating == null ? "Not rated" : `Match rating: ${Number(m.rating).toFixed(1)}`}
+                      >
+                        {m.rating == null ? "—" : Number(m.rating).toFixed(1)}
+                      </span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-4 shrink-0 text-right">
-                    <span className="hidden sm:inline text-muted-foreground">{m.position || ""}</span>
-                    <span className="font-mono text-white w-10">{m.minutes ?? 0}&apos;</span>
-                    <span className="hidden sm:inline w-14 text-muted-foreground">
-                      {m.goals ? `${m.goals}G ` : ""}
-                      {m.assists ? `${m.assists}A` : ""}
-                    </span>
-                    <span
-                      // Misma paleta que las notas 0-100 (9.0+ morado, 8.0+ menta, 7.2+ verde, 6.0+ ámbar)
-                      className={`w-10 rounded border px-1.5 py-0.5 text-center font-bold ${
-                        m.rating == null
-                           ? "text-muted-foreground border-transparent"
-                          : `${notaClases(Math.round(Number(m.rating) * 10)).box} ${notaClases(Math.round(Number(m.rating) * 10)).text}`
-                      }`}
-                    >
-                      {m.rating == null ? "—" : Number(m.rating).toFixed(1)}
-                    </span>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </CardContent>

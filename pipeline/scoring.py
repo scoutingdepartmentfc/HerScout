@@ -151,9 +151,12 @@ def features_nota(df: pd.DataFrame) -> pd.DataFrame:
     f['regates_fallados'] = (n('takeons_total') - n('takeons_successful')).fillna(0).clip(lower=0)
     f['faltas'], f['amarillas'], f['rojas'] = n('fouls').fillna(0), n('yellow_cards').fillna(0), n('red_cards').fillna(0)
     # Resultado: goles de su equipo y del rival en el partido (suma de goles de las jugadoras)
-    gf = f['goles'].groupby([df['match_id'], df['team_id']]).transform('sum')
-    total = f['goles'].groupby(df['match_id']).transform('sum')
-    f['goles_favor'], f['goles_contra'] = gf, total - gf
+    if 'team_id' in df.columns:
+        gf = f['goles'].groupby([df['match_id'], df['team_id']]).transform('sum')
+        total = f['goles'].groupby(df['match_id']).transform('sum')
+        f['goles_favor'], f['goles_contra'] = gf, total - gf
+    else:  # sin equipo no se sabe el resultado: neutro
+        f['goles_favor'] = f['goles_contra'] = 0.0
     f['victoria'] = (f['goles_favor'] > f['goles_contra']).astype(float)
     f['derrota'] = (f['goles_favor'] < f['goles_contra']).astype(float)
     con_ev = n('of_tiros_p90').notna()
@@ -193,14 +196,15 @@ def nota_partido_modelo(df: pd.DataFrame) -> pd.Series:
     return out.where(f['_con_stats']).clip(NOTA_PARTIDO_MIN, 10.0).round(2)
 
 
-def scores_por_partido(df_partidos: pd.DataFrame) -> pd.DataFrame:
+def scores_por_partido(df_partidos: pd.DataFrame, calibrada: bool = True) -> pd.DataFrame:
     """Rating 0-10 de cada actuación (match_id, player_id) frente a las de su grupo de demarcación en la liga.
     1. Cada métrica de la jerarquía (sin Disponibilidad: los minutos no puntúan en el partido) pasa a percentil
        dentro del grupo (empates al rango medio: un 0 en goles, como casi todas, queda cerca de la mitad).
        En balón parado el 0 es "no lanza": sin dato, así que solo suma a quien lo hace.
     2. Subcategoría → categoría → global ponderado con PESOS_GRUPO de su grupo (+ disciplina 10%).
     3. Global y bloques a la escala del partido (_nota_partido), que acerca a la media a quien jugó poco.
-    4. La nota general es la del modelo calibrado con FotMob (nota_partido_modelo) si está guardado; los
+    4. La nota general es la del modelo calibrado con FotMob (nota_partido_modelo) si está guardado y
+       `calibrada`; si no, la escala de percentiles (_nota_partido). Los
        bloques (ofensivo, defensivo...) siguen siendo los percentiles de los pasos 1-3."""
     base = df_partidos[['match_id', 'player_id', 'demarcacion', 'grupo_demarcacion']].copy()
     if df_partidos.empty:
@@ -240,8 +244,8 @@ def scores_por_partido(df_partidos: pd.DataFrame) -> pd.DataFrame:
         den += w
     glob = (num / den).where(den > 0)
 
-    calibrada = nota_partido_modelo(df)
-    base['score_general'] = calibrada if calibrada is not None else _nota_partido(glob, grupos, mins)
+    nota = nota_partido_modelo(df) if calibrada else None
+    base['score_general'] = nota if nota is not None else _nota_partido(glob, grupos, mins)
     base['score_ofensivo'] = _nota_partido(cats[['ataque', 'construccion']].mean(axis=1), grupos, mins)
     base['score_defensivo'] = _nota_partido(cats['defensa'], grupos, mins)
     base['score_abp'] = _nota_partido(cats['balon_parado'], grupos, mins)

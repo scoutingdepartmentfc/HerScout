@@ -283,7 +283,9 @@ class TestScoring(unittest.TestCase):
                     'abp_lanzador_corner_p90': 0.0, 'comp_disciplina_malus': 0.0,
                 })
         df = pd.DataFrame(filas)
-        sp = scores_por_partido(df).merge(df[['match_id', 'player_id', 'minutes_played']], on=['match_id', 'player_id'])
+        # Escala de percentiles (la nota calibrada con FotMob tiene su propio test)
+        sp = scores_por_partido(df, calibrada=False).merge(df[['match_id', 'player_id', 'minutes_played']],
+                                                           on=['match_id', 'player_id'])
         self.assertTrue(sp['score_general'].between(3, 10).all())
         largos = sp[sp['minutes_played'] == 90]
         for _, g in largos.groupby('grupo_demarcacion'):
@@ -292,6 +294,25 @@ class TestScoring(unittest.TestCase):
         self.assertLess((cortos['score_general'] - 6.5).abs().mean(), (largos['score_general'] - 6.5).abs().mean())
         # Nadie lanza córners: el balón parado no resta
         self.assertTrue((sp['score_abp'] == 6.5).all())
+
+    def test_nota_partido_calibrada(self):
+        """Nota calibrada con FotMob: los goles y asistencias suben la nota, un partido sin estadísticas
+        (todo a 0) se queda sin nota y funciona aunque falte team_id."""
+        from pipeline.scoring import nota_partido_modelo
+        base = {'demarcacion': 'Delantero', 'grupo_demarcacion': 'Delanteros', 'minutes_played': 90,
+                'is_starter': True, 'goals': 0, 'assists': 0, 'passes_completed': 20, 'passes_total': 25}
+        df = pd.DataFrame([
+            {**base, 'match_id': 'm1', 'player_id': 'gris', 'team_id': 'a'},
+            {**base, 'match_id': 'm1', 'player_id': 'goleadora', 'team_id': 'a', 'goals': 2, 'assists': 1},
+            {**base, 'match_id': 'm2', 'player_id': 'vacio', 'team_id': 'b', 'passes_completed': 0, 'passes_total': 0},
+        ])
+        n = nota_partido_modelo(df)
+        self.assertIsNotNone(n, 'falta pipeline/modelos/nota_partido.json')
+        self.assertGreater(n[1], n[0] + 1.5)
+        self.assertTrue(5.5 <= n[0] <= 7.5)
+        self.assertTrue(np.isnan(n[2]))
+        sin_equipo = nota_partido_modelo(df.drop(columns='team_id'))
+        self.assertGreater(sin_equipo[1], sin_equipo[0])
 
     def test_juega_mas_puntua_mas(self):
         """Mejor p90 en pocos minutos no supera a una jugadora buena con muchos minutos."""

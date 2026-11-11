@@ -23,7 +23,27 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { LoadingState, ErrorState } from "@/components/ui/StatusStates";
-import { ArrowLeft, Bookmark, FileText, Calendar, Plus, ExternalLink, Shield } from "lucide-react";
+import { ArrowLeft, Bookmark, FileText, Calendar, Plus, ExternalLink, Shield, Pencil } from "lucide-react";
+import { EditPlayerModal } from "@/components/scouting/EditPlayerModal";
+
+// Position English translation and coordinates helper
+const translatePosition = (pos?: string | null) => {
+  if (!pos) return "—";
+  const pLower = pos.toLowerCase();
+  if (pLower.includes("porter") || pLower.includes("goalkeeper") || pLower === "gk") return "Goalkeeper";
+  if (pLower.includes("central derecho") || pLower === "rcb") return "Right Centre-Back";
+  if (pLower.includes("central izquierdo") || pLower === "lcb") return "Left Centre-Back";
+  if (pLower.includes("central") || pLower.includes("centre-back") || pLower === "cb") return "Centre-Back";
+  if (pLower.includes("lateral derecho") || pLower.includes("right-back") || pLower === "rb") return "Right-Back";
+  if (pLower.includes("lateral izquierdo") || pLower.includes("left-back") || pLower === "lb") return "Left-Back";
+  if (pLower.includes("defensivo") || pLower.includes("defensive midfield") || pLower === "cdm") return "Defensive Midfielder";
+  if (pLower.includes("mediocentro") || pLower.includes("central midfield") || pLower === "cm") return "Central Midfielder";
+  if (pLower.includes("mediapunta") || pLower.includes("attacking midfield") || pLower === "cam") return "Attacking Midfielder";
+  if (pLower.includes("extremo derecho") || pLower.includes("right winger") || pLower === "rw") return "Right Winger";
+  if (pLower.includes("extremo izquierdo") || pLower.includes("left winger") || pLower === "lw") return "Left Winger";
+  if (pLower.includes("delanter") || pLower.includes("striker") || pLower.includes("forward") || pLower === "st" || pLower === "cf") return "Centre-Forward";
+  return pos;
+};
 
 export default function PlayerProfilePage() {
   const params = useParams();
@@ -35,11 +55,14 @@ export default function PlayerProfilePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [seasonKey, setSeasonKey] = useState<string | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     async function loadPlayer() {
       if (!playerId) return;
-      setIsLoading(true);
+      // Reloads after an edit keep the current page on screen
+      if (reloadKey === 0) setIsLoading(true);
       setError(null);
       try {
         const res = await fetch(`/api/players/${playerId}`);
@@ -55,7 +78,7 @@ export default function PlayerProfilePage() {
       }
     }
     loadPlayer();
-  }, [playerId]);
+  }, [playerId, reloadKey]);
 
   if (isLoading) return <LoadingState message="Loading professional player card and metrics..." />;
   if (error || !data?.player) return <ErrorState title="Player Not Found" message={error || "Profile unavailable"} onRetry={() => window.location.reload()} />;
@@ -140,25 +163,6 @@ export default function PlayerProfilePage() {
     },
   ];
 
-  // Position English translation and coordinates helper
-  const translatePosition = (pos?: string | null) => {
-    if (!pos) return "—";
-    const pLower = pos.toLowerCase();
-    if (pLower.includes("porter") || pLower.includes("goalkeeper") || pLower === "gk") return "Goalkeeper";
-    if (pLower.includes("central derecho") || pLower === "rcb") return "Right Centre-Back";
-    if (pLower.includes("central izquierdo") || pLower === "lcb") return "Left Centre-Back";
-    if (pLower.includes("central") || pLower.includes("centre-back") || pLower === "cb") return "Centre-Back";
-    if (pLower.includes("lateral derecho") || pLower.includes("right-back") || pLower === "rb") return "Right-Back";
-    if (pLower.includes("lateral izquierdo") || pLower.includes("left-back") || pLower === "lb") return "Left-Back";
-    if (pLower.includes("defensivo") || pLower.includes("defensive midfield") || pLower === "cdm") return "Defensive Midfielder";
-    if (pLower.includes("mediocentro") || pLower.includes("central midfield") || pLower === "cm") return "Central Midfielder";
-    if (pLower.includes("mediapunta") || pLower.includes("attacking midfield") || pLower === "cam") return "Attacking Midfielder";
-    if (pLower.includes("extremo derecho") || pLower.includes("right winger") || pLower === "rw") return "Right Winger";
-    if (pLower.includes("extremo izquierdo") || pLower.includes("left winger") || pLower === "lw") return "Left Winger";
-    if (pLower.includes("delanter") || pLower.includes("striker") || pLower.includes("forward") || pLower === "st" || pLower === "cf") return "Centre-Forward";
-    return pos;
-  };
-
   const getPitchCoords = (pos?: string | null): { x: number; y: number } => {
     if (!pos) return { x: 50, y: 50 };
     const pLower = pos.toLowerCase();
@@ -179,7 +183,10 @@ export default function PlayerProfilePage() {
   };
 
   const primaryEnglishPos = translatePosition(p.primaryPosition);
-  const secondaryPositionsList = (p.otherPositions || []).slice(0, 2);
+  // "-" marks "no secondary positions" set by hand. Manual lists are shown in full, scraped ones capped at 2.
+  const secondaryPositionsList = (p.otherPositions || [])
+    .filter((x: string) => x && x !== "-" && x !== p.primaryPosition)
+    .slice(0, p.manualOverrides?.otherPositions ? undefined : 2);
 
   // Evolución en los últimos 3 meses desde la FECHA ACTUAL (no desde su último partido jugado)
   const rawMatches = data.matchLog || [];
@@ -219,6 +226,14 @@ export default function PlayerProfilePage() {
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
+      <EditPlayerModal
+        isOpen={editOpen}
+        onClose={() => setEditOpen(false)}
+        player={p}
+        scraped={data.scraped || p}
+        translatePosition={translatePosition}
+        onSaved={() => setReloadKey((k) => k + 1)}
+      />
       {/* Top Bar */}
       <div className="flex items-center justify-between">
         <button
@@ -230,6 +245,9 @@ export default function PlayerProfilePage() {
           Back to Player Directory
         </button>
         <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" leftIcon={<Pencil className="w-3.5 h-3.5" />} onClick={() => setEditOpen(true)}>
+            Edit
+          </Button>
           <Button variant="outline" size="sm" leftIcon={<Bookmark className="w-3.5 h-3.5" />}>
             Add to Watchlist
           </Button>
@@ -255,7 +273,7 @@ export default function PlayerProfilePage() {
                 team_id: p.teamId,
                 team_name: p.teamName,
                 badge_url: p.badgeUrl,
-                league_name: p.leagueName || stats?.competitions?.name,
+                league_name: p.leagueName,
                 league_logo_url: p.leagueLogoUrl,
                 country: p.country,
                 demarcacion: primaryEnglishPos,
@@ -288,14 +306,14 @@ export default function PlayerProfilePage() {
                   <span>{p.teamName}</span>
                 </span>
                 <span className="inline-flex items-center gap-2 px-2.5 py-1 rounded-md bg-sky-500/10 text-sky-300 font-semibold border border-sky-400/20 text-xs shadow-sm">
-                  {(p.leagueLogoUrl || selected?.competitions?.logo_url) && (
+                  {p.leagueLogoUrl && (
                     <img
-                      src={p.leagueLogoUrl || selected?.competitions?.logo_url}
+                      src={p.leagueLogoUrl}
                       alt=""
                       className="h-4.5 w-auto max-w-[20px] rounded-sm object-contain"
                     />
                   )}
-                  <span>{p.leagueName || selected?.competitions?.name || "—"}</span>
+                  <span>{p.leagueName || "No current league"}</span>
                 </span>
                 <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-400/10 text-amber-300 border border-amber-400/30">
                   {selected?.seasons?.name || "No Opta season"}

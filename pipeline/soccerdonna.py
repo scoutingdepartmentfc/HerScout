@@ -73,8 +73,17 @@ def _texto(html: str) -> str:
 
 
 def _fecha(v: Optional[str]) -> Optional[str]:
+    """dd.mm.aaaa → aaaa-mm-dd. None si la fecha no existe (Soccerdonna trae a veces 31.11.2027 o 00.00.0000),
+    porque Postgres rechazaría el lote entero."""
     m = re.search(r"(\d{2})\.(\d{2})\.(\d{4})", v or "")
-    return f"{m.group(3)}-{m.group(2)}-{m.group(1)}" if m else None
+    if not m:
+        return None
+    iso = f"{m.group(3)}-{m.group(2)}-{m.group(1)}"
+    try:
+        date.fromisoformat(iso)
+    except ValueError:
+        return None
+    return iso
 
 
 def _euros(v: Optional[str]) -> Optional[int]:
@@ -425,6 +434,14 @@ def es_foto_sd(photo_url: Any) -> bool:
     return bool(photo_url) and "_sd.jpg" in str(photo_url)
 
 
+def _dias_entre(desde: Optional[str], hasta: Optional[str]) -> Optional[int]:
+    """Días de baja; None si falta una fecha o Soccerdonna trae una imposible (año 0000)."""
+    try:
+        return (date.fromisoformat(hasta) - date.fromisoformat(desde)).days if desde and hasta else None
+    except (TypeError, ValueError):
+        return None
+
+
 def filas_jugadora(p: Dict[str, Any], c: Dict[str, Any], prof: Dict[str, Any], tras: List[Dict[str, Any]],
                    ts: str) -> Dict[str, List[Dict[str, Any]]]:
     d, pid, sd_id = prof["datos"], p["id"], c["sd_id"]
@@ -474,11 +491,12 @@ def filas_jugadora(p: Dict[str, Any], c: Dict[str, Any], prof: Dict[str, Any], t
         "fee": _euros(t["fee_text"]) if t["fee_text"] and "€" in t["fee_text"] else None,
         "fee_text": en.traspaso(t["fee_text"]), "loan": t["loan"], "upcoming": False,
     } for t in tras]
+    valida = lambda f: bool(f) and str(f)[:4] >= "1900"  # Soccerdonna a veces trae 0000-00-00
     lesiones = {(l["from_date"], en.lesion(l["injury"])[:150]): {
         "player_id": pid, "from_date": l["from_date"], "injury": en.lesion(l["injury"])[:150], "season": l["season"],
-        "until_date": l["until_date"],
-        "days": (date.fromisoformat(l["until_date"]) - date.fromisoformat(l["from_date"])).days if l["until_date"] else None,
-    } for l in prof["lesiones"]}
+        "until_date": l["until_date"] if valida(l["until_date"]) else None,
+        "days": _dias_entre(l["from_date"], l["until_date"]) if valida(l["until_date"]) else None,
+    } for l in prof["lesiones"] if valida(l["from_date"])}
     selecciones = [{"player_id": pid, **s, "team_name": en.seleccion(s["team_name"])} for s in prof["selecciones"]]
     return {"players": [row], "player_market_values": list(valores.values()), "player_transfers": traspasos,
             "player_injuries": list(lesiones.values()), "player_national_teams": selecciones}
@@ -498,6 +516,8 @@ class SoccerdonnaSync:
         self.refresh_photos = refresh_photos
         self.pendiente: Dict[str, List[Dict[str, Any]]] = {}
         self.asignadas: Dict[int, str] = {}  # sd_id → player_id
+        # (ficha "sd-" de Soccerdonna, jugadora Opta) confirmadas como la misma: sd_ligas.completar las une
+        self.pares_sd: List[tuple] = []
         self.totales = {"emparejadas": 0, "sin_emparejar": 0, "fotos": 0}
 
     def _flush(self):
@@ -538,6 +558,8 @@ class SoccerdonnaSync:
             # Opta a veces repite a una jugadora con otro ID: sincronizar perfil y foto pero sin pisar sd_id si es único
             logger.info(f"  {p['name']}: ficha Soccerdonna {c['sd_id']} ya asignada a Opta {otra} (duplicado Opta; sincronizando perfil)")
             es_duplicado = True
+            if str(otra).startswith("sd-") and not p["id"].startswith("sd-"):
+                self.pares_sd.append((otra, p["id"]))
         else:
             self.asignadas[c["sd_id"]] = p["id"]
         filas = filas_jugadora(p, c, prof, self.sd.traspasos(c["slug"], c["sd_id"]), now_iso())

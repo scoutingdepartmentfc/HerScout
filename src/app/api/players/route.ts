@@ -21,7 +21,35 @@ type BaseData = {
   trendByPlayer: Map<string, "up" | "neutral" | "down">;
   // Every player (stats or not): the ones without season stats are listed without ratings
   allPlayers: any[];
+  // Players without a current club: club of their latest match, only if played in the last 3 months
+  recentTeamByPlayer: Map<string, { id: string; name: string; badge_url: string | null }>;
 };
+
+const RECENT_CLUB_MONTHS = 3;
+
+async function fetchRecentTeams(db: any, playerIds: string[]) {
+  const out = new Map<string, { id: string; name: string; badge_url: string | null }>();
+  if (!playerIds.length) return out;
+  const since = new Date();
+  since.setMonth(since.getMonth() - RECENT_CLUB_MONTHS);
+  const chunks: string[][] = [];
+  for (let i = 0; i < playerIds.length; i += 100) chunks.push(playerIds.slice(i, i + 100));
+  const res = await Promise.all(
+    chunks.map((ids) =>
+      db.from("player_match_stats")
+        .select("player_id, match_date, teams:team_id ( id, name, badge_url )")
+        .in("player_id", ids)
+        .gte("match_date", since.toISOString())
+        .order("match_date", { ascending: false })
+    )
+  );
+  for (const r of res as any[]) {
+    if (r.error) { console.warn("[RECENT_TEAMS]", r.error.message); continue; }
+    // Rows come latest first: keep the first club seen per player
+    for (const row of r.data || []) if (row.teams && !out.has(row.player_id)) out.set(row.player_id, row.teams);
+  }
+  return out;
+}
 
 type ProcessedSeason = {
   list: any[];
@@ -125,6 +153,7 @@ async function loadBaseData(db: any): Promise<BaseData> {
         grupo_demarcacion,
         matches_played,
         minutes_played,
+        goals_p90,
         starter_pct,
         nota_global,
         nota_ataque,
@@ -149,6 +178,7 @@ async function loadBaseData(db: any): Promise<BaseData> {
           weight,
           preferred_foot,
           market_value,
+          contract_expires,
           fm_team_name, fm_team_badge_url, current_league_name, current_league_logo_url,
           sd_league_code,
           teams:current_team_id ( id, name, badge_url, league_name, league_logo_url ),
@@ -162,7 +192,7 @@ async function loadBaseData(db: any): Promise<BaseData> {
 
     // Stats count, sd_leagues and trends all run in parallel
     const PLAYER_FIELDS = `id, name, match_name, country, birth_date, photo_url, primary_position, grupo_demarcacion,
-      shirt_number, height, weight, preferred_foot, market_value,
+      shirt_number, height, weight, preferred_foot, market_value, contract_expires,
       fm_team_name, fm_team_badge_url, current_league_name, current_league_logo_url, sd_league_code,
       teams:current_team_id ( id, name, badge_url, league_name, league_logo_url ),
       player_ea_ratings ( pace, physicality )`;
@@ -209,7 +239,12 @@ async function loadBaseData(db: any): Promise<BaseData> {
       if (item.name && item.country) leagueCountryByName.set(item.name.toLowerCase(), item.country);
     }
 
-    const data: BaseData = { rows, leagueCountryByCode, leagueCountryByName, trendByPlayer, allPlayers };
+    const recentTeamByPlayer = await fetchRecentTeams(
+      db,
+      allPlayers.filter((p: any) => !p.fm_team_name && !p.teams).map((p: any) => p.id)
+    );
+
+    const data: BaseData = { rows, leagueCountryByCode, leagueCountryByName, trendByPlayer, allPlayers, recentTeamByPlayer };
     baseCache = { timestamp: Date.now(), data };
     processedCache.clear();
     return data;
@@ -266,7 +301,7 @@ export async function GET(req: NextRequest) {
     if (cachedProcessed && cachedProcessed.timestamp === baseCache?.timestamp) {
       processed = cachedProcessed.value;
     } else {
-    const { rows, leagueCountryByCode, leagueCountryByName, trendByPlayer, allPlayers } = base;
+    const { rows, leagueCountryByCode, leagueCountryByName, trendByPlayer, allPlayers, recentTeamByPlayer } = base;
 
     // Extract available season names from all rows for the filter dropdown
     const availableSeasons = Array.from(
@@ -342,13 +377,21 @@ export async function GET(req: NextRequest) {
           }
         }
 
+        // Most recent season in scope (all its competitions added up): matches, minutes and goals
+        const recentSeason = latestRow.seasons?.name || null;
+        const recentRows = playerRows.filter((r: any) => (r.seasons?.name || null) === recentSeason);
+        const recentSum = (k: string) => recentRows.reduce((n: number, r: any) => n + (Number(r[k]) || 0), 0);
+
         const getWeightedVal = (k: string) => {
           const item = sumWeighted[k];
           return item.mins > 0 ? item.sum / item.mins : null;
         };
 
-        const teamName = p.fm_team_name || p.teams?.name || "Unattached";
-        const leagueName = p.current_league_name || p.teams?.league_name || null;
+        // No current club (Soccerdonna / current_team_id): club of her latest match, only if within the last 3 months
+        const fallbackTeam = !p.fm_team_name && !p.teams ? recentTeamByPlayer.get(p.id) || null : null;
+        const teamName = p.fm_team_name || p.teams?.name || fallbackTeam?.name || "Unattached";
+        const hasClub = !!(p.fm_team_name || p.teams || fallbackTeam);
+        const leagueName = p.current_league_name || p.teams?.league_name || (hasClub ? latestRow.competitions?.name : null) || null;
         const leagueCountry =
           (p.sd_league_code ? leagueCountryByCode.get(p.sd_league_code) : null) ||
           (p.current_league_name ? leagueCountryByName.get(p.current_league_name.toLowerCase()) : null) ||
@@ -370,11 +413,20 @@ export async function GET(req: NextRequest) {
           weight: p.weight,
           preferredFoot: p.preferred_foot,
           marketValue: p.market_value,
-          teamId: p.teams?.id,
+          contractUntil: p.contract_expires,
+          recentSeason,
+          recentMatches: recentSum("matches_played"),
+          recentMinutes: recentSum("minutes_played"),
+          // player_season_stats only stores goals per 90: goals = goals_p90 * minutes / 90 (exact after rounding)
+          recentGoals: recentRows.reduce(
+            (n: number, r: any) => n + Math.round(((Number(r.goals_p90) || 0) * (Number(r.minutes_played) || 0)) / 90),
+            0
+          ),
+          teamId: p.teams?.id || fallbackTeam?.id,
           teamName,
-          badgeUrl: (p.fm_team_name ? p.fm_team_badge_url : null) || p.teams?.badge_url,
+          badgeUrl: (p.fm_team_name ? p.fm_team_badge_url : null) || p.teams?.badge_url || fallbackTeam?.badge_url,
           leagueName,
-          leagueLogoUrl: p.current_league_logo_url || p.teams?.league_logo_url,
+          leagueLogoUrl: p.current_league_logo_url || p.teams?.league_logo_url || (leagueName === latestRow.competitions?.name ? latestRow.competitions?.logo_url : null),
           leagueCountry,
           seasonName: season !== "all" ? season : playerRows.length > 1 ? `All seasons (${playerRows.length})` : playerRows[0]?.seasons?.name || null,
           competitions,
@@ -424,6 +476,11 @@ export async function GET(req: NextRequest) {
         weight: p.weight,
         preferredFoot: p.preferred_foot,
         marketValue: p.market_value,
+        contractUntil: p.contract_expires,
+        recentSeason: null,
+        recentMatches: null,
+        recentMinutes: null,
+        recentGoals: null,
         teamId: p.teams?.id,
         teamName,
         badgeUrl: (p.fm_team_name ? p.fm_team_badge_url : null) || p.teams?.badge_url,
@@ -563,8 +620,14 @@ export async function GET(req: NextRequest) {
       nota_disponibilidad: "notaDisponibilidad",
       nota_fisico: "notaFisico",
       age: "birthDate",
+      market_value: "marketValue",
+      contract: "contractDays",
+      recent_matches: "recentMatches",
+      recent_minutes: "recentMinutes",
+      recent_goals: "recentGoals",
     };
-    const field = key[validScores.includes(sortBy) || sortBy === "nota_fisico" || sortBy === "age" ? sortBy : "nota_global"];
+    for (const p of list) p.contractDays = p.contractUntil ? Date.parse(p.contractUntil) : null;
+    const field = key[key[sortBy] ? sortBy : "nota_global"];
     list.sort((a: any, b: any) => {
       if (sortBy === "age") {
         // Higher birthDate = younger, lower birthDate = older

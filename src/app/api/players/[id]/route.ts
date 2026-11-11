@@ -1,5 +1,78 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
+import { requireAdmin } from "@/lib/adminGuard";
+
+// Fields that can be edited by hand from the profile (stored in players.manual_overrides)
+const EDITABLE: Record<string, "text" | "number" | "date" | "list"> = {
+  name: "text",
+  matchName: "text",
+  country: "text",
+  citizenship: "list",
+  birthDate: "date",
+  placeOfBirth: "text",
+  height: "number",
+  weight: "number",
+  preferredFoot: "text",
+  shirtNumber: "number",
+  marketValue: "number",
+  contractUntil: "date",
+  joinedOn: "date",
+  photoUrl: "text",
+  primaryPosition: "text",
+  otherPositions: "list",
+};
+
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  const denied = await requireAdmin(req);
+  if (denied) return denied;
+
+  let body: any;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const db = supabaseAdmin as any;
+  const { data: current, error: readError } = await db
+    .from("players").select("id, manual_overrides").eq("id", params.id).single();
+  if (readError || !current) {
+    return NextResponse.json({ error: readError?.message || "Player not found" }, { status: 404 });
+  }
+
+  // null / "" / [] removes the override (back to the scraped value)
+  const overrides: Record<string, any> = { ...(current.manual_overrides || {}) };
+  for (const [key, kind] of Object.entries(EDITABLE)) {
+    if (!(key in (body.overrides || {}))) continue;
+    const raw = body.overrides[key];
+    let value: any = null;
+    if (kind === "list") {
+      const arr = Array.isArray(raw) ? raw : typeof raw === "string" ? raw.split(",") : [];
+      const clean = Array.from(new Set(arr.map((v: any) => String(v).trim()).filter(Boolean)));
+      value = clean.length ? clean : null;
+    } else if (kind === "number") {
+      const n = raw === "" || raw == null ? NaN : Number(raw);
+      value = Number.isFinite(n) ? n : null;
+    } else if (kind === "date") {
+      value = typeof raw === "string" && /^\d{4}-\d{2}-\d{2}/.test(raw) ? raw.slice(0, 10) : null;
+    } else {
+      value = typeof raw === "string" && raw.trim() ? raw.trim() : null;
+    }
+    if (value == null) delete overrides[key];
+    else overrides[key] = value;
+  }
+
+  const { error } = await db
+    .from("players")
+    .update({ manual_overrides: overrides, manual_updated_at: new Date().toISOString() })
+    .eq("id", params.id);
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  return NextResponse.json({ ok: true, overrides });
+}
 
 export async function GET(
   req: NextRequest,
@@ -219,15 +292,29 @@ export async function GET(
       .sort((a, b) => b[1].min - a[1].min)
       .map(([pos]) => pos);
 
-    return NextResponse.json({
-      player: {
+    // Separate query so the profile still loads if the manual_overrides migration is not applied yet
+    const { data: manual } = await db.from("players").select("manual_overrides").eq("id", playerId).maybeSingle();
+    const o: Record<string, any> = manual?.manual_overrides || {};
+    const scrapedPrimary = sortedPlayedPositions[0] || p.primary_position || "Midfielder";
+    // No current club (no Soccerdonna match and no current_team_id): club of her latest Opta match,
+    // only if it was played in the last 3 months (an older one may be a former club)
+    const recentLimit = new Date();
+    recentLimit.setMonth(recentLimit.getMonth() - 3);
+    const lastMatch = (matchStats.data || []).find((m: any) => m.match_date && new Date(m.match_date) >= recentLimit);
+    const lastTeam = lastMatch
+      ? (lastMatch.matches?.home_team?.id === lastMatch.team_id ? lastMatch.matches?.home_team : lastMatch.matches?.away_team)
+      : null;
+    const fallbackTeam = !p.fm_team_name && !p.teams ? lastTeam : null;
+    const hasClub = !!(p.fm_team_name || p.teams || fallbackTeam);
+
+    const scraped = {
         id: p.id,
         name: p.name,
         matchName: p.match_name || p.name,
         country: p.country,
         birthDate: p.birth_date,
         photoUrl: p.photoUrl || p.photo_url,
-        primaryPosition: sortedPlayedPositions[0] || p.primary_position || "Midfielder",
+        primaryPosition: scrapedPrimary,
         playedPositions: sortedPlayedPositions,
         positionsMap: posCounts,
         grupoDemarcacion: p.grupo_demarcacion,
@@ -243,13 +330,19 @@ export async function GET(
         otherPositions: qualifyingSecondaryPositions,
         sdPosition: p.tm_position_main,
         citizenship: p.citizenship || [],
-        teamId: p.teams?.id,
+        teamId: p.teams?.id || fallbackTeam?.id,
         // Club actual y su liga según Soccerdonna; si no, el equipo Opta
-        teamName: p.fm_team_name || p.teams?.name || "Unattached",
-        badgeUrl: (p.fm_team_name ? p.fm_team_badge_url : null) || p.teams?.badge_url,
-        leagueName: p.current_league_name || p.teams?.league_name || seasonRow?.competitions?.name || seasonRow?.teams?.league_name,
-        leagueLogoUrl: p.current_league_logo_url || p.teams?.league_logo_url || seasonRow?.competitions?.logo_url || seasonRow?.teams?.league_logo_url,
-      },
+        teamName: p.fm_team_name || p.teams?.name || fallbackTeam?.name || "Unattached",
+        badgeUrl: (p.fm_team_name ? p.fm_team_badge_url : null) || p.teams?.badge_url || fallbackTeam?.badge_url,
+        // Without a current club (and no match in the last 3 months) the league of an old season is not shown either
+        leagueName: p.current_league_name || p.teams?.league_name || (hasClub ? seasonRow?.competitions?.name || seasonRow?.teams?.league_name : null),
+        leagueLogoUrl: p.current_league_logo_url || p.teams?.league_logo_url || (hasClub ? seasonRow?.competitions?.logo_url || seasonRow?.teams?.league_logo_url : null),
+    };
+
+    return NextResponse.json({
+      // Manual edits win over scraped data; `scraped` lets the edit form show the original values
+      player: { ...scraped, ...o, manualOverrides: o },
+      scraped,
       seasonStats,
       allSeasons,
       matchLog,

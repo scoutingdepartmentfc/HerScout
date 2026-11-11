@@ -305,6 +305,24 @@ class IngestionPipeline:
         return cache
 
     # ── Temporada ────────────────────────────────────────────
+    def _nivel_por_club(self, df_temp: pd.DataFrame, nivel_comp: float) -> pd.DataFrame:
+        """Competición internacional: la base de la nota es el nivel de la liga del CLUB de cada jugadora, no el de
+        la competición (una del Häcken no hereda el nivel de la Champions). Se desplazan las notas 0-100 la
+        diferencia entre ambos niveles. Clubes de ligas sin calibrar o no descargadas: NIVEL_LIGA_DEFECTO."""
+        from .scoring import NOTA_COLS
+        liga_club = {t['id']: t.get('competition_id') for t in self.store.select_all('teams', 'id,competition_id')}
+        def nivel_club(tid):
+            cid = liga_club.get(tid)
+            return NIVEL_LIGA.get(cid, NIVEL_LIGA_DEFECTO) if cid and not es_internacional({'id': cid}) \
+                else NIVEL_LIGA_DEFECTO
+        delta = df_temp['team_id'].map(nivel_club) - nivel_comp
+        df_temp = df_temp.copy()
+        for c in NOTA_COLS:
+            if c in df_temp:
+                df_temp[c] = (df_temp[c] + delta).clip(1, 99)
+        logger.info(f"  Nivel por club (internacional): desplazamiento medio {delta.mean():+.1f}")
+        return df_temp
+
     def recalcular_temporada(self, comp: Dict[str, Any], cache: pd.DataFrame, perfiles: Dict[str, Dict[str, Any]],
                              actualizar_jugadoras: bool = True):
         """Ratings por partido y tabla de temporada desde la caché. Sin `actualizar_jugadoras` no se tocan las
@@ -312,7 +330,10 @@ class IngestionPipeline:
         cid, sid = comp['id'], comp['season_id']
         if cid not in NIVEL_LIGA:
             logger.warning(f"  {comp['name']} sin nivel en NIVEL_LIGA: se usa {NIVEL_LIGA_DEFECTO}")
-        df_sp, df_temp = calcular_temporada(cache, NIVEL_LIGA.get(cid, NIVEL_LIGA_DEFECTO))
+        nivel_comp = NIVEL_LIGA.get(cid, NIVEL_LIGA_DEFECTO)
+        df_sp, df_temp = calcular_temporada(cache, nivel_comp)
+        if es_internacional(comp) and not df_temp.empty:
+            df_temp = self._nivel_por_club(df_temp, nivel_comp)
         if df_temp.empty:
             logger.info("  Temporada: sin jugadores con minutos suficientes todavía")
             return

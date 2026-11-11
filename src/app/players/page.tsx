@@ -58,7 +58,38 @@ interface PlayerRow {
   notaBalonParado?: number | null;
   notaDisponibilidad?: number | null;
   notaFisico?: number | null;
+  marketValue?: number | null;
+  contractUntil?: string | null;
+  recentSeason?: string | null;
+  recentMatches?: number | null;
+  recentMinutes?: number | null;
+  recentGoals?: number | null;
   trend?: "up" | "neutral" | "down" | null;
+}
+
+function fmtMarketValue(v?: number | null) {
+  if (!v) return "—";
+  return v >= 1_000_000 ? `€${(v / 1_000_000).toFixed(2)}m` : `€${Math.round(v / 1000)}k`;
+}
+
+/** Contract expiry with a live countdown of the days left (red < 6 months, amber < 1 year) */
+function ContractCell({ until }: { until?: string | null }) {
+  if (!until) return <span className="text-slate-500">—</span>;
+  const end = new Date(until);
+  if (isNaN(end.getTime())) return <span className="text-slate-500">—</span>;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const days = Math.ceil((end.getTime() - today.getTime()) / 86_400_000);
+  const color =
+    days < 0 ? "text-slate-500" : days <= 182 ? "text-red-400" : days <= 365 ? "text-amber-300" : "text-emerald-400";
+  return (
+    <div className="leading-tight">
+      <div className="font-mono text-xs text-slate-200">{end.toLocaleDateString("en-GB")}</div>
+      <div className={`text-[10px] font-semibold ${color}`}>
+        {days < 0 ? "Expired" : days === 0 ? "Ends today" : `${days.toLocaleString("en-GB")} days left`}
+      </div>
+    </div>
+  );
 }
 
 function MultiSelectDropdown<T extends { id: string; name: string; badgeUrl?: string | null; country?: string | null; teamId?: string | null }>({
@@ -109,7 +140,7 @@ function MultiSelectDropdown<T extends { id: string; name: string; badgeUrl?: st
     const map = new Map<string, T[]>();
 
     for (const opt of filteredOptions) {
-      const c = opt.country || "Otras Competiciones";
+      const c = opt.country || "Other Competitions";
       if (!map.has(c)) {
         const list: T[] = [];
         map.set(c, list);
@@ -159,7 +190,7 @@ function MultiSelectDropdown<T extends { id: string; name: string; badgeUrl?: st
             <span className="text-muted-foreground">{placeholder}</span>
           ) : (
             <span className="font-semibold text-emerald-400">
-              {selectedIds.length === 1 ? selectedIds[0] : `${selectedIds.length} seleccionados`}
+              {selectedIds.length === 1 ? selectedIds[0] : `${selectedIds.length} selected`}
             </span>
           )}
         </div>
@@ -173,7 +204,7 @@ function MultiSelectDropdown<T extends { id: string; name: string; badgeUrl?: st
                 if (e.key === "Enter" || e.key === " ") clearAll(e as any);
               }}
               className="p-1 rounded-full hover:bg-white/20 text-muted-foreground hover:text-white transition-colors"
-              title="Limpiar filtro"
+              title="Clear filter"
             >
               <X className="w-3 h-3" />
             </span>
@@ -191,7 +222,7 @@ function MultiSelectDropdown<T extends { id: string; name: string; badgeUrl?: st
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Buscar por liga o país..."
+                placeholder="Search..."
                 className="w-full h-8 pl-8 pr-2.5 rounded-lg bg-navy-900/90 text-xs text-white border border-white/10 focus:outline-none focus:border-emerald-500 placeholder:text-muted-foreground/60 transition-colors"
                 autoFocus
               />
@@ -200,7 +231,7 @@ function MultiSelectDropdown<T extends { id: string; name: string; badgeUrl?: st
           <div className="max-h-72 overflow-y-auto p-1.5 space-y-1">
             {filteredOptions.length === 0 ? (
               <div className="py-5 text-center text-xs text-muted-foreground">
-                No se encontraron resultados
+                No results found
               </div>
             ) : groupedByCountry ? (
               groupedByCountry.map((grp) => {
@@ -214,10 +245,10 @@ function MultiSelectDropdown<T extends { id: string; name: string; badgeUrl?: st
                     {/* Cabecera del país con bandera y selección rápida */}
                     <div className="flex items-center justify-between px-2.5 py-1.5 bg-white/[0.04] border-b border-white/5">
                       <div className="flex items-center gap-1.5 min-w-0">
-                        {grp.country === "Internacional" ? (
+                        {grp.country === "International" ? (
                           <span className="text-[11px] leading-none">🌍</span>
                         ) : (
-                          grp.country !== "Otras Competiciones" && <Bandera country={grp.country} size="xs" />
+                          grp.country !== "Other Competitions" && <Bandera country={grp.country} size="xs" />
                         )}
                         <span className="text-[11px] font-bold text-slate-200 tracking-wide uppercase truncate">
                           {grp.country}
@@ -228,9 +259,9 @@ function MultiSelectDropdown<T extends { id: string; name: string; badgeUrl?: st
                         type="button"
                         onClick={() => toggleCountryGroup(grp.items)}
                         className="text-[10px] font-semibold text-emerald-400 hover:text-emerald-300 transition-colors px-1"
-                        title={isAllSelected ? "Deseleccionar país" : "Seleccionar todo el país"}
+                        title={isAllSelected ? "Deselect country" : "Select all in country"}
                       >
-                        {isAllSelected ? "Deseleccionar" : isPartiallySelected ? `${countSelected}/${groupIds.length}` : "Todo"}
+                        {isAllSelected ? "Deselect" : isPartiallySelected ? `${countSelected}/${groupIds.length}` : "All"}
                       </button>
                     </div>
 
@@ -296,13 +327,13 @@ function MultiSelectDropdown<T extends { id: string; name: string; badgeUrl?: st
           </div>
           {selectedIds.length > 0 && (
             <div className="p-2 border-t border-white/10 bg-navy-950/90 flex justify-between items-center text-[11px] px-3">
-              <span className="text-muted-foreground">{selectedIds.length} seleccionados</span>
+              <span className="text-muted-foreground">{selectedIds.length} selected</span>
               <button
                 type="button"
                 onClick={() => onChange([])}
                 className="text-emerald-400 hover:text-emerald-300 font-semibold transition-colors"
               >
-                Deseleccionar todos
+                Deselect all
               </button>
             </div>
           )}
@@ -315,7 +346,8 @@ function MultiSelectDropdown<T extends { id: string; name: string; badgeUrl?: st
 // Client cache of /api/players responses per season: survives client-side navigation (memory)
 // and full reloads within the tab (sessionStorage), so revisits render instantly.
 type PlayersResponse = { players: PlayerRow[]; evaluatedPeriod?: string; filters?: any };
-const PLAYERS_CACHE_KEY = "players_data_v1_";
+// Bump the version whenever the response shape changes, so stale cached rows are not shown
+const PLAYERS_CACHE_KEY = "players_data_v2_";
 const memoryPlayersCache = new Map<string, PlayersResponse>();
 
 function readPlayersCache(season: string): PlayersResponse | null {
@@ -575,9 +607,21 @@ function PlayersDirectoryContent() {
       nota_balon_parado: "notaBalonParado",
       nota_disponibilidad: "notaDisponibilidad",
       nota_fisico: "notaFisico",
+      market_value: "marketValue",
+      recent_matches: "recentMatches",
+      recent_minutes: "recentMinutes",
+      recent_goals: "recentGoals",
     };
     const sorted = list === allPlayers ? list.slice() : list;
-    if (sortBy === "age") {
+    if (sortBy === "contract") {
+      // desc = longest contract first; players without a contract date always last
+      sorted.sort((a, b) => {
+        const va = a.contractUntil ? Date.parse(a.contractUntil) : null;
+        const vb = b.contractUntil ? Date.parse(b.contractUntil) : null;
+        if (va == null || vb == null) return va == null ? (vb == null ? 0 : 1) : -1;
+        return sortOrder === "asc" ? va - vb : vb - va;
+      });
+    } else if (sortBy === "age") {
       sorted.sort((a, b) => {
         const va = a.birthDate ? new Date(a.birthDate).getTime() : null;
         const vb = b.birthDate ? new Date(b.birthDate).getTime() : null;
@@ -801,17 +845,17 @@ function PlayersDirectoryContent() {
           {/* Collapsible Advanced Filters Drawer */}
           {showAdvancedFilters && (
             <div className="pt-2.5 pb-1 border-t border-border/40 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 items-end">
-              {/* Season Filter (Default: All seasons / Acumulado) */}
+              {/* Season Filter */}
               <div>
                 <label className="text-[10px] font-semibold text-slate-300 uppercase tracking-wider block mb-1">
-                  Season / Temporada
+                  Season
                 </label>
                 <Select
                   value={seasonFilter}
                   onChange={(e) => setSeasonFilter(e.target.value)}
                   className="bg-navy-950/90 border-white/10 h-9 text-xs font-semibold rounded-lg"
                 >
-                  <option value="all">⚡ All Seasons (Acumulado)</option>
+                  <option value="all">⚡ All Seasons (Accumulated)</option>
                   {availableSeasons.map((s) => (
                     <option key={s} value={s}>
                       {s}
@@ -823,11 +867,11 @@ function PlayersDirectoryContent() {
               {/* Club / Team (Multi-select with Badge) */}
               <div>
                 <MultiSelectDropdown
-                  label="Clubs / Equipos"
+                  label="Clubs / Teams"
                   options={availableTeams}
                   selectedIds={selectedTeams}
                   onChange={setSelectedTeams}
-                  placeholder="Todos los equipos"
+                  placeholder="All teams"
                   renderIcon={(opt) => (
                     <EscudoEquipo
                       teamId={opt.teamId}
@@ -843,11 +887,11 @@ function PlayersDirectoryContent() {
               {/* Competition / League (Multi-select with Flag/Logo) */}
               <div>
                 <MultiSelectDropdown
-                  label="Ligas / Competiciones"
+                  label="Leagues / Competitions"
                   options={availableLeagues}
                   selectedIds={selectedLeagues}
                   onChange={setSelectedLeagues}
-                  placeholder="Todas las ligas"
+                  placeholder="All leagues"
                   renderIcon={(opt) => (
                     <div className="flex items-center gap-1 shrink-0">
                       {opt.country ? (
@@ -879,11 +923,11 @@ function PlayersDirectoryContent() {
                 </Select>
               </div>
 
-              {/* Age Range Slider / Barra de Edad con Mayor y Menor */}
+              {/* Age Range Slider */}
               <div className="space-y-1.5 bg-navy-950/60 p-2 rounded-lg border border-white/10">
                 <div className="flex items-center justify-between text-[11px]">
                   <span className="font-semibold text-slate-300 uppercase tracking-wider text-[10px]">
-                    Rango Edad
+                    Age Range
                   </span>
                   <div className="flex items-center gap-1.5 font-mono text-[11px]">
                     <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-bold border border-emerald-500/30">
@@ -959,7 +1003,7 @@ function PlayersDirectoryContent() {
         {/* Selected Assigned Filters Bar (Badges con Escudos y Banderas) */}
         {(selectedTeams.length > 0 || selectedLeagues.length > 0) && (
           <div className="px-4 py-2 border-b border-white/10 bg-navy-950/70 flex flex-wrap items-center gap-2 text-xs">
-            <span className="text-[11px] font-semibold text-muted-foreground">Filtros asignados:</span>
+            <span className="text-[11px] font-semibold text-muted-foreground">Active filters:</span>
 
             {/* Assigned Teams Pills */}
             {selectedTeams.map((teamName) => {
@@ -981,7 +1025,7 @@ function PlayersDirectoryContent() {
                     type="button"
                     onClick={() => setSelectedTeams(selectedTeams.filter((t) => t.toLowerCase() !== teamName.toLowerCase()))}
                     className="text-slate-400 hover:text-white rounded-full p-0.5 hover:bg-white/10 transition-colors"
-                    title={`Quitar ${teamName}`}
+                    title={`Remove ${teamName}`}
                   >
                     <X className="w-3 h-3" />
                   </button>
@@ -1008,7 +1052,7 @@ function PlayersDirectoryContent() {
                     type="button"
                     onClick={() => setSelectedLeagues(selectedLeagues.filter((l) => l.toLowerCase() !== leagueName.toLowerCase()))}
                     className="text-slate-400 hover:text-white rounded-full p-0.5 hover:bg-white/10 transition-colors"
-                    title={`Quitar ${leagueName}`}
+                    title={`Remove ${leagueName}`}
                   >
                     <X className="w-3 h-3" />
                   </button>
@@ -1024,7 +1068,7 @@ function PlayersDirectoryContent() {
               }}
               className="text-[11px] text-muted-foreground hover:text-rose-400 ml-1 transition-colors underline"
             >
-              Borrar todos
+              Clear all
             </button>
           </div>
         )}
@@ -1063,46 +1107,39 @@ function PlayersDirectoryContent() {
                     OVR {sortBy === "nota_global" && (sortOrder === "desc" ? "↓" : "↑")}
                   </TableHead>
                   <TableHead
-                    onClick={() => handleSort("nota_ataque")}
-                    className="cursor-pointer text-center font-semibold text-slate-300 hover:text-white select-none"
-                    title="Sort by Attacking"
+                    onClick={() => handleSort("market_value")}
+                    className="cursor-pointer text-center font-semibold text-slate-300 hover:text-white select-none whitespace-nowrap"
+                    title="Sort by Market value"
                   >
-                    ATT {sortBy === "nota_ataque" && (sortOrder === "desc" ? "↓" : "↑")}
+                    Value {sortBy === "market_value" && (sortOrder === "desc" ? "↓" : "↑")}
                   </TableHead>
                   <TableHead
-                    onClick={() => handleSort("nota_construccion")}
-                    className="cursor-pointer text-center font-semibold text-slate-300 hover:text-white select-none"
-                    title="Sort by Build-up"
+                    onClick={() => handleSort("contract")}
+                    className="cursor-pointer text-center font-semibold text-slate-300 hover:text-white select-none whitespace-nowrap"
+                    title="Sort by Contract expiry (days left)"
                   >
-                    CRE {sortBy === "nota_construccion" && (sortOrder === "desc" ? "↓" : "↑")}
+                    Contract {sortBy === "contract" && (sortOrder === "desc" ? "↓" : "↑")}
                   </TableHead>
                   <TableHead
-                    onClick={() => handleSort("nota_defensa")}
-                    className="cursor-pointer text-center font-semibold text-slate-300 hover:text-white select-none"
-                    title="Sort by Defending"
+                    onClick={() => handleSort("recent_matches")}
+                    className="cursor-pointer text-center font-semibold text-slate-300 hover:text-white select-none whitespace-nowrap"
+                    title="Matches played in the most recent season"
                   >
-                    DEF {sortBy === "nota_defensa" && (sortOrder === "desc" ? "↓" : "↑")}
+                    MP {sortBy === "recent_matches" && (sortOrder === "desc" ? "↓" : "↑")}
                   </TableHead>
                   <TableHead
-                    onClick={() => handleSort("nota_balon_parado")}
-                    className="cursor-pointer text-center font-semibold text-slate-300 hover:text-white select-none"
-                    title="Sort by Set Pieces"
+                    onClick={() => handleSort("recent_minutes")}
+                    className="cursor-pointer text-center font-semibold text-slate-300 hover:text-white select-none whitespace-nowrap"
+                    title="Minutes played in the most recent season"
                   >
-                    SET {sortBy === "nota_balon_parado" && (sortOrder === "desc" ? "↓" : "↑")}
+                    Min {sortBy === "recent_minutes" && (sortOrder === "desc" ? "↓" : "↑")}
                   </TableHead>
                   <TableHead
-                    onClick={() => handleSort("nota_disponibilidad")}
-                    className="cursor-pointer text-center font-semibold text-slate-300 hover:text-white select-none"
-                    title="Sort by Availability"
+                    onClick={() => handleSort("recent_goals")}
+                    className="cursor-pointer text-center font-semibold text-slate-300 hover:text-white select-none whitespace-nowrap"
+                    title="Goals in the most recent season"
                   >
-                    AVAIL {sortBy === "nota_disponibilidad" && (sortOrder === "desc" ? "↓" : "↑")}
-                  </TableHead>
-                  <TableHead
-                    onClick={() => handleSort("nota_fisico")}
-                    className="cursor-pointer text-center font-semibold text-slate-300 hover:text-white select-none"
-                    title="Sort by Physical Rating"
-                  >
-                    PHY {sortBy === "nota_fisico" && (sortOrder === "desc" ? "↓" : "↑")}
+                    Goals {sortBy === "recent_goals" && (sortOrder === "desc" ? "↓" : "↑")}
                   </TableHead>
                   <TableHead className="text-right font-semibold text-white">Actions</TableHead>
                 </TableRow>
@@ -1276,23 +1313,20 @@ function PlayersDirectoryContent() {
                     <TableCell className="text-center font-bold">
                       {getScoreBadge(player.notaGlobal, true)}
                     </TableCell>
-                    <TableCell className="text-center">
-                      {getScoreBadge(player.notaAtaque)}
+                    <TableCell className="text-center font-mono text-xs font-semibold text-amber-400 whitespace-nowrap">
+                      {fmtMarketValue(player.marketValue)}
                     </TableCell>
-                    <TableCell className="text-center">
-                      {getScoreBadge(player.notaConstruccion)}
+                    <TableCell className="text-center whitespace-nowrap">
+                      <ContractCell until={player.contractUntil} />
                     </TableCell>
-                    <TableCell className="text-center">
-                      {getScoreBadge(player.notaDefensa)}
+                    <TableCell className="text-center font-mono text-xs text-slate-200" title={player.recentSeason || undefined}>
+                      {player.recentMatches ?? "—"}
                     </TableCell>
-                    <TableCell className="text-center">
-                      {getScoreBadge(player.notaBalonParado)}
+                    <TableCell className="text-center font-mono text-xs text-slate-200 whitespace-nowrap" title={player.recentSeason || undefined}>
+                      {player.recentMinutes != null ? `${player.recentMinutes}'` : "—"}
                     </TableCell>
-                    <TableCell className="text-center">
-                      {getScoreBadge(player.notaDisponibilidad)}
-                    </TableCell>
-                    <TableCell className="text-center">
-                      {getScoreBadge(player.notaFisico)}
+                    <TableCell className="text-center font-mono text-xs font-semibold text-white" title={player.recentSeason || undefined}>
+                      {player.recentGoals ?? "—"}
                     </TableCell>
 
                     <TableCell className="text-right">

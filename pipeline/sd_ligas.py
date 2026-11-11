@@ -10,14 +10,15 @@ Jugadoras desde Soccerdonna, por ligas elegidas en /admin (tabla sd_leagues):
   vincular   Une cada jugadora de Soccerdonna con la de Opta (nombre + fecha de nacimiento o club): una sola ficha
   escudos    Escudos PNG transparentes de FotMob para los clubes de la liga y el club actual de cada jugadora
   fotos      Jugadoras de la liga sin foto (también las que solo están en Opta): FotMob y, si no, la oficial de Opta
-  todo       descargar → opta → vincular → escudos → fotos, en cadena (todas las temporadas elegidas)
+  todo       Flujo estándar completo (todas las temporadas elegidas), ver flujo():
+             Soccerdonna (plantillas de la liga) → Opta de esa liga (+ Champions/copas al final) → vincular
+             (en la liga y entre ligas) → completar (las de Opta sin ficha: Soccerdonna fuera de su liga) →
+             club según último partido → escudos → fotos FotMob → coche escoba (ceroacero)
 
-Descargas automáticas (GitHub Action):
-  actualizar-opta         Martes. Ligas nuevas (nunca descargadas): Soccerdonna completo + escudos. Opta: solo la
-                          última temporada de cada liga (plantillas, partidos nuevos y calendario con horarios) y las
-                          temporadas elegidas que aún no tienen ningún partido en BD → vincular → completar → fotos
-  actualizar-soccerdonna  Mensual. descargar (fichas con más de --refresco-dias) → vincular → completar → retiradas →
-                          escudos → fotos
+Descargas automáticas (GitHub Action), mismo flujo:
+  actualizar-opta         Martes. Flujo estándar con la última temporada Opta de cada liga (y las elegidas sin
+                          partidos). Soccerdonna solo lee fichas nuevas (fichajes) o guardadas hace > --refresco-dias.
+  actualizar-soccerdonna  Mensual. Flujo estándar sin Opta + revisión de retiradas
   completar               Inverso: jugadoras de la API sin ficha → busca en Soccerdonna y foto (FotMob, luego 365scores)
   retiradas               Revisa si se han retirado las jugadoras con estadísticas que no están en ninguna plantilla
   recalcular              Ratings por partido y notas de temporada desde la caché de partidos (sin descargar nada):
@@ -429,10 +430,14 @@ def vincular(store: Store, liga_code: Optional[str]):
     op = [p for p in jugadoras if not p["id"].startswith("sd-") and not p.get("sd_id")
           and p["id"] not in opta_unidas]
     activas = jugadoras_activas(store)
+    from .config import es_internacional
+    # Clubes que solo conocemos por una competición internacional (Champions...): su liga la dice Soccerdonna
+    eq_intl = {t["id"] for t in equipos.values() if t.get("competition_id") and es_internacional({"id": t["competition_id"]})}
     pares = emparejar_entre_ligas(sd, op)
     for s_, o in pares:
-        # Si ya no está en ninguna plantilla Opta actual, el club de hoy es el de Soccerdonna
-        _unir(store, s_, o, club_de_soccerdonna=o["id"] not in activas)
+        # Si ya no está en ninguna plantilla Opta actual (o solo en la de una competición internacional),
+        # el club de hoy es el de Soccerdonna
+        _unir(store, s_, o, club_de_soccerdonna=o["id"] not in activas or o.get("current_team_id") in eq_intl)
     logger.info(f"Vincular entre ligas: {len(pares)} jugadoras unidas con su ficha Opta de otra liga o temporada")
 
 
@@ -554,7 +559,21 @@ def _unir(store: Store, s_: Dict[str, Any], mejor: Dict[str, Any], club_de_socce
 
 def completar(store: Store, comp_id: Optional[str] = None, limit: Optional[int] = None):
     """Jugadoras con datos de la API que no llegaron por ninguna plantilla de Soccerdonna: se buscan a la inversa."""
-    SoccerdonnaSync(limit=limit, fotos=False).run(comp_id, solo_fichas=True)
+    sync = SoccerdonnaSync(limit=limit, fotos=False)
+    sync.run(comp_id, solo_fichas=True)
+    # Ficha "sd-" (de la plantilla de su liga) que vincular no unió (fechas de nacimiento distintas o sin fecha en
+    # Opta) y que la búsqueda ha confirmado como la misma jugadora: se unen para no tener dos fichas
+    if sync.pares_sd:
+        activas = jugadoras_activas(store)
+        cols = "id,name,current_team_id," + ",".join(SD_CAMPOS)
+        for sd_pid, opta_pid in sync.pares_sd:
+            s_ = (store.select_all("players", cols, id=sd_pid) or [None])[0]
+            o = (store.select_all("players", cols, id=opta_pid) or [None])[0]
+            if not s_ or not o or o.get("sd_id"):
+                continue
+            _unir(store, s_, o, club_de_soccerdonna=opta_pid not in activas)
+            logger.info(f"  Unidas: {s_['name']} ({sd_pid} → {opta_pid})")
+        logger.info(f"Completar: {len(sync.pares_sd)} fichas de Soccerdonna unidas con su jugadora de Opta")
     equipos = {t["id"]: t["name"] for t in store.select_all("teams", "id,name")}
     clubes = {r["player_id"]: equipos.get(r["team_id"]) for r in store.select_all("player_season_stats", "player_id,team_id")}
     sin_foto = [p for p in store.select_all("players", "id,name,first_name,last_name,match_name,birth_date,country,photo_url")
@@ -799,6 +818,10 @@ def main():
     parser.add_argument("--limit", type=int, help="Máximo de jugadoras por liga (pruebas)")
     parser.add_argument("--todas-temporadas", action="store_true",
                         help="actualizar-opta: todas las temporadas elegidas, no solo la última")
+    parser.add_argument("--max-minutos-escoba", type=float, default=60,
+                        help="Coche escoba (ceroacero) al final del flujo: máximo de minutos (reanudable)")
+    parser.add_argument("--sin-coche-escoba", action="store_true",
+                        help="No pasar el coche escoba (el GitHub Action lo lanza en su propio paso)")
     args = parser.parse_args()
     store, sd = Store(get_supabase_client()), SDClient()
     if args.accion == "corregir-clubes":
@@ -807,45 +830,73 @@ def main():
         return catalogo(store, sd)
     if args.accion == "recalcular":
         return recalcular(store, args.liga)
-    if args.accion == "actualizar-opta":
-        # Una liga recién activada se descarga entera (Soccerdonna + todas sus temporadas Opta) en la misma pasada
-        nuevas = ligas_nuevas(store, args.liga)
-        for code in nuevas:
-            logger.info(f"▶ Liga nueva {code}: descarga completa de Soccerdonna")
-            descargar(store, sd, code, args.limit, args.refresco_dias)
-        opta(store, args.liga, args.max_matches, solo_ultima=not args.todas_temporadas)
-        vincular(store, args.liga)
-        completar(store, limit=args.limit)
-        corregir_clubes(store)
-        for code in nuevas:
-            escudos(store, code)
-        fotos(store, args.liga, args.limit)
-        return
     if args.accion == "completar":
         return completar(store, limit=args.limit)
     if args.accion == "retiradas":
         return marcar_retiradas(store, sd, args.refresco_dias)
+    escoba = None if args.sin_coche_escoba else args.max_minutos_escoba
+    if args.accion == "actualizar-opta":
+        # Semanal: plantillas de Soccerdonna (solo fichas nuevas o antiguas) → última temporada Opta → ...
+        return flujo(store, sd, args.liga, args.limit, args.refresco_dias, args.max_matches,
+                     solo_ultima=not args.todas_temporadas, escudos_ligas=ligas_nuevas(store, args.liga),
+                     coche_escoba=escoba)
     if args.accion == "actualizar-soccerdonna":
+        # Mensual: fichas de Soccerdonna al día (Opta ya va cada semana) y revisión de retiradas
+        return flujo(store, sd, args.liga, args.limit, args.refresco_dias, args.max_matches, con_opta=False,
+                     retiradas=True, coche_escoba=escoba)
+    if args.accion == "todo":
+        return flujo(store, sd, args.liga, args.limit, args.refresco_dias, args.max_matches, coche_escoba=escoba)
+    # Pasos sueltos
+    if args.accion == "descargar":
         descargar(store, sd, args.liga, args.limit, args.refresco_dias)
-        vincular(store, args.liga)
-        completar(store, limit=args.limit)
-        corregir_clubes(store)
-        marcar_retiradas(store, sd, args.refresco_dias)
-        escudos(store, args.liga)
-        fotos(store, args.liga, args.limit)
-        return
-    if args.accion in ("descargar", "todo"):
-        descargar(store, sd, args.liga, args.limit, args.refresco_dias)
-    if args.accion in ("opta", "todo"):
+    if args.accion == "opta":
         opta(store, args.liga, args.max_matches)
-    if args.accion in ("vincular", "todo"):
+    if args.accion == "vincular":
         vincular(store, args.liga)
         corregir_clubes(store)
-    if args.accion in ("escudos", "todo"):
+    if args.accion == "escudos":
         escudos(store, args.liga)
-    if args.accion in ("fotos", "todo"):
+    if args.accion == "fotos":
         fotos(store, args.liga, args.limit)
 
+
+def flujo(store: Store, sd: SDClient, liga_code: Optional[str], limit: Optional[int], refresco_dias: int,
+          max_matches: Optional[int], solo_ultima: bool = False, con_opta: bool = True, retiradas: bool = False,
+          escudos_ligas: Optional[List[str]] = None, coche_escoba: Optional[float] = None):
+    """Proceso estándar de descarga, en este orden:
+
+    Ligas (elegidas en /admin con su liga de Soccerdonna):
+      1. Soccerdonna: plantillas de la liga → ficha de cada jugadora (nuevas, y las guardadas hace más de
+         `refresco_dias`). Así entran también los fichajes recientes.
+      2. Opta de esa misma liga (plantillas, partidos, eventing/matchstats, ratings).
+      3. Vincular Soccerdonna ↔ Opta: dentro de la liga (nombre + fecha o club) y entre ligas (la jugadora de Opta
+         que Soccerdonna tiene ahora en otra liga elegida).
+    Competiciones entre clubes de distintas ligas o copas sin liga propia (Champions...): van en el paso 2,
+      después de las ligas. Opta identifica a cada jugadora con el mismo ID en todas sus competiciones, así que
+      las que ya estaban en Supabase se enlazan solas; las nuevas siguen el paso 4.
+      4. Jugadoras con datos de Opta que siguen sin ficha: se buscan en Soccerdonna FUERA de su liga (buscador por
+         nombre, confirmando fecha/lugar de nacimiento, dorsal o club) y se enlazan.
+      5. Club según el último partido oficial (una plantilla desfasada no se lleva a una jugadora a otra liga).
+      6. (mensual) Retiradas. 7. Escudos. 8. Fotos de FotMob (y si no, 365scores / Opta).
+      9. Coche escoba ceroacero.es: rellena solo lo que siga vacío.
+    """
+    descargar(store, sd, liga_code, limit, refresco_dias)
+    if con_opta:
+        opta(store, liga_code, max_matches, solo_ultima=solo_ultima)
+    vincular(store, liga_code)
+    completar(store, limit=limit)
+    corregir_clubes(store)
+    if retiradas:
+        marcar_retiradas(store, sd, refresco_dias)
+    for code in (escudos_ligas if escudos_ligas is not None else [liga_code]):
+        escudos(store, code)
+    fotos(store, liga_code, limit)
+    if coche_escoba:
+        from .ceroacero import CeroaceroSync
+        try:  # si falla, lo descargado ya está guardado
+            CeroaceroSync(refresh_days=30, limit=limit, max_minutos=coche_escoba).run()
+        except Exception as e:
+            logger.warning(f"Coche escoba: omitido ({e})")
 
 if __name__ == "__main__":
     main()

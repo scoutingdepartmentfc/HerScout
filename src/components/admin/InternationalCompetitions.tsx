@@ -5,7 +5,8 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Input } from "@/components/ui/Input";
-import { Globe2, RefreshCw, Trash2 } from "lucide-react";
+import { OptaLogo } from "@/components/scouting/OptaLogo";
+import { Globe2, RefreshCw, Sparkles, Trash2 } from "lucide-react";
 
 interface IntlSeason {
   season_id: string;
@@ -117,6 +118,23 @@ export function InternationalCompetitions() {
                   <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{c.region}</div>
                 </div>
 
+                {/* Opta data level: eventing (xG, actions, heatmaps) or matchstats only */}
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <OptaLogo variant="icon" size="xs" />
+                    <span>Datos Opta</span>
+                  </span>
+                  {c.seasons.some((s) => s.has_eventing) ? (
+                    <span className="text-amber-400 flex items-center gap-0.5 text-[9px] font-bold">
+                      <Sparkles className="w-2.5 h-2.5" /> Eventing
+                    </span>
+                  ) : c.seasons.length > 0 ? (
+                    <span className="text-sky-300 text-[9px] font-bold">Solo matchstats</span>
+                  ) : (
+                    <span className="text-rose-400 text-[9px] font-bold">Sin datos</span>
+                  )}
+                </div>
+
                 {c.seasons.length > 0 ? (
                   <div className="flex flex-wrap gap-1">
                     {c.seasons.map((s) => {
@@ -138,6 +156,9 @@ export function InternationalCompetitions() {
                         </button>
                       );
                     })}
+                    <div className="w-full text-[9px] text-muted-foreground pt-0.5">
+                      ● eventing + matchstats · sin ● = solo matchstats
+                    </div>
                   </div>
                 ) : (
                   <div className="text-[10px] text-muted-foreground">Sin temporadas con datos por jugadora en Opta</div>

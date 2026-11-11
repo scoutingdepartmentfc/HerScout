@@ -106,7 +106,9 @@ jobs:
           [ -n "$LIMITE" ] && ARGS="$ARGS --limit $LIMITE"
           python -m pipeline.jugadoras $ARGS
 
-      # Ligas de /admin (Soccerdonna Leagues + temporadas Opta). Martes → opta; día 1 → soccerdonna; manual → el modo elegido
+      # Ligas de /admin (Soccerdonna Leagues + temporadas Opta). Martes → opta; día 1 → soccerdonna; manual → el modo elegido.
+      # Todos siguen el flujo estándar (pipeline/sd_ligas.py flujo()): Soccerdonna → Opta → vincular →
+      # Soccerdonna fuera de la liga para las de Opta sin ficha → club según último partido → escudos → fotos
       - name: Ligas de /admin (Opta / Soccerdonna)
         if: github.event_name == 'schedule' || contains(fromJSON('["opta","soccerdonna","todo","recalcular"]'), inputs.modo)
         env:
@@ -122,7 +124,8 @@ jobs:
             '0 3 * * 2') MODO=opta ;;
             '0 3 1 * *') MODO=soccerdonna ;;
           esac
-          ARGS="--refresco-dias ${REFRESCO:-25}"
+          # El coche escoba va en su propio paso al final (se ejecuta aunque este falle)
+          ARGS="--refresco-dias ${REFRESCO:-25} --sin-coche-escoba"
           [ -n "$LIGA" ] && ARGS="$ARGS --liga $LIGA"
           [ -n "$LIMITE" ] && ARGS="$ARGS --limit $LIMITE"
           [ -n "$MAX_MATCHES" ] && ARGS="$ARGS --max-matches $MAX_MATCHES"
@@ -147,6 +150,8 @@ jobs:
           [ -n "$COMP_ID" ] && ARGS="$ARGS --comp-id $COMP_ID"
           [ -n "$MAX_MATCHES" ] && ARGS="$ARGS --max-matches $MAX_MATCHES"
           python -m pipeline.ingest $ARGS $EXTRA_ARGS
+          # Une las jugadoras nuevas (p. ej. de la Champions) con su ficha de Soccerdonna de otra liga
+          python -m pipeline.sd_ligas vincular
 
       # 3. Soccerdonna: perfil, valor de mercado, traspasos, lesiones y selección, confirmando fecha y lugar de
       # nacimiento, dorsal y club. Las nuevas siempre; las demás cada 30 días. Si falla no tumba la descarga.

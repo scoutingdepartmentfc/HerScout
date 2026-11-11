@@ -23,7 +23,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { LoadingState, ErrorState } from "@/components/ui/StatusStates";
-import { ArrowLeft, Bookmark, FileText, Calendar, Plus, ExternalLink, Shield, Pencil } from "lucide-react";
+import { ArrowLeft, Bookmark, FileText, Calendar, Plus, ExternalLink, Shield, Pencil, Trophy, ChevronDown, Check } from "lucide-react";
 import { EditPlayerModal } from "@/components/scouting/EditPlayerModal";
 
 // Position English translation and coordinates helper
@@ -321,31 +321,112 @@ export default function PlayerProfilePage() {
                 {selected && <CoberturaBadges c={selected.coverage} />}
               </div>
 
-              {/* 5-Column Quick Stats Row */}
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mt-4 pt-4 border-t border-border/40 text-xs">
-                <div>
-                  <div className="text-[11px] text-muted-foreground">Position</div>
-                  <div className="font-semibold text-white text-sm mt-0.5">{primaryEnglishPos}</div>
-                </div>
-                <div>
-                  <div className="text-[11px] text-muted-foreground">Nationality</div>
-                  <div className="flex items-center gap-1.5 font-semibold text-white text-sm mt-0.5">
-                    <Bandera country={p.country} size="xs" />
-                    <span>{p.country || "—"}</span>
+              {/* Competition Filter & Quick Stats Row */}
+              <div className="mt-4 pt-4 border-t border-border/40 text-xs space-y-3">
+                {/* Competition Filter Pills (if player has competitions for current season or across seasons) */}
+                {(() => {
+                  const availableComps: { id: string; name: string; logoUrl?: string }[] = [];
+                  const seen = new Set<string>();
+                  seasons.forEach((s) => {
+                    const cId = s.competition_id;
+                    const cName = s.competitions?.name;
+                    if (cId && cName && !seen.has(cId)) {
+                      seen.add(cId);
+                      availableComps.push({ id: cId, name: cName, logoUrl: s.competitions?.logo_url });
+                    }
+                  });
+
+                  if (availableComps.length <= 1) return null;
+
+                  return (
+                    <div className="flex flex-wrap items-center gap-1.5 pb-1">
+                      <span className="text-[11px] text-muted-foreground mr-1 flex items-center gap-1 font-medium">
+                        <Trophy className="w-3 h-3 text-amber-400" /> Competition:
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          // Select allSeasons if available, or first season
+                          if (data.allSeasons) setSeasonKey(claveTemporada(data.allSeasons));
+                        }}
+                        className={`px-2 py-0.5 rounded-full text-[11px] font-semibold transition-all border ${
+                          selected?.esTotal
+                            ? "bg-amber-400/20 text-amber-300 border-amber-400/50 shadow-sm"
+                            : "bg-navy-950/60 text-slate-400 border-white/10 hover:text-white hover:border-white/20"
+                        }`}
+                      >
+                        All Competitions
+                      </button>
+                      {availableComps.map((comp) => {
+                        const isCompActive = selected?.competition_id === comp.id;
+                        return (
+                          <button
+                            key={comp.id}
+                            type="button"
+                            onClick={() => {
+                              // Find matching season entry for this competition (prefer active/latest)
+                              const match = seasons.find((s) => s.competition_id === comp.id);
+                              if (match) setSeasonKey(claveTemporada(match));
+                            }}
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold transition-all border ${
+                              isCompActive
+                                ? "bg-sky-500/20 text-sky-200 border-sky-400/60 shadow-sm font-bold"
+                                : "bg-navy-950/60 text-slate-400 border-white/10 hover:text-white hover:border-white/20"
+                            }`}
+                          >
+                            {comp.logoUrl && (
+                              <img src={comp.logoUrl} alt="" className="w-3.5 h-3.5 object-contain rounded-full" />
+                            )}
+                            <span>{comp.name}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+
+                {/* Quick Stats Grid: Pos, Nat, Age, Matches, Minutes, Goals, Assists */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2.5">
+                  <div className="p-2 rounded-lg bg-navy-950/50 border border-white/5">
+                    <div className="text-[10px] text-muted-foreground uppercase font-semibold">Position</div>
+                    <div className="font-semibold text-white text-xs mt-0.5 truncate">{primaryEnglishPos}</div>
                   </div>
-                </div>
-                <div>
-                  <div className="text-[11px] text-muted-foreground">Age</div>
-                  <div className="font-semibold text-white text-sm mt-0.5">{age ?? "—"}</div>
-                </div>
-                <div>
-                  <div className="text-[11px] text-muted-foreground">Matches</div>
-                  <div className="font-semibold text-white text-sm mt-0.5">{selected?.matches_played ?? "—"}</div>
-                </div>
-                <div>
-                  <div className="text-[11px] text-muted-foreground">Minutes</div>
-                  <div className="font-semibold text-white text-sm mt-0.5 font-mono">
-                    {selected?.minutes_played ? `${selected.minutes_played}'` : "—"}
+                  <div className="p-2 rounded-lg bg-navy-950/50 border border-white/5">
+                    <div className="text-[10px] text-muted-foreground uppercase font-semibold">Nationality</div>
+                    <div className="flex items-center gap-1.5 font-semibold text-white text-xs mt-0.5 truncate">
+                      <Bandera country={p.country} size="xs" />
+                      <span>{p.country || "—"}</span>
+                    </div>
+                  </div>
+                  <div className="p-2 rounded-lg bg-navy-950/50 border border-white/5">
+                    <div className="text-[10px] text-muted-foreground uppercase font-semibold">Age</div>
+                    <div className="font-semibold text-white text-xs mt-0.5">{age ?? "—"}</div>
+                  </div>
+                  <div className="p-2 rounded-lg bg-navy-950/50 border border-white/5">
+                    <div className="text-[10px] text-muted-foreground uppercase font-semibold">Matches</div>
+                    <div className="font-semibold text-white text-xs mt-0.5">{selected?.matches_played ?? "—"}</div>
+                  </div>
+                  <div className="p-2 rounded-lg bg-navy-950/50 border border-white/5">
+                    <div className="text-[10px] text-muted-foreground uppercase font-semibold">Minutes</div>
+                    <div className="font-semibold text-white text-xs mt-0.5 font-mono">
+                      {selected?.minutes_played ? `${selected.minutes_played}'` : "—"}
+                    </div>
+                  </div>
+                  <div className="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/25 shadow-sm">
+                    <div className="text-[10px] text-emerald-400 uppercase font-semibold flex items-center gap-1">
+                      <span>⚽ Goals</span>
+                    </div>
+                    <div className="font-mono font-black text-emerald-300 text-sm mt-0.5">
+                      {selected?.goals ?? 0}
+                    </div>
+                  </div>
+                  <div className="p-2 rounded-lg bg-sky-500/10 border border-sky-500/25 shadow-sm">
+                    <div className="text-[10px] text-sky-400 uppercase font-semibold flex items-center gap-1">
+                      <span>🎯 Assists</span>
+                    </div>
+                    <div className="font-mono font-black text-sky-300 text-sm mt-0.5">
+                      {selected?.assists ?? 0}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -371,8 +452,8 @@ export default function PlayerProfilePage() {
                 )}
               </div>
 
-              {/* Grid 2 rows of demographic cards with mini soccer pitch */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2.5 text-xs">
+              {/* Grid of demographic cards (sin weight) with mini soccer pitch */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-2.5 text-xs">
                 <div className="p-2.5 rounded-lg bg-navy-950/70 border border-border/40">
                   <div className="text-[10px] text-muted-foreground flex items-center gap-1">
                     📈 Market value
@@ -404,15 +485,6 @@ export default function PlayerProfilePage() {
                   </div>
                   <div className="font-medium text-white text-xs mt-1">
                     {p.height ? `${p.height} cm` : "—"}
-                  </div>
-                </div>
-
-                <div className="p-2.5 rounded-lg bg-navy-950/70 border border-border/40">
-                  <div className="text-[10px] text-muted-foreground flex items-center gap-1">
-                    ⚖️ Weight
-                  </div>
-                  <div className="font-medium text-white text-xs mt-1">
-                    {p.weight ? `${p.weight} kg` : "—"}
                   </div>
                 </div>
 

@@ -206,14 +206,16 @@ export async function GET(
       };
     });
 
-    // Opta data available per (competition, season): matches played, how many with eventing / matchstats
+    // Opta data available per (competition, season): matches played, how many with eventing / matchstats, goals and assists
     const coverageKey = (comp: string, season: string) => `${comp}|${season}`;
-    const coverage = new Map<string, { matches: number; minutes: number; withEvents: number; withStats: number }>();
+    const coverage = new Map<string, { matches: number; minutes: number; withEvents: number; withStats: number; goals: number; assists: number }>();
     for (const r of matchStats.data || []) {
       const k = coverageKey(r.competition_id, r.season_id);
-      const c = coverage.get(k) || { matches: 0, minutes: 0, withEvents: 0, withStats: 0 };
+      const c = coverage.get(k) || { matches: 0, minutes: 0, withEvents: 0, withStats: 0, goals: 0, assists: 0 };
       c.matches += 1;
       c.minutes += Number(r.minutes_played) || 0;
+      c.goals += Number(r.goals) || 0;
+      c.assists += Number(r.assists) || 0;
       if (r.matches?.has_events) c.withEvents += 1;
       if (r.matches?.has_stats !== false) c.withStats += 1;
       coverage.set(k, c);
@@ -221,10 +223,15 @@ export async function GET(
 
     // One entry per season with Opta data, latest first. Seasons where she played too few minutes for a
     // season rating (pipeline MIN_MINUTOS_TEMPORADA) still appear, without ratings.
-    const seasonStats: any[] = (statsRes.data || []).map((s: any) => ({
-      ...s,
-      coverage: coverage.get(coverageKey(s.competition_id, s.season_id)) || null,
-    }));
+    const seasonStats: any[] = (statsRes.data || []).map((s: any) => {
+      const cov = coverage.get(coverageKey(s.competition_id, s.season_id)) || null;
+      return {
+        ...s,
+        goals: cov?.goals ?? 0,
+        assists: cov?.assists ?? 0,
+        coverage: cov,
+      };
+    });
     const conFila = new Set(seasonStats.map((s) => coverageKey(s.competition_id, s.season_id)));
     const sinFila = Array.from(coverage.entries()).filter(([k]) => !conFila.has(k));
     if (sinFila.length) {
@@ -245,6 +252,8 @@ export async function GET(
           competitions: si?.competitions || null,
           matches_played: c.matches,
           minutes_played: c.minutes,
+          goals: c.goals,
+          assists: c.assists,
           coverage: c,
           sinNotas: true,
         });
@@ -413,6 +422,8 @@ function agregarTemporadas(seasons: any[]) {
     grupo_demarcacion: principal?.grupo_demarcacion ?? null,
     matches_played: seasons.reduce((n, s) => n + (Number(s.matches_played) || 0), 0),
     minutes_played: seasons.reduce((n, s) => n + mins(s), 0),
+    goals: seasons.reduce((n, s) => n + (Number(s.goals) || 0), 0),
+    assists: seasons.reduce((n, s) => n + (Number(s.assists) || 0), 0),
     coverage,
     ...notas,
     radar_data: { metricas },

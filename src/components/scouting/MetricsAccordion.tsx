@@ -55,6 +55,7 @@ export function MetricsAccordion({
   position,
   physical,
   ea,
+  stats,
 }: {
   metricas: Metricas;
   leagueAverages?: Record<string, number>;
@@ -62,6 +63,7 @@ export function MetricsAccordion({
   position?: string | null;
   physical?: Record<string, any> | null;
   ea?: Record<string, any> | null;
+  stats?: Record<string, any> | null;
 }) {
   const hierarchy = hierarchyFor(grupo, position);
   const [openCat, setOpenCat] = useState<string | null>(hierarchy[0]?.id ?? null);
@@ -118,7 +120,7 @@ export function MetricsAccordion({
                 </span>
               </div>
               <div className="flex items-center gap-3">
-                <NoteBadge note={categoryNote(cat, metricas)} size="lg" />
+                <NoteBadge note={categoryNote(cat, metricas, stats)} size="lg" />
                 <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${isOpen ? "rotate-180" : ""}`} />
               </div>
             </button>

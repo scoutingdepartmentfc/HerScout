@@ -1,4 +1,4 @@
-/** Club competitions between teams from different countries (Opta IDs).
+/** Club competitions between teams from different countries, and national-team tournaments (Opta IDs).
  *  Keep in sync with COMPETICIONES_INTERNACIONALES in pipeline/config.py. */
 export const INTERNATIONAL_COMPETITIONS: { id: string; name: string; region: string }[] = [
   { id: "55hcphd1ccc6eai1ms77460on", name: "UEFA Women's Champions League", region: "Europa" },
@@ -12,6 +12,8 @@ export const INTERNATIONAL_COMPETITIONS: { id: string; name: string; region: str
   { id: "ep4po13e04rjg268pgete0fvu", name: "AFC Women's Champions League", region: "Asia" },
   { id: "xu2nd3dkwdun0j71tnqabfo4", name: "CAF Women's Champions League", region: "África" },
   { id: "8dxigebf8ankjp0ncupwte0b8", name: "OFC Women's Champions League", region: "Oceanía" },
+  { id: "43029a6fvhou87zehkd5u8fyt", name: "UEFA Women's Championship", region: "Selecciones · Europa" },
+  { id: "9mr92dlx7ryaxhi07sgt90ish", name: "UEFA U19 Championship Women", region: "Selecciones · Europa" },
 ];
 
 export const INTERNATIONAL_IDS = new Set(INTERNATIONAL_COMPETITIONS.map((c) => c.id));

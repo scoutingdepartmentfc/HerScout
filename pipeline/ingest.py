@@ -42,7 +42,7 @@ except ImportError:
 import pandas as pd
 
 from .adapter import OptaSDAPIAdapter
-from .config import MAX_WORKERS_DESCARGA, NIVEL_LIGA, NIVEL_LIGA_DEFECTO, es_internacional
+from .config import MAX_WORKERS_DESCARGA, NIVEL_LIGA, NIVEL_LIGA_DEFECTO, es_internacional, es_selecciones
 from .events import match_metadata
 from .metrics_engine import MetricsEngine
 from .fotos_jugadoras import sincronizar_fotos_jugadoras
@@ -161,6 +161,11 @@ class IngestionPipeline:
             for pid in players.keys() & existentes:
                 players[pid].pop('current_team_id', None)
                 players[pid].pop('shirt_number', None)
+        # Selecciones: la selección nunca es el equipo actual, ni siquiera de las jugadoras nuevas
+        if es_selecciones(comp):
+            for p in players.values():
+                p.pop('current_team_id', None)
+                p.pop('shirt_number', None)
         # Internacional: el club sigue siendo de su liga (competition_id y país); solo los clubes nuevos se crean
         if intl and self.store.online:
             existentes_t = {t['id'] for t in self.store.select_all('teams', 'id')}
@@ -305,21 +310,35 @@ class IngestionPipeline:
         return cache
 
     # ── Temporada ────────────────────────────────────────────
-    def _nivel_por_club(self, df_temp: pd.DataFrame, nivel_comp: float) -> pd.DataFrame:
+    def _nivel_por_club(self, df_temp: pd.DataFrame, nivel_comp: float, selecciones: bool = False) -> pd.DataFrame:
         """Competición internacional: la base de la nota es el nivel de la liga del CLUB de cada jugadora, no el de
-        la competición (una del Häcken no hereda el nivel de la Champions). Se desplazan las notas 0-100 la
+        la competición (una del Häcken no hereda el nivel de la Champions); en selecciones, el de su club actual. Se desplazan las notas 0-100 la
         diferencia entre ambos niveles. Clubes de ligas sin calibrar o no descargadas: NIVEL_LIGA_DEFECTO."""
-        from .scoring import NOTA_COLS
+        from .scoring import NOTA_COLS, CATEGORIAS
         liga_club = {t['id']: t.get('competition_id') for t in self.store.select_all('teams', 'id,competition_id')}
         def nivel_club(tid):
             cid = liga_club.get(tid)
             return NIVEL_LIGA.get(cid, NIVEL_LIGA_DEFECTO) if cid and not es_internacional({'id': cid}) \
                 else NIVEL_LIGA_DEFECTO
-        delta = df_temp['team_id'].map(nivel_club) - nivel_comp
+        if selecciones:
+            # El equipo del partido es la selección: cuenta el club actual de cada jugadora
+            club = {p['id']: p.get('current_team_id') for p in self.store.select_all('players', 'id,current_team_id')}
+            delta = df_temp['player_id'].map(lambda pid: nivel_club(club.get(pid))) - nivel_comp
+        else:
+            delta = df_temp['team_id'].map(nivel_club) - nivel_comp
         df_temp = df_temp.copy()
         for c in NOTA_COLS:
             if c in df_temp:
                 df_temp[c] = (df_temp[c] + delta).clip(1, 99)
+        if 'radar_data' in df_temp:
+            for i in df_temp.index:
+                rd = df_temp.at[i, 'radar_data']
+                if isinstance(rd, dict) and isinstance(rd.get('metricas'), dict):
+                    rd_m = rd['metricas']
+                    for k in CATEGORIAS:
+                        if f'_cat_{k}' in rd_m and f'nota_{k}' in df_temp:
+                            v = float(df_temp.at[i, f'nota_{k}'])
+                            rd_m[f'_cat_{k}'] = [round(v, 1), round(v / 10, 2)]
         logger.info(f"  Nivel por club (internacional): desplazamiento medio {delta.mean():+.1f}")
         return df_temp
 
@@ -333,12 +352,20 @@ class IngestionPipeline:
         nivel_comp = NIVEL_LIGA.get(cid, NIVEL_LIGA_DEFECTO)
         df_sp, df_temp = calcular_temporada(cache, nivel_comp)
         if es_internacional(comp) and not df_temp.empty:
-            df_temp = self._nivel_por_club(df_temp, nivel_comp)
+            df_temp = self._nivel_por_club(df_temp, nivel_comp, selecciones=es_selecciones(comp))
         if df_temp.empty:
             logger.info("  Temporada: sin jugadores con minutos suficientes todavía")
             return
         ts = now_iso()
         fechas = cache.set_index(['match_id', 'player_id'])['match_date']
+        # Partidos sin estadísticas (rondas guardadas con todo a 0): sin nota, y fuera las de versiones anteriores
+        sin_nota = df_sp['score_general'].isna()
+        if sin_nota.any():
+            vacios = sorted(set(df_sp.loc[sin_nota, 'match_id']) - set(df_sp.loc[~sin_nota, 'match_id']))
+            if vacios:
+                self.store.delete_in('player_match_scores', 'match_id', vacios)
+                logger.info(f"  {len(vacios)} partidos sin estadísticas: sin nota por partido")
+            df_sp = df_sp[~sin_nota]
         score_rows = [{
             'match_id': r.match_id, 'player_id': r.player_id, 'demarcacion': r.demarcacion,
             'grupo_demarcacion': r.grupo_demarcacion, 'competition_id': cid, 'season_id': sid,

@@ -5,6 +5,8 @@ import { TrendingUp, Calendar, Activity, SlidersHorizontal, Sparkles } from "luc
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { EscudoEquipo } from "./EscudoEquipo";
+import { notaTono, type NotaTono } from "@/lib/notaColor";
+import { computeRatingTrend } from "@/lib/ratingTrend";
 
 export interface MatchRatingPoint {
   matchId: string;
@@ -199,10 +201,14 @@ export const RatingEvolutionChart: React.FC<RatingEvolutionChartProps> = ({
   const areaPath = `${linePath} L ${points[points.length - 1].x},${padTop + chartH} L ${points[0].x},${padTop + chartH} Z`;
 
   // Rating color helper
+  // Misma paleta que las notas 0-100 (lib/notaColor), con la nota del partido x10
+  const PALETA: Record<NotaTono, [number, number, number]> = {
+    purple: [112, 104, 255], mint: [0, 230, 118], green: [0, 200, 83], amber: [255, 179, 0],
+    white: [255, 255, 255], nulo: [148, 163, 184],
+  };
   const getRatingColor = (val: number) => {
-    if (val >= 7.5) return { stroke: "#10b981", fill: "rgba(16, 185, 129, 0.2)", glow: "rgba(16, 185, 129, 0.6)" };
-    if (val >= 6.5) return { stroke: "#38bdf8", fill: "rgba(56, 189, 248, 0.2)", glow: "rgba(56, 189, 248, 0.6)" };
-    return { stroke: "#f43f5e", fill: "rgba(244, 63, 94, 0.2)", glow: "rgba(244, 63, 94, 0.6)" };
+    const [r, g, b] = PALETA[notaTono(Math.round(val * 10))];
+    return { stroke: `rgb(${r}, ${g}, ${b})`, fill: `rgba(${r}, ${g}, ${b}, 0.2)`, glow: `rgba(${r}, ${g}, ${b}, 0.6)` };
   };
 
   const hoveredPoint = hoveredIdx != null ? points[hoveredIdx] : null;
@@ -232,23 +238,31 @@ export const RatingEvolutionChart: React.FC<RatingEvolutionChartProps> = ({
 
         {/* Right side: Summary Badges + Time Range Pills */}
         <div className="flex flex-wrap items-center gap-3">
-          {stats.avg != null && (
-            <div className="flex items-center gap-2 text-xs border-r border-border/50 pr-3 hidden md:flex">
-              <span className="text-[11px] text-muted-foreground">Range Avg:</span>
-              <span className="font-mono font-black text-emerald-400 text-sm">
-                {stats.avg.toFixed(2)}
-              </span>
-              <span
-                className={`text-[10px] font-bold px-1.5 py-0.2 rounded ${
-                  stats.trend >= 0
-                    ? "bg-emerald-500/10 text-emerald-300 border border-emerald-500/20"
-                    : "bg-rose-500/10 text-rose-300 border border-rose-500/20"
-                }`}
-              >
-                {stats.trend >= 0 ? `+${stats.trend.toFixed(1)} ↑` : `${stats.trend.toFixed(1)} ↓`}
-              </span>
-            </div>
-          )}
+          {stats.avg != null && (() => {
+            const rangeTrend = computeRatingTrend(filteredPoints.map((p) => Number(p.rating)));
+            const trendBadgeStyle =
+              rangeTrend === "up"
+                ? "bg-emerald-500/10 text-emerald-300 border-emerald-500/20"
+                : rangeTrend === "neutral"
+                ? "bg-amber-500/10 text-amber-300 border-amber-500/20"
+                : "bg-rose-500/10 text-rose-300 border-rose-500/20";
+            const trendArrow = rangeTrend === "up" ? "↑" : rangeTrend === "neutral" ? "→" : "↓";
+            const trendSign = stats.trend >= 0 ? `+${stats.trend.toFixed(1)}` : `${stats.trend.toFixed(1)}`;
+
+            return (
+              <div className="flex items-center gap-2 text-xs border-r border-border/50 pr-3 hidden md:flex">
+                <span className="text-[11px] text-muted-foreground">Range Avg:</span>
+                <span className="font-mono font-black text-emerald-400 text-sm">
+                  {stats.avg.toFixed(2)}
+                </span>
+                <span
+                  className={`text-[10px] font-bold px-1.5 py-0.5 rounded border flex items-center gap-1 ${trendBadgeStyle}`}
+                >
+                  {trendSign} {trendArrow}
+                </span>
+              </div>
+            );
+          })()}
 
           {/* Time Range Pills: 1M, 3M (Default), 6M, 1Y, All */}
           <div className="inline-flex items-center p-0.5 rounded-lg bg-navy-950/80 border border-white/10 text-xs">

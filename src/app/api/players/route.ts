@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { isRetired } from "@/lib/utils";
 import { INTERNATIONAL_IDS, INTERNATIONAL_REGIONS } from "@/lib/internationalCompetitions";
+import { computeRatingTrend, PlayerTrend } from "@/lib/ratingTrend";
 
 /** Country shown for international competitions in the league filter (grouped apart from countries) */
 const INTERNATIONAL_COUNTRY = "Internacional";
@@ -68,29 +69,17 @@ let baseCache: { timestamp: number; data: BaseData } | null = null;
 let baseInflight: Promise<BaseData> | null = null;
 const processedCache = new Map<string, { timestamp: number; value: ProcessedSeason }>();
 
-function computeTrend(ratings: number[]): "up" | "neutral" | "down" {
-  const avg = ratings.reduce((acc, curr) => acc + curr, 0) / ratings.length;
-  if (ratings.length === 1) {
-    return ratings[0] >= 7.3 ? "up" : ratings[0] <= 5.8 ? "down" : "neutral";
-  }
-  const half = Math.max(1, Math.floor(ratings.length / 2));
-  const firstHalf = ratings.slice(0, half);
-  const secondHalf = ratings.slice(-half);
-  const firstAvg = firstHalf.reduce((a, b) => a + b, 0) / firstHalf.length;
-  const secondAvg = secondHalf.reduce((a, b) => a + b, 0) / secondHalf.length;
-  const diff = secondAvg - firstAvg;
-  if (diff >= 0.3 || avg >= 7.3) return "up";
-  if (diff <= -0.3 || avg <= 5.8) return "down";
-  return "neutral";
-}
-
 async function fetchTrends(db: any): Promise<Map<string, "up" | "neutral" | "down">> {
   const trendByPlayer = new Map<string, "up" | "neutral" | "down">();
   try {
+    const d = new Date();
+    d.setMonth(d.getMonth() - 3);
+    const trendFromDate = d.toISOString().split("T")[0];
+
     const { count, error: countErr } = await db
       .from("player_match_scores")
       .select("player_id", { count: "exact", head: true })
-      .gte("match_date", TREND_FROM_DATE);
+      .gte("match_date", trendFromDate);
     if (countErr) throw countErr;
 
     const total = Math.min(count || 0, 50000);
@@ -103,7 +92,7 @@ async function fetchTrends(db: any): Promise<Map<string, "up" | "neutral" | "dow
         db
           .from("player_match_scores")
           .select("player_id, score_general, match_date")
-          .gte("match_date", TREND_FROM_DATE)
+          .gte("match_date", trendFromDate)
           .order("match_date", { ascending: true })
           .order("player_id", { ascending: true })
           .range(from, from + PAGE - 1)
@@ -128,7 +117,8 @@ async function fetchTrends(db: any): Promise<Map<string, "up" | "neutral" | "dow
     for (const [playerId, matches] of Array.from(playerMatchesMap.entries())) {
       if (matches.length === 0) continue;
       matches.sort((a, b) => String(a.date).localeCompare(String(b.date)));
-      trendByPlayer.set(playerId, computeTrend(matches.slice(-8).map((m) => m.score)));
+      const trend = computeRatingTrend(matches.map((m) => m.score));
+      if (trend) trendByPlayer.set(playerId, trend);
     }
   } catch (trendErr) {
     console.warn("Could not compute player trends:", trendErr);

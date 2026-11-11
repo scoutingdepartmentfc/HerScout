@@ -356,8 +356,11 @@ export function subcategoryNote(sub: SubcategoryDef, metricas: Metricas): number
   return computed ? Math.round(computed[0]) : null;
 }
 
-/** Category note 0-100 (null = no data) */
-export function categoryNote(cat: CategoryDef, metricas: Metricas): number | null {
+/** Category note 0-100 (null = no data). Prefers exact note from player_season_stats (cat.noteKey) */
+export function categoryNote(cat: CategoryDef, metricas: Metricas, stats?: Record<string, any> | null): number | null {
+  if (stats && stats[cat.noteKey] != null) {
+    return Math.round(Number(stats[cat.noteKey]));
+  }
   const computed = metricas[`_cat_${cat.id}`];
   return computed ? Math.round(computed[0]) : null;
 }

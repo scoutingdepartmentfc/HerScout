@@ -18,6 +18,7 @@ _normalizar_y_guardar de Debrecen_app), aplicada por competición-temporada.
 """
 
 import json
+from pathlib import Path
 from statistics import NormalDist
 from typing import Dict, List, Tuple
 
@@ -114,13 +115,93 @@ def _nota_partido(serie: pd.Series, grupos: pd.Series, mins: pd.Series) -> pd.Se
     return out.clip(NOTA_PARTIDO_MIN, 10.0).round(2)
 
 
+# ── Nota por partido calibrada con FotMob (pipeline/calibrar_nota.py) ──────────────────────────────
+MODELO_NOTA_PATH = str(Path(__file__).parent / 'modelos' / 'nota_partido.json')
+# Conteos del partido (no p90). 'base' existe en matchstats y eventing; 'completo' añade eventing.
+_BASE = ['minutos', 'titular', 'goles', 'asistencias', 'pases_ok', 'pases_fallados', 'entradas_ganadas',
+         'entradas_perdidas', 'intercepciones', 'recuperaciones', 'aereos_ganados', 'aereos_perdidos',
+         'regates_ok', 'regates_fallados', 'faltas', 'amarillas', 'rojas', 'goles_favor', 'goles_contra',
+         'victoria', 'derrota']
+_EVENTING = {'xg': None, 'xa': None, 'pases_progresivos': None, 'tiros': 'of_tiros_p90',
+             'pases_clave': 'of_asistencias_p90', 'grandes_ocasiones': 'of_grandes_ocasiones_p90',
+             'centros_ok': 'of_centros_buenos_p90', 'paradas': 'def_paradas_p90', 'errores': 'def_errores_p90',
+             'despejes': 'def_despejes_propio_p90'}
+FEATURES_NOTA = {'base': _BASE, 'completo': _BASE + list(_EVENTING)}
+_modelo_nota_cache: Dict = {}
+
+
+def features_nota(df: pd.DataFrame) -> pd.DataFrame:
+    """Variables del modelo de nota por partido (mismo índice que df) + _con_stats (el partido tiene
+    estadísticas: hay rondas guardadas con todo a 0) y _con_eventing (la fila tiene métricas de eventing)."""
+    n = lambda c: (pd.to_numeric(df[c], errors='coerce') if c in df.columns
+                   else pd.Series(np.nan, index=df.index)).astype(float)
+    mins = n('minutes_played').fillna(0)
+    f = pd.DataFrame(index=df.index)
+    f['minutos'] = mins
+    f['titular'] = df['is_starter'].astype(float) if 'is_starter' in df.columns else 0.0
+    f['goles'], f['asistencias'] = n('goals').fillna(0), n('assists').fillna(0)
+    f['pases_ok'] = n('passes_completed').fillna(0)
+    f['pases_fallados'] = (n('passes_total') - n('passes_completed')).fillna(0).clip(lower=0)
+    f['entradas_ganadas'] = n('tackles_won').fillna(0)
+    f['entradas_perdidas'] = (n('tackles_total') - n('tackles_won')).fillna(0).clip(lower=0)
+    f['intercepciones'], f['recuperaciones'] = n('interceptions').fillna(0), n('recoveries').fillna(0)
+    f['aereos_ganados'] = n('aerials_won').fillna(0)
+    f['aereos_perdidos'] = (n('aerials_total') - n('aerials_won')).fillna(0).clip(lower=0)
+    f['regates_ok'] = n('takeons_successful').fillna(0)
+    f['regates_fallados'] = (n('takeons_total') - n('takeons_successful')).fillna(0).clip(lower=0)
+    f['faltas'], f['amarillas'], f['rojas'] = n('fouls').fillna(0), n('yellow_cards').fillna(0), n('red_cards').fillna(0)
+    # Resultado: goles de su equipo y del rival en el partido (suma de goles de las jugadoras)
+    gf = f['goles'].groupby([df['match_id'], df['team_id']]).transform('sum')
+    total = f['goles'].groupby(df['match_id']).transform('sum')
+    f['goles_favor'], f['goles_contra'] = gf, total - gf
+    f['victoria'] = (f['goles_favor'] > f['goles_contra']).astype(float)
+    f['derrota'] = (f['goles_favor'] < f['goles_contra']).astype(float)
+    con_ev = n('of_tiros_p90').notna()
+    for k, col in _EVENTING.items():
+        v = n({'xg': 'xg', 'xa': 'xa', 'pases_progresivos': 'progressive_passes'}[k]) if col is None else n(col) * mins / 90
+        f[k] = v.fillna(0).where(con_ev)
+    f['_con_stats'] = (n('passes_total').fillna(0).groupby(df['match_id']).transform('sum') > 0).to_numpy()
+    f['_con_eventing'] = con_ev.to_numpy()
+    return f
+
+
+def _modelo_nota() -> Dict:
+    if 'm' not in _modelo_nota_cache:
+        p = Path(MODELO_NOTA_PATH)
+        _modelo_nota_cache['m'] = json.loads(p.read_text()) if p.exists() else None
+    return _modelo_nota_cache['m']
+
+
+def nota_partido_modelo(df: pd.DataFrame) -> pd.Series:
+    """Nota 0-10 de cada actuación con el modelo calibrado con FotMob: 'completo' si la fila tiene eventing,
+    'base' si no. Partidos sin estadísticas → NaN (sin nota). Sin modelo guardado → None."""
+    modelo = _modelo_nota()
+    if not modelo or df.empty:
+        return None
+    f = features_nota(df)
+    out = pd.Series(np.nan, index=df.index)
+    defecto = modelo['grupos'].get('Medios', {})
+    for grupo, idx in df.groupby(df['grupo_demarcacion'].fillna('Medios')).groups.items():
+        m = modelo['grupos'].get(grupo) or defecto
+        for tipo, mask in (('completo', f.loc[idx, '_con_eventing']), ('base', ~f.loc[idx, '_con_eventing'])):
+            params = m.get(tipo) or m.get('base')
+            filas = mask[mask].index
+            if params is None or filas.empty:
+                continue
+            X = f.loc[filas, list(params['coef'])].fillna(0)
+            out[filas] = params['intercept'] + X.to_numpy() @ np.array(list(params['coef'].values()))
+    return out.where(f['_con_stats']).clip(NOTA_PARTIDO_MIN, 10.0).round(2)
+
+
 def scores_por_partido(df_partidos: pd.DataFrame) -> pd.DataFrame:
     """Rating 0-10 de cada actuación (match_id, player_id) frente a las de su grupo de demarcación en la liga.
     1. Cada métrica de la jerarquía (sin Disponibilidad: los minutos no puntúan en el partido) pasa a percentil
        dentro del grupo (empates al rango medio: un 0 en goles, como casi todas, queda cerca de la mitad).
        En balón parado el 0 es "no lanza": sin dato, así que solo suma a quien lo hace.
     2. Subcategoría → categoría → global ponderado con PESOS_GRUPO de su grupo (+ disciplina 10%).
-    3. Global y bloques a la escala del partido (_nota_partido), que acerca a la media a quien jugó poco."""
+    3. Global y bloques a la escala del partido (_nota_partido), que acerca a la media a quien jugó poco.
+    4. La nota general es la del modelo calibrado con FotMob (nota_partido_modelo) si está guardado; los
+       bloques (ofensivo, defensivo...) siguen siendo los percentiles de los pasos 1-3."""
     base = df_partidos[['match_id', 'player_id', 'demarcacion', 'grupo_demarcacion']].copy()
     if df_partidos.empty:
         return base.assign(**{c: pd.Series(dtype=float) for c in SCORE_COLS})
@@ -159,7 +240,8 @@ def scores_por_partido(df_partidos: pd.DataFrame) -> pd.DataFrame:
         den += w
     glob = (num / den).where(den > 0)
 
-    base['score_general'] = _nota_partido(glob, grupos, mins)
+    calibrada = nota_partido_modelo(df)
+    base['score_general'] = calibrada if calibrada is not None else _nota_partido(glob, grupos, mins)
     base['score_ofensivo'] = _nota_partido(cats[['ataque', 'construccion']].mean(axis=1), grupos, mins)
     base['score_defensivo'] = _nota_partido(cats['defensa'], grupos, mins)
     base['score_abp'] = _nota_partido(cats['balon_parado'], grupos, mins)
@@ -222,7 +304,8 @@ def agregar_temporada(df_partidos: pd.DataFrame, df_scores_partido: pd.DataFrame
     La demarcación guardada es la principal (la de más minutos)."""
     cols = metric_columns(df_partidos)
     sp = df_scores_partido.merge(df_partidos[['match_id', 'player_id', 'match_date']], on=['match_id', 'player_id'], how='left')
-    sp['media_scores'] = sp[SCORE_COLS].mean(axis=1)
+    # Partidos sin estadísticas (score_general NaN) no cuentan para la regularidad
+    sp['media_scores'] = sp[SCORE_COLS].mean(axis=1).where(sp['score_general'].notna())
     series_scores = {k: g.sort_values('match_date')['media_scores'].to_numpy(dtype=float)
                      for k, g in sp.groupby('player_id')}
 

@@ -71,6 +71,13 @@ COMPETICIONES_INTERNACIONALES = {
     '1tn3f9q6oy40vivvsq3ik5awa': "Baltic Women's League",
     '2irmeeywhndovbhbgkz37v9qs': "All-Island Cup",
 }
+# Competiciones de SELECCIONES (Opta): también internacionales, pero el equipo del partido es la selección, así
+# que nunca pasa a ser el equipo actual y el nivel de la nota sale de la liga del club actual de la jugadora.
+COMPETICIONES_SELECCIONES = {
+    '43029a6fvhou87zehkd5u8fyt': "UEFA Women's Championship",
+    '9mr92dlx7ryaxhi07sgt90ish': "UEFA U19 Championship Women",
+}
+COMPETICIONES_INTERNACIONALES.update(COMPETICIONES_SELECCIONES)
 # Regiones de opta_catalog.country que no son un país (competición internacional)
 REGIONES_INTERNACIONALES = {'Europe', 'World', 'Asia', 'Africa', 'N/C America', 'South America', 'Oceania'}
 NIVEL_LIGA.update({
@@ -83,9 +90,15 @@ NIVEL_LIGA.update({
     'ep4po13e04rjg268pgete0fvu': 50.0,  # AFC WCL
     'xu2nd3dkwdun0j71tnqabfo4': 46.0,   # CAF WCL
     '2irmeeywhndovbhbgkz37v9qs': 44.0,  # All-Island Cup
+    '43029a6fvhou87zehkd5u8fyt': 68.0,  # UEFA Women's Championship (Eurocopa)
+    '9mr92dlx7ryaxhi07sgt90ish': 50.0,  # Europeo Sub-19
     '1tn3f9q6oy40vivvsq3ik5awa': 42.0,  # Baltic Women's League
     '8dxigebf8ankjp0ncupwte0b8': 40.0,  # OFC WCL
 })
+
+
+def es_selecciones(comp) -> bool:
+    return comp.get('id') in COMPETICIONES_SELECCIONES
 
 
 def es_internacional(comp) -> bool:

@@ -25,6 +25,7 @@ import { Badge } from "@/components/ui/Badge";
 import { LoadingState, ErrorState } from "@/components/ui/StatusStates";
 import { ArrowLeft, Bookmark, FileText, Calendar, Plus, ExternalLink, Shield, Pencil, Trophy, ChevronDown, Check } from "lucide-react";
 import { EditPlayerModal } from "@/components/scouting/EditPlayerModal";
+import { computeRatingTrend } from "@/lib/ratingTrend";
 
 // Position English translation and coordinates helper
 const translatePosition = (pos?: string | null) => {
@@ -188,7 +189,7 @@ export default function PlayerProfilePage() {
     .filter((x: string) => x && x !== "-" && x !== p.primaryPosition)
     .slice(0, p.manualOverrides?.otherPositions ? undefined : 2);
 
-  // Evolución en los últimos 3 meses desde la FECHA ACTUAL (no desde su último partido jugado)
+  // Evolución en los últimos 3 meses desde la FECHA ACTUAL (Rating Evolution Chart)
   const rawMatches = data.matchLog || [];
   const validMatches = rawMatches
     .filter((m: any) => m.rating != null && !isNaN(Number(m.rating)) && m.date)
@@ -199,29 +200,10 @@ export default function PlayerProfilePage() {
   threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
 
   const recent3mMatches = validMatches.filter((m: any) => new Date(m.date) >= threeMonthsAgo);
+  const targetMatches = recent3mMatches.length > 0 ? recent3mMatches : validMatches.slice(-8);
 
-  if (recent3mMatches.length > 0) {
-    const ratings: number[] = recent3mMatches.map((m: any) => Number(m.rating));
-    const avg = ratings.reduce((acc, curr) => acc + curr, 0) / ratings.length;
-
-    if (ratings.length === 1) {
-      playerTrend = ratings[0] >= 7.3 ? "up" : ratings[0] <= 5.8 ? "down" : "neutral";
-    } else {
-      const half = Math.max(1, Math.floor(ratings.length / 2));
-      const firstHalf = ratings.slice(0, half);
-      const secondHalf = ratings.slice(-half);
-      const firstAvg = firstHalf.reduce((a, b) => a + b, 0) / firstHalf.length;
-      const secondAvg = secondHalf.reduce((a, b) => a + b, 0) / secondHalf.length;
-      const diff = secondAvg - firstAvg;
-
-      if (diff >= 0.3 || avg >= 7.3) {
-        playerTrend = "up";
-      } else if (diff <= -0.3 || avg <= 5.8) {
-        playerTrend = "down";
-      } else {
-        playerTrend = "neutral";
-      }
-    }
+  if (targetMatches.length > 0) {
+    playerTrend = computeRatingTrend(targetMatches.map((m: any) => Number(m.rating)));
   }
 
   return (
@@ -515,7 +497,16 @@ export default function PlayerProfilePage() {
                   </div>
                 </div>
 
-                {/* Posición con mini campito táctico SVG y coordenadas exactas */}
+                <div className="p-2.5 rounded-lg bg-navy-950/70 border border-border/40">
+                  <div className="text-[10px] text-muted-foreground flex items-center gap-1">
+                    📝 Contract until
+                  </div>
+                  <div className="font-medium text-white text-xs mt-1 font-mono">
+                    {fmtDate(p.contractUntil)}
+                  </div>
+                </div>
+
+                {/* Posición con mini campito táctico SVG y coordenadas exactas (takes 2 cols to complete row 2) */}
                 <div className="col-span-2 p-2.5 rounded-lg bg-navy-950/70 border border-border/40 flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <div className="text-[10px] text-muted-foreground">Played positions</div>
@@ -565,14 +556,6 @@ export default function PlayerProfilePage() {
                     );
                   })()}
                 </div>
-
-                {/* Contract until takes the 2 remaining columns in a 6-col grid */}
-                <div className="col-span-2 p-2.5 rounded-lg bg-navy-950/70 border border-border/40">
-                  <div className="text-[10px] text-muted-foreground">Contract until</div>
-                  <div className="font-medium text-white text-xs mt-1 font-mono">
-                    {fmtDate(p.contractUntil)}
-                  </div>
-                </div>
               </div>
             </div>
           </div>
@@ -601,6 +584,18 @@ export default function PlayerProfilePage() {
             ea={data.eaRatings || null}
           />
         )}
+        {/* Full Hierarchical Metrics Accordion (Categories • Subcategories • Metrics + Physical) */}
+        <Card className="bg-[#070c18] border-border/80 p-5">
+          <MetricsAccordion
+            stats={stats}
+            metricas={metricas}
+            leagueAverages={data?.leagueAverages || {}}
+            grupo={stats?.grupo_demarcacion ?? p.grupoDemarcacion}
+            position={p.primaryPosition}
+            physical={data.physical || null}
+            ea={data.eaRatings || null}
+          />
+        </Card>
       </section>
 
       {/* Match-by-match ratings (FotMob-like scale: average 6.5, vs. same position group; pipeline/scoring.py) */}
@@ -615,9 +610,9 @@ export default function PlayerProfilePage() {
           {matchLog.length === 0 ? (
             <p className="p-4 text-xs text-muted-foreground">No matches played yet.</p>
           ) : (
-            <div className="divide-y divide-border/40 text-xs">
+            <div className="max-h-[410px] overflow-y-auto divide-y divide-border/40 text-xs pr-1 scrollbar-thin scrollbar-thumb-white/10 hover:scrollbar-thumb-white/20">
               {matchLog.map((m: any) => (
-                <div key={m.matchId} className="px-4 py-2.5 flex items-center justify-between gap-3">
+                <div key={m.matchId} className="px-4 py-2.5 flex items-center justify-between gap-3 hover:bg-white/[0.02] transition-colors">
                   <div className="flex items-center gap-3 min-w-0">
                     <span className="font-mono text-[11px] text-muted-foreground w-20 shrink-0">{fmtDate(m.date)}</span>
                     <span
@@ -641,14 +636,11 @@ export default function PlayerProfilePage() {
                       {m.assists ? `${m.assists}A` : ""}
                     </span>
                     <span
-                      className={`w-10 rounded px-1.5 py-0.5 text-center font-bold ${
+                      // Misma paleta que las notas 0-100 (9.0+ morado, 8.0+ menta, 7.2+ verde, 6.0+ ámbar)
+                      className={`w-10 rounded border px-1.5 py-0.5 text-center font-bold ${
                         m.rating == null
-                          ? "text-muted-foreground"
-                          : m.rating >= 7
-                          ? "bg-emerald-500/15 text-emerald-400"
-                          : m.rating >= 6
-                          ? "bg-sky-500/15 text-sky-300"
-                          : "bg-rose-500/15 text-rose-300"
+                           ? "text-muted-foreground border-transparent"
+                          : `${notaClases(Math.round(Number(m.rating) * 10)).box} ${notaClases(Math.round(Number(m.rating) * 10)).text}`
                       }`}
                     >
                       {m.rating == null ? "—" : Number(m.rating).toFixed(1)}
@@ -682,70 +674,6 @@ export default function PlayerProfilePage() {
           injuries={injuries}
         />
       </div>
-
-      {/* Full Hierarchical Metrics Accordion (Categories • Subcategories • Metrics + Physical) */}
-      <Card className="bg-[#070c18] border-border/80 p-5">
-        <MetricsAccordion
-          metricas={metricas}
-          leagueAverages={data?.leagueAverages || {}}
-          grupo={stats?.grupo_demarcacion ?? p.grupoDemarcacion}
-          position={p.primaryPosition}
-          physical={data.physical || null}
-          ea={data.eaRatings || null}
-        />
-      </Card>
-
-      {/* Season Breakdown */}
-      <Card className="bg-[#0b1329]">
-        <CardHeader className="py-3">
-          <CardTitle className="text-sm">Season History & Competition Log</CardTitle>
-          <CardDescription>Verified Opta performances per tournament</CardDescription>
-        </CardHeader>
-        <CardContent className="p-4 space-y-3">
-          {seasons.length === 0 ? (
-            <p className="text-xs text-muted-foreground">No season log available for this profile.</p>
-          ) : (
-            <div className="divide-y divide-border/40 text-xs">
-              {seasons.map((s: any) => (
-                <button
-                  type="button"
-                  key={claveTemporada(s)}
-                  onClick={() => setSeasonKey(claveTemporada(s))}
-                  className={`w-full py-3 px-2 -mx-2 rounded flex items-center justify-between text-left hover:bg-white/[0.03] ${
-                    claveTemporada(s) === selectedKey ? "bg-primary/5" : ""
-                  }`}
-                >
-                  <div className="space-y-1">
-                    <div className="font-semibold text-white">
-                      {s.competitions?.name || "—"}
-                    </div>
-                    <div className="text-[11px] text-muted-foreground">
-                      {s.seasons?.name || "—"}{s.grupo_demarcacion ? ` • ${s.grupo_demarcacion}` : ""}
-                    </div>
-                    <CoberturaBadges c={s.coverage} />
-                  </div>
-                  <div className="flex items-center gap-6 text-right">
-                    <div>
-                      <div className="text-muted-foreground text-[10px]">Minutes</div>
-                      <div className="font-mono font-semibold text-white">{s.minutes_played}&apos;</div>
-                    </div>
-                    <div>
-                      <div className="text-muted-foreground text-[10px]">Matches</div>
-                      <div className="font-mono font-semibold text-white">{s.matches_played}</div>
-                    </div>
-                    <div>
-                      <div className="text-muted-foreground text-[10px]">Rating</div>
-                      <div className={`font-bold text-sm ${notaClases(s.nota_global).text}`}>
-                        {s.nota_global != null ? Math.round(s.nota_global) : "—"}
-                      </div>
-                    </div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
     </div>
   );
 }

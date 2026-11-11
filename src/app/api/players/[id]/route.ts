@@ -401,6 +401,21 @@ function agregarTemporadas(seasons: any[]) {
     if (v != null && n != null) metricas[k] = [Math.round(v * 1000) / 1000, Math.round(n * 100) / 100];
   }
 
+  // Ensure category notes in metricas match aggregated season scores
+  const catKeyMap: Record<string, string> = {
+    _cat_ataque: "nota_ataque",
+    _cat_construccion: "nota_construccion",
+    _cat_defensa: "nota_defensa",
+    _cat_balon_parado: "nota_balon_parado",
+    _cat_disponibilidad: "nota_disponibilidad",
+  };
+  for (const [catKey, noteKey] of Object.entries(catKeyMap)) {
+    if (notas[noteKey] != null) {
+      const val = Number(notas[noteKey]);
+      metricas[catKey] = [Math.round(val * 10) / 10, Math.round(val) / 10];
+    }
+  }
+
   const coverage = { matches: 0, minutes: 0, withEvents: 0, withStats: 0 };
   for (const s of seasons) {
     if (!s.coverage) continue;

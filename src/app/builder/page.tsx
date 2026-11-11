@@ -3,13 +3,14 @@
 import React, { useEffect, useState, useMemo, useRef, Suspense } from "react";
 import Link from "next/link";
 import { StadiumPitch, EmptyPitchSlot } from "@/components/builder/StadiumPitch";
-import { PitchCard } from "@/components/builder/PitchCard";
+import { PitchCard, PLAYER_DRAG_TYPE } from "@/components/builder/PitchCard";
 import { MultiSelectFilter } from "@/components/builder/MultiSelectFilter";
 import { RangeSlider } from "@/components/builder/RangeSlider";
 import { CromoJugador } from "@/components/scouting/CromoJugador";
 import { LoadingState } from "@/components/ui/StatusStates";
 import {
   SlidersHorizontal, Trophy, X, ChevronRight, ChevronDown, Eye, Plus, Search, Loader2, RotateCcw, Layers, Info,
+  Users, Trash2, GripVertical, StickyNote, Save, FolderOpen, FilePlus2,
 } from "lucide-react";
 import { METRICS_HIERARCHY, GOALKEEPER_HIERARCHY, CategoryDef } from "@/lib/metricsHierarchy";
 import { guessLeagueCountry, sortLeaguesByCountryAndTier } from "@/lib/leagueCountry";
@@ -68,6 +69,60 @@ const ROLE_META: Record<string, RoleMeta> = {
   LS: { group: "Delanteros", fallback: ["Extremos", "Mediapuntas"] },
   RS: { group: "Delanteros", fallback: ["Extremos", "Mediapuntas"] },
 };
+
+/* ─────────────────────────── Mi equipo ─────────────────────────── */
+
+/** Jugadoras por posición en "Mi equipo" */
+const TEAM_SLOT_MAX = 4;
+const TEAM_STORAGE_KEY = "herscout.builder.myTeam.v1";
+const NOTES_STORAGE_KEY = "herscout.builder.notes.v1";
+const SAVES_STORAGE_KEY = "herscout.builder.saves.v1";
+// Tamaño de diseño de una posición de "Mi equipo" (se escala como las cartas)
+const TEAM_SLOT_W = 152;
+const TEAM_SLOT_H = 184;
+
+/** Partida guardada: sistema, equipo y anotaciones */
+interface SavedTeam {
+  id: string;
+  name: string;
+  savedAt: string;
+  formation: FormationKey;
+  team: MyTeam;
+  notes: Record<string, string>;
+}
+
+const readStore = <T,>(key: string, fallback: T): T => {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : fallback;
+  } catch {
+    return fallback;
+  }
+};
+const writeStore = (key: string, value: unknown) => {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {}
+};
+const fmtSaveDate = (iso: string) =>
+  new Date(iso).toLocaleString("es-ES", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+
+interface TeamPlayer {
+  id: string;
+  name: string;
+  matchName?: string;
+  photoUrl?: string | null;
+  teamName?: string;
+  badgeUrl?: string | null;
+  notaGlobal?: number | null;
+}
+/** Por rol ("LCB", "ST"...): se conserva al cambiar de sistema si el rol sigue existiendo */
+type MyTeam = Record<string, TeamPlayer[]>;
+
+const toTeamPlayer = (p: any): TeamPlayer => ({
+  id: p.id, name: p.name, matchName: p.matchName, photoUrl: p.photoUrl, teamName: p.teamName,
+  badgeUrl: p.badgeUrl, notaGlobal: p.notaGlobal ?? null,
+});
 
 /* ─────────────────────────── Filtros ─────────────────────────── */
 
@@ -170,6 +225,87 @@ function BuilderContent() {
   const [isLoading, setIsLoading] = useState(true);
   const [selectedPlayerModal, setSelectedPlayerModal] = useState<any | null>(null);
   const [showFiltersMobile, setShowFiltersMobile] = useState(false);
+  const [myTeam, setMyTeam] = useState<MyTeam>({});
+  const [notes, setNotes] = useState<Record<string, string>>({});
+  const [saves, setSaves] = useState<SavedTeam[]>([]);
+  const [currentSaveId, setCurrentSaveId] = useState<string | null>(null);
+  const [saveDialog, setSaveDialog] = useState(false);
+  const [gamesOpen, setGamesOpen] = useState(false);
+  const teamLoaded = useRef(false);
+
+  // Equipo en curso, anotaciones y partidas se guardan en este navegador
+  useEffect(() => {
+    setMyTeam(readStore<MyTeam>(TEAM_STORAGE_KEY, {}));
+    setNotes(readStore<Record<string, string>>(NOTES_STORAGE_KEY, {}));
+    setSaves(readStore<SavedTeam[]>(SAVES_STORAGE_KEY, []));
+    teamLoaded.current = true;
+  }, []);
+  useEffect(() => {
+    if (teamLoaded.current) writeStore(TEAM_STORAGE_KEY, myTeam);
+  }, [myTeam]);
+  useEffect(() => {
+    if (teamLoaded.current) writeStore(NOTES_STORAGE_KEY, notes);
+  }, [notes]);
+  useEffect(() => {
+    if (teamLoaded.current) writeStore(SAVES_STORAGE_KEY, saves);
+  }, [saves]);
+
+  const setNote = (id: string, text: string) =>
+    setNotes((prev) => {
+      const next = { ...prev };
+      if (text.trim()) next[id] = text;
+      else delete next[id];
+      return next;
+    });
+  const currentSave = saves.find((g) => g.id === currentSaveId) || null;
+  const saveGame = (name: string, asNew: boolean) => {
+    const game: SavedTeam = {
+      id: !asNew && currentSave ? currentSave.id : `g${Date.now()}`,
+      name: name.trim() || `Team ${fmtSaveDate(new Date().toISOString())}`,
+      savedAt: new Date().toISOString(),
+      formation,
+      team: myTeam,
+      notes,
+    };
+    setSaves((prev) => [game, ...prev.filter((g) => g.id !== game.id)]);
+    setCurrentSaveId(game.id);
+    setSaveDialog(false);
+  };
+  const loadGame = (g: SavedTeam) => {
+    setFormation(g.formation);
+    setMyTeam(g.team);
+    setNotes(g.notes || {});
+    setCurrentSaveId(g.id);
+    setGamesOpen(false);
+  };
+  const deleteGame = (id: string) => {
+    setSaves((prev) => prev.filter((g) => g.id !== id));
+    if (currentSaveId === id) setCurrentSaveId(null);
+  };
+  const newGame = () => {
+    setMyTeam({});
+    setNotes({});
+    setCurrentSaveId(null);
+  };
+
+  const addToTeam = (role: string, p: TeamPlayer) =>
+    setMyTeam((prev) => {
+      const list = prev[role] || [];
+      if (list.some((x) => x.id === p.id) || list.length >= TEAM_SLOT_MAX) return prev;
+      return { ...prev, [role]: [...list, p] };
+    });
+  const removeFromTeam = (role: string, id: string) =>
+    setMyTeam((prev) => ({ ...prev, [role]: (prev[role] || []).filter((x) => x.id !== id) }));
+  // Reordenar dentro de una posición (la primera es la titular)
+  const moveInTeam = (role: string, id: string, toIndex: number) =>
+    setMyTeam((prev) => {
+      const list = [...(prev[role] || [])];
+      const from = list.findIndex((x) => x.id === id);
+      if (from < 0) return prev;
+      const [item] = list.splice(from, 1);
+      list.splice(Math.min(toIndex, list.length), 0, item);
+      return { ...prev, [role]: list };
+    });
 
   // Notas de subcategorías/métricas cargadas bajo demanda: clave → jugadora → nota
   const [remote, setRemote] = useState<Record<string, Record<string, number | null>>>({});
@@ -405,6 +541,11 @@ function BuilderContent() {
     return vals.length ? (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1) : "—";
   }, [bestEleven]);
 
+  const teamCount = useMemo(
+    () => new Set(FORMATIONS[formation].flat().flatMap((r) => (myTeam[r] || []).map((p) => p.id))).size,
+    [myTeam, formation]
+  );
+
   /* ───── Actualizar filtros ───── */
   const updateScope = (scope: ScopeId, patch: Partial<FilterSet>) =>
     setScopes((prev) => ({ ...prev, [scope]: { ...prev[scope], ...patch } }));
@@ -635,7 +776,7 @@ function BuilderContent() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[380px_minmax(0,1fr)] gap-5 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-[340px_minmax(0,1fr)] gap-4 items-start">
         {/* Panel de filtros */}
         <aside className="lg:sticky lg:top-4">
           <button
@@ -701,9 +842,18 @@ function BuilderContent() {
               <LoadingState message="Building the ideal XI and placing the best players..." />
             </div>
           ) : (
-            <StadiumPitch maxPerLine={Math.max(1, ...bestEleven.map((line) => line.length))}>
+            // Dos campos a la altura de la pantalla (siempre enteros): resultados de los filtros y "Mi equipo"
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 xl:sticky xl:top-4">
+              <div className="flex flex-col h-[calc(100vh-2rem)] min-h-[560px]">
+                <PitchHeader
+                  icon={<Layers className="w-3.5 h-3.5" />}
+                  title="Filtered XI"
+                  hint="Drag a card (or a bench player) to My team"
+                />
+                <div className="flex-1 min-h-0">
+                  <StadiumPitch fill maxPerLine={Math.max(1, ...bestEleven.map((line) => line.length))} lines={bestEleven.length}>
               {bestEleven.map((line, lineIndex) => (
-                <div key={`line-${lineIndex}`} className="w-full flex items-center justify-around sm:px-6 my-1 sm:my-2">
+                <div key={`line-${lineIndex}`} className="w-full flex items-center justify-around sm:px-3">
                   {line.map(({ role, meta, player, bench }, slotIndex) => {
                     const g = GROUP_BY_ID[meta.group];
                     if (!player) {
@@ -735,13 +885,82 @@ function BuilderContent() {
                         align={slotIndex === 0 ? "left" : slotIndex === line.length - 1 ? "right" : "center"}
                         onSelect={setSelectedPlayerModal}
                       >
-                        <PitchCard assignedRole={role} player={player} onClick={() => setSelectedPlayerModal(player)} />
+                        <PitchCard
+                          draggable
+                          assignedRole={role}
+                          player={player}
+                          note={notes[player.id]}
+                          onClick={() => setSelectedPlayerModal(player)}
+                        />
                       </SlotWithBench>
                     );
                   })}
                 </div>
               ))}
-            </StadiumPitch>
+                  </StadiumPitch>
+                </div>
+              </div>
+
+              <div className="flex flex-col h-[calc(100vh-2rem)] min-h-[560px]">
+                <PitchHeader
+                  icon={<Users className="w-3.5 h-3.5" />}
+                  title={`${currentSave ? currentSave.name : "My team"} · ${teamCount}`}
+                  hint={currentSave ? `saved ${fmtSaveDate(currentSave.savedAt)}` : `Up to ${TEAM_SLOT_MAX} players per position`}
+                  action={
+                    <div className="relative flex items-center gap-1">
+                      <HeaderButton onClick={newGame} icon={<FilePlus2 className="w-3 h-3" />} label="New" />
+                      <HeaderButton onClick={() => setSaveDialog(true)} icon={<Save className="w-3 h-3" />} label="Save" />
+                      <HeaderButton
+                        onClick={() => setGamesOpen((v) => !v)}
+                        icon={<FolderOpen className="w-3 h-3" />}
+                        label={`11 Builder${saves.length ? ` (${saves.length})` : ""}`}
+                        active={gamesOpen}
+                      />
+                      {gamesOpen && (
+                        <GamesPanel
+                          saves={saves}
+                          currentId={currentSaveId}
+                          onLoad={loadGame}
+                          onDelete={deleteGame}
+                          onClose={() => setGamesOpen(false)}
+                        />
+                      )}
+                    </div>
+                  }
+                />
+                <div className="flex-1 min-h-0">
+                  <StadiumPitch
+                    fill
+                    maxPerLine={Math.max(1, ...bestEleven.map((line) => line.length))}
+                    lines={bestEleven.length}
+                    cardW={TEAM_SLOT_W}
+                    cardH={TEAM_SLOT_H}
+                  >
+                    {FORMATIONS[formation].map((line, li) => (
+                      <div key={`team-${li}`} className="w-full flex items-center justify-around sm:px-3">
+                        {line.map((role) => (
+                          <EmptyPitchSlot key={role} w={TEAM_SLOT_W} h={TEAM_SLOT_H}>
+                            <TeamSlot
+                              role={role}
+                              color={GROUP_BY_ID[ROLE_META[role].group].color}
+                              players={myTeam[role] || []}
+                              onAdd={(p) => addToTeam(role, p)}
+                              onRemove={(id) => removeFromTeam(role, id)}
+                              onMove={(id, i) => moveInTeam(role, id, i)}
+                              notes={notes}
+                              onSelect={(id) => {
+                                const full = allPlayers.find((x) => x.id === id);
+                                if (full) setSelectedPlayerModal(full);
+                              }}
+                            />
+                          </EmptyPitchSlot>
+                        ))}
+                      </div>
+                    ))}
+                  </StadiumPitch>
+                </div>
+              </div>
+            </div>
           )}
         </section>
       </div>
@@ -801,9 +1020,21 @@ function BuilderContent() {
                   <b className="text-white">{getVal(selectedPlayerModal, metricSort)?.toFixed(1) ?? "—"}</b>
                 </p>
               )}
+              <label className="block">
+                <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-amber-300">
+                  <StickyNote className="w-3 h-3" /> Notes
+                </span>
+                <textarea
+                  value={notes[selectedPlayerModal.id] || ""}
+                  onChange={(e) => setNote(selectedPlayerModal.id, e.target.value)}
+                  placeholder="Your notes on this player (saved with the team)"
+                  rows={3}
+                  className="mt-1 w-full rounded-lg bg-black/30 border border-white/10 focus:border-amber-400/60 outline-none p-2 text-xs text-slate-100 placeholder:text-slate-500 resize-y"
+                />
+              </label>
               <Link
                 href={`/players/${selectedPlayerModal.id}`}
-                className="mt-4 w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-gray-950 font-bold text-xs transition-colors shadow-lg shadow-emerald-500/20"
+                className="mt-2 w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-gray-950 font-bold text-xs transition-colors shadow-lg shadow-emerald-500/20"
               >
                 <Eye className="w-4 h-4" />
                 <span>View Full Scouting Dossier</span>
@@ -813,13 +1044,270 @@ function BuilderContent() {
           </div>
         </div>
       )}
+      {saveDialog && (
+        <SaveDialog
+          current={currentSave}
+          defaultName={currentSave?.name || `Team ${new Date().toLocaleDateString("es-ES")}`}
+          onSave={saveGame}
+          onClose={() => setSaveDialog(false)}
+        />
+      )}
     </div>
   );
 }
 
 /* ─────────────────────────── Piezas ─────────────────────────── */
 
+function HeaderButton({ onClick, icon, label, active }: { onClick: () => void; icon: React.ReactNode; label: string; active?: boolean }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`inline-flex items-center gap-1 h-6 px-2 rounded-md border text-[10px] font-semibold transition-colors ${
+        active ? "border-emerald-400/50 text-emerald-300 bg-emerald-500/10" : "border-white/10 text-slate-300 hover:text-white hover:border-white/25"
+      }`}
+    >
+      {icon} {label}
+    </button>
+  );
+}
+
+/** 11 Builders guardados: cargar o borrar */
+function GamesPanel({
+  saves, currentId, onLoad, onDelete, onClose,
+}: {
+  saves: SavedTeam[];
+  currentId: string | null;
+  onLoad: (g: SavedTeam) => void;
+  onDelete: (id: string) => void;
+  onClose: () => void;
+}) {
+  const count = (g: SavedTeam) => new Set(Object.values(g.team).flat().map((p) => p.id)).size;
+  return (
+    <>
+      <div className="fixed inset-0 z-40" onClick={onClose} />
+      <div className="absolute right-0 top-full mt-1.5 z-50 w-72 rounded-xl border border-white/15 bg-[#0a1224]/95 backdrop-blur-xl shadow-2xl overflow-hidden">
+        <div className="px-3 py-2 border-b border-white/10 text-[10px] font-black uppercase tracking-wider text-slate-300">Saved 11 Builders</div>
+        {saves.length === 0 ? (
+          <div className="px-3 py-5 text-center text-[11px] text-slate-500">No saved teams yet. Use “Save”.</div>
+        ) : (
+          <ul className="max-h-80 overflow-y-auto p-1.5 space-y-1">
+            {[...saves].sort((a, b) => b.savedAt.localeCompare(a.savedAt)).map((g) => (
+              <li
+                key={g.id}
+                className={`flex items-center gap-2 p-2 rounded-lg border ${
+                  g.id === currentId ? "border-emerald-400/40 bg-emerald-500/10" : "border-transparent hover:bg-white/[0.05]"
+                }`}
+              >
+                <button onClick={() => onLoad(g)} className="min-w-0 flex-1 text-left">
+                  <div className="text-xs font-bold text-white truncate">{g.name}</div>
+                  <div className="text-[10px] text-slate-400">
+                    {fmtSaveDate(g.savedAt)} · {g.formation} · {count(g)} players
+                    {Object.keys(g.notes || {}).length ? ` · ${Object.keys(g.notes).length} notes` : ""}
+                  </div>
+                </button>
+                <button
+                  onClick={() => {
+                    if (window.confirm(`Delete “${g.name}”?`)) onDelete(g.id);
+                  }}
+                  className="p-1 text-slate-500 hover:text-rose-300"
+                  aria-label="Delete"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </>
+  );
+}
+
+/** Guardar el equipo en curso: sobrescribir la partida cargada o crear una nueva */
+function SaveDialog({
+  current, defaultName, onSave, onClose,
+}: {
+  current: SavedTeam | null;
+  defaultName: string;
+  onSave: (name: string, asNew: boolean) => void;
+  onClose: () => void;
+}) {
+  const [name, setName] = useState(defaultName);
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={onClose}>
+      <div
+        className="w-full max-w-sm rounded-2xl border border-white/15 bg-[#0a1224] p-5 shadow-2xl space-y-3"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 className="text-sm font-black uppercase tracking-wider text-white flex items-center gap-2">
+          <Save className="w-4 h-4 text-emerald-400" /> Save team
+        </h3>
+        <input
+          autoFocus
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && onSave(name, !current)}
+          placeholder="Team name"
+          className="w-full h-9 rounded-lg bg-black/30 border border-white/10 focus:border-emerald-400/60 outline-none px-3 text-sm text-white"
+        />
+        <p className="text-[10px] text-slate-500">Saved with today’s date, the system, the players and your notes.</p>
+        <div className="flex justify-end gap-2">
+          <button onClick={onClose} className="h-8 px-3 rounded-lg text-xs text-slate-300 hover:text-white">Cancel</button>
+          {current && (
+            <button
+              onClick={() => onSave(name, true)}
+              className="h-8 px-3 rounded-lg border border-white/15 text-xs font-semibold text-slate-200 hover:border-white/30"
+            >
+              Save as new
+            </button>
+          )}
+          <button
+            onClick={() => onSave(name, !current)}
+            className="h-8 px-3 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-gray-950 text-xs font-bold"
+          >
+            {current ? `Update “${current.name}”` : "Save"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** Titular del campo; al pasar el ratón muestra las suplentes de ese puesto */
+function PitchHeader({ icon, title, hint, action }: { icon: React.ReactNode; title: string; hint: string; action?: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-2 px-1 pb-1.5">
+      <div className="flex items-center gap-1.5 min-w-0">
+        <span className="text-emerald-400">{icon}</span>
+        <span className="text-[11px] font-black uppercase tracking-wider text-slate-200">{title}</span>
+        <span className="text-[10px] text-slate-500 truncate">· {hint}</span>
+      </div>
+      {action}
+    </div>
+  );
+}
+
+/** Posición de "Mi equipo": recibe jugadoras arrastradas (hasta TEAM_SLOT_MAX); la primera es la titular. */
+function TeamSlot({
+  role, color, players, notes, onAdd, onRemove, onMove, onSelect,
+}: {
+  role: string;
+  color: string;
+  players: TeamPlayer[];
+  notes: Record<string, string>;
+  onAdd: (p: TeamPlayer) => void;
+  onRemove: (id: string) => void;
+  onMove: (id: string, toIndex: number) => void;
+  onSelect: (id: string) => void;
+}) {
+  const [over, setOver] = useState(false);
+  const full = players.length >= TEAM_SLOT_MAX;
+  const ROW_DRAG = `application/x-herscout-slot-${role.toLowerCase()}`;
+
+  const drop = (e: React.DragEvent, index?: number) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setOver(false);
+    const moved = e.dataTransfer.getData(ROW_DRAG);
+    if (moved) {
+      onMove(moved, index ?? players.length);
+      return;
+    }
+    const raw = e.dataTransfer.getData(PLAYER_DRAG_TYPE);
+    if (!raw) return;
+    try {
+      onAdd(toTeamPlayer(JSON.parse(raw)));
+    } catch {}
+  };
+
+  return (
+    <div
+      onDragOver={(e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = full && !e.dataTransfer.types.includes(ROW_DRAG) ? "none" : "copy";
+        setOver(true);
+      }}
+      onDragLeave={() => setOver(false)}
+      onDrop={(e) => drop(e)}
+      className="w-full h-full rounded-xl border-2 backdrop-blur-sm flex flex-col overflow-hidden transition-colors"
+      style={{
+        borderColor: over ? color : `${color}55`,
+        borderStyle: players.length ? "solid" : "dashed",
+        background: over ? `${color}26` : "rgba(4, 10, 20, 0.75)",
+      }}
+    >
+      <div className="flex items-center justify-between px-2 h-5 shrink-0" style={{ background: `${color}22` }}>
+        <span className="text-[10px] font-black uppercase tracking-wider" style={{ color }}>{role}</span>
+        <span className="text-[9px] font-bold tabular-nums text-slate-400">{players.length}/{TEAM_SLOT_MAX}</span>
+      </div>
+      {players.length === 0 ? (
+        <div className="flex-1 flex items-center justify-center px-2 text-center text-[10px] leading-tight text-slate-500">
+          Drop players here
+        </div>
+      ) : (
+        <ol className="flex-1 p-1 flex flex-col gap-0.5">
+          {players.map((p, i) => (
+            <li
+              key={p.id}
+              draggable
+              onDragStart={(e) => {
+                e.dataTransfer.setData(ROW_DRAG, p.id);
+                e.dataTransfer.effectAllowed = "move";
+              }}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => drop(e, i)}
+              className={`group relative flex items-center gap-1.5 min-h-[38px] px-1 rounded-md cursor-grab active:cursor-grabbing ${
+                i === 0 ? "bg-white/[0.10]" : "hover:bg-white/[0.05]"
+              }`}
+            >
+              <div className="relative w-8 h-8 rounded-full overflow-hidden bg-white/5 border border-white/15 shrink-0">
+                {p.photoUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={p.photoUrl} alt="" className="w-full h-full object-cover object-top" loading="lazy" />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-[11px] font-bold text-slate-500">
+                    {(p.matchName || p.name || "?").slice(0, 1)}
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={() => onSelect(p.id)}
+                className={`min-w-0 flex-1 text-left leading-[1.1] break-words ${
+                  (p.matchName || p.name).length > 20 ? "text-[8.5px]" : "text-[10px]"
+                } ${
+                  i === 0 ? "font-bold text-white" : "font-medium text-slate-200"
+                }`}
+                title={`${p.name}${p.teamName ? ` · ${p.teamName}` : ""}${notes[p.id] ? `\n\n${notes[p.id]}` : ""}`}
+              >
+                {p.matchName || p.name}
+              </button>
+              <div className="flex flex-col items-center gap-0.5 shrink-0">
+                {p.badgeUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={p.badgeUrl} alt="" className="w-5 h-5 object-contain" loading="lazy" />
+                ) : null}
+                {p.notaGlobal != null && (
+                  <span className="text-[9px] font-black tabular-nums leading-none" style={{ color }}>{Math.round(p.notaGlobal)}</span>
+                )}
+              </div>
+              {notes[p.id] && (
+                <StickyNote className="absolute left-6 top-0.5 w-3 h-3 text-amber-300 drop-shadow" aria-label="Has notes" />
+              )}
+              <button
+                onClick={() => onRemove(p.id)}
+                className="absolute -right-0.5 -top-0.5 opacity-0 group-hover:opacity-100 p-0.5 rounded-full bg-black/80 text-slate-400 hover:text-rose-300"
+                aria-label="Remove"
+              >
+                <X className="w-2.5 h-2.5" />
+              </button>
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
+  );
+}
+
 function SlotWithBench({
   children, role, color, bench, sortLabel, valueOf, format, below, align, onSelect,
 }: {
@@ -865,7 +1353,15 @@ function SlotWithBench({
             ) : (
               <ol className="p-1.5 space-y-0.5">
                 {bench.map((p, i) => (
-                  <li key={p.id}>
+                  <li
+                    key={p.id}
+                    draggable
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData(PLAYER_DRAG_TYPE, JSON.stringify(p));
+                      e.dataTransfer.effectAllowed = "copy";
+                    }}
+                    className="cursor-grab active:cursor-grabbing"
+                  >
                     <button
                       onClick={() => onSelect(p)}
                       className="w-full flex items-center gap-2.5 px-1.5 py-1.5 rounded-lg hover:bg-white/[0.06] text-left transition-colors"

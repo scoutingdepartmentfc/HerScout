@@ -516,7 +516,7 @@ export const RatingEvolutionChart: React.FC<RatingEvolutionChartProps> = ({
             {/* X-Axis Dates Labels */}
             {points.map((pt, i) => {
               // Show label every N items depending on total points so they do not overlap
-              const step = points.length > 14 ? 3 : points.length > 7 ? 2 : 1;
+              const step = points.length > 20 ? 4 : points.length > 14 ? 3 : points.length > 7 ? 2 : 1;
               const isFirst = i === 0;
               const isLast = i === points.length - 1;
               const shouldShow = isFirst || isLast || i % step === 0;
@@ -524,7 +524,11 @@ export const RatingEvolutionChart: React.FC<RatingEvolutionChartProps> = ({
               if (!shouldShow) return null;
 
               const d = new Date(pt.date);
-              const label = d.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+              // When "all" or range spans a long time, show both month and year (e.g. "Sep '25", "Feb '26")
+              const label =
+                timeRange === "all" || timeRange === "1y"
+                  ? `${d.toLocaleDateString("en-GB", { day: "numeric", month: "short" })} '${String(d.getFullYear()).slice(-2)}`
+                  : d.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
 
               return (
                 <text

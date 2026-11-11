@@ -32,13 +32,20 @@ export interface PitchCardPlayer {
   secondaryPositions?: string[];
 }
 
+/** dataTransfer type used when dragging a player from the pitch to "My team". */
+export const PLAYER_DRAG_TYPE = "application/x-herscout-player";
+
 interface PitchCardProps {
   player: PitchCardPlayer;
   assignedRole: string; // e.g. "LW", "ST", "CB", "GK"
   onClick?: () => void;
+  /** Lets the card be dragged (to "My team"). */
+  draggable?: boolean;
+  /** Scout's note on this player: shows a marker (and the text on hover). */
+  note?: string;
 }
 
-export const PitchCard: React.FC<PitchCardProps> = ({ player, assignedRole, onClick }) => {
+export const PitchCard: React.FC<PitchCardProps> = ({ player, assignedRole, onClick, draggable, note }) => {
   const rawScore = player.notaGlobal ?? player.score_general;
   const ovr =
     rawScore != null
@@ -60,21 +67,35 @@ export const PitchCard: React.FC<PitchCardProps> = ({ player, assignedRole, onCl
     <div style={{ width: PITCH_CARD_W * scale, height: PITCH_CARD_H * scale }}>
     <div
       onClick={onClick}
-      className="group relative flex flex-col items-center cursor-pointer select-none transition-transform duration-200 hover:scale-110 hover:z-40"
+      draggable={draggable}
+      onDragStart={
+        draggable
+          ? (e) => {
+              e.dataTransfer.setData(PLAYER_DRAG_TYPE, JSON.stringify(player));
+              e.dataTransfer.effectAllowed = "copy";
+            }
+          : undefined
+      }
+      className={`group relative flex flex-col items-center select-none transition-transform duration-200 hover:scale-105 hover:z-40 ${
+        draggable ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"
+      }`}
       style={{
         width: PITCH_CARD_W,
         transform: `scale(${scale})`,
         transformOrigin: "top left",
-        filter: "drop-shadow(0 14px 22px rgba(0, 0, 0, 0.75))",
+        filter: "drop-shadow(0 8px 14px rgba(0, 0, 0, 0.6))",
       }}
     >
-      {/* Role tag marker above/below */}
-      <div className="mb-1 px-2 py-0.5 rounded bg-black/80 border border-white/20 backdrop-blur-md shadow-md text-[10px] font-black tracking-wider text-emerald-400 uppercase">
-        {assignedRole}
-      </div>
-
-      {/* Main FUT-Style Card */}
-      <div className="relative w-36 h-52">
+      {/* Main FUT-Style Card (compact: the role is inside the card) */}
+      <div className="relative w-32 h-40" title={note || undefined}>
+        {note && (
+          <div className="absolute -top-1 -left-1 z-30 flex items-center justify-center w-5 h-5 rounded-full bg-amber-400 border border-white/80 shadow-md">
+            <svg className="w-3 h-3 text-gray-900" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+              <path d="M15.5 3H5a2 2 0 0 0-2 2v14c0 1.1.9 2 2 2h14a2 2 0 0 0 2-2V8.5L15.5 3Z" />
+              <path d="M15 3v6h6" />
+            </svg>
+          </div>
+        )}
         {/* Trend Indicator */}
         {player.trend && (
           <div
@@ -117,17 +138,17 @@ export const PitchCard: React.FC<PitchCardProps> = ({ player, assignedRole, onCl
         >
           {/* Metallic texture stripes */}
           <div
-            className="absolute inset-0 opacity-25 mix-blend-overlay pointer-events-none z-0"
+            className="absolute inset-0 opacity-15 mix-blend-overlay pointer-events-none z-0"
             style={{
               backgroundImage: `repeating-linear-gradient(-45deg, rgba(255, 255, 255, 0.4) 0px, rgba(255, 255, 255, 0.4) 2px, transparent 2px, transparent 6px)`,
             }}
           />
 
           {/* Diagonal 3D Geometric Stripe matching CromoJugador */}
-          <div className="absolute top-8 left-[-15%] right-[-15%] h-20 border-y border-white/20 bg-gradient-to-r from-white/10 via-white/20 to-white/10 -rotate-12 pointer-events-none z-0" />
+          <div className="absolute top-6 left-[-15%] right-[-15%] h-14 border-y border-white/10 bg-gradient-to-r from-white/5 via-white/10 to-white/5 -rotate-12 pointer-events-none z-0" />
 
           {/* Top: Header zone with OVR/Role (left) and Player Name (top right above head) */}
-          <div className="absolute top-2 inset-x-2 z-20 flex items-start justify-between pointer-events-none">
+          <div className="absolute top-1.5 inset-x-1.5 z-20 flex items-start justify-between pointer-events-none">
             {/* OVR & Role */}
             <div
               className={`flex flex-col items-center leading-none ${
@@ -137,11 +158,11 @@ export const PitchCard: React.FC<PitchCardProps> = ({ player, assignedRole, onCl
                 textShadow: clubTheme.textLight ? "0 2px 4px rgba(0,0,0,0.8)" : "0 1px 2px rgba(255,255,255,0.8)",
               }}
             >
-              <span className="font-black text-2xl tracking-tighter">
+              <span className="font-black text-xl tracking-tighter">
                 {ovr}
               </span>
               <span
-                className={`mt-0.5 font-black text-xs tracking-wider uppercase ${
+                className={`font-black text-[10px] tracking-wider uppercase ${
                   clubTheme.textLight ? "text-amber-300" : "text-[#1e2530]"
                 }`}
               >
@@ -150,10 +171,10 @@ export const PitchCard: React.FC<PitchCardProps> = ({ player, assignedRole, onCl
             </div>
 
             {/* Name Banner: escorado ligeramente hacia la izquierda para centrarse mejor sobre la cabeza */}
-            <div className="flex-1 flex justify-center pl-2 pr-1 pt-0.5 max-w-[70%]">
+            <div className="flex-1 flex justify-center pl-1.5 pt-0.5 max-w-[74%]">
               <span
                 style={{ fontSize: nameSize }}
-                className={`font-black uppercase tracking-tight text-center leading-tight line-clamp-2 px-1.5 py-0.5 rounded backdrop-blur-md border ${
+                className={`font-black uppercase tracking-tight text-center leading-tight line-clamp-2 px-1 py-px rounded backdrop-blur-md border ${
                   clubTheme.textLight
                     ? "bg-black/60 border-white/20 text-white shadow-[0_2px_6px_rgba(0,0,0,0.7)]"
                     : "bg-white/80 border-black/20 text-slate-950 shadow-[0_2px_6px_rgba(0,0,0,0.25)]"
@@ -166,25 +187,25 @@ export const PitchCard: React.FC<PitchCardProps> = ({ player, assignedRole, onCl
           </div>
 
           {/* Player Photo */}
-          <div className="absolute inset-x-0 bottom-7 top-8 z-10 flex items-end justify-center overflow-hidden pointer-events-none">
+          <div className="absolute inset-x-0 bottom-5 top-6 z-10 flex items-end justify-center overflow-hidden pointer-events-none">
             {player.photoUrl ? (
               <img
                 src={player.photoUrl}
                 alt={player.name}
-                className="h-[96%] w-auto max-w-[92%] object-contain object-bottom drop-shadow-[0_6px_12px_rgba(0,0,0,0.6)]"
+                className="h-full w-auto max-w-[96%] object-contain object-bottom drop-shadow-[0_4px_8px_rgba(0,0,0,0.5)]"
                 loading="lazy"
               />
             ) : (
               <div className="h-full w-full flex items-center justify-center text-slate-500/70 drop-shadow-[0_4px_8px_rgba(0,0,0,0.3)]">
-                <PlayerSilhouette className="w-24 h-24 scale-125" />
+                <PlayerSilhouette className="w-20 h-20 scale-125" />
               </div>
             )}
           </div>
 
           {/* Bottom U-Base Badges (Flag, Club, League) */}
-          <div className="absolute bottom-0.5 inset-x-0 z-20 flex justify-center pb-0.5 px-1.5">
+          <div className="absolute bottom-0.5 inset-x-0 z-20 flex justify-center px-1">
             <div
-              className="w-[94%] h-8 flex items-center justify-around px-1.5 border border-white/95 shadow-lg backdrop-blur-md"
+              className="w-[96%] h-6 flex items-center justify-around px-1 border border-white/95 shadow-md backdrop-blur-md"
               style={{
                 background: "linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(235, 240, 248, 0.95) 100%)",
                 borderRadius: "4px 4px 14px 14px",
@@ -196,7 +217,7 @@ export const PitchCard: React.FC<PitchCardProps> = ({ player, assignedRole, onCl
                 <Bandera country={player.country} size="sm" />
               </div>
 
-              <div className="h-4 w-[1px] bg-slate-300" />
+              <div className="h-3 w-[1px] bg-slate-300" />
 
               {/* Club Crest (2x bigger: from size 14 to size 28) */}
               <div
@@ -209,11 +230,11 @@ export const PitchCard: React.FC<PitchCardProps> = ({ player, assignedRole, onCl
                   teamId={player.teamId}
                   badgeUrl={player.badgeUrl}
                   name={player.teamName}
-                  size={28}
+                  size={20}
                 />
               </div>
 
-              <div className="h-4 w-[1px] bg-slate-300" />
+              <div className="h-3 w-[1px] bg-slate-300" />
 
               {/* League Crest */}
               <div className="flex items-center justify-center shrink-0 max-w-[42px]">
@@ -221,7 +242,7 @@ export const PitchCard: React.FC<PitchCardProps> = ({ player, assignedRole, onCl
                   <img
                     src={player.leagueLogoUrl}
                     alt={player.leagueName || "League"}
-                    className="h-4 max-w-[36px] object-contain"
+                    className="h-3.5 max-w-[32px] object-contain"
                   />
                 ) : (
                   <span className="text-[8px] font-black text-navy-950 uppercase truncate">

@@ -3,6 +3,7 @@
 import React from "react";
 import { Bandera } from "@/components/scouting/Bandera";
 import { EscudoEquipo } from "@/components/scouting/EscudoEquipo";
+import { PlayerSilhouette } from "@/components/scouting/PlayerSilhouette";
 import { getClubTheme } from "@/lib/clubThemes";
 import { usePitchScale, PITCH_CARD_W, PITCH_CARD_H } from "./StadiumPitch";
 
@@ -174,8 +175,8 @@ export const PitchCard: React.FC<PitchCardProps> = ({ player, assignedRole, onCl
                 loading="lazy"
               />
             ) : (
-              <div className="h-full flex items-center justify-center font-black text-slate-400 text-3xl">
-                ⚽
+              <div className="h-full w-full flex items-center justify-center text-slate-500/70 drop-shadow-[0_4px_8px_rgba(0,0,0,0.3)]">
+                <PlayerSilhouette className="w-24 h-24 scale-125" />
               </div>
             )}
           </div>

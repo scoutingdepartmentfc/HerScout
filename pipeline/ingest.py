@@ -42,7 +42,7 @@ except ImportError:
 import pandas as pd
 
 from .adapter import OptaSDAPIAdapter
-from .config import MAX_WORKERS_DESCARGA, NIVEL_LIGA, NIVEL_LIGA_DEFECTO
+from .config import MAX_WORKERS_DESCARGA, NIVEL_LIGA, NIVEL_LIGA_DEFECTO, es_internacional
 from .events import match_metadata
 from .metrics_engine import MetricsEngine
 from .fotos_jugadoras import sincronizar_fotos_jugadoras
@@ -153,16 +153,25 @@ class IngestionPipeline:
                 miembros[pid] = {'season_id': comp['season_id'], 'player_id': pid, 'competition_id': comp['id'],
                                  'team_id': tid, 'active': activo, 'shirt_number': pers.get('shirtNumber'),
                                  'updated_at': ts}
-        # Temporada antigua: el equipo y el dorsal de entonces no pisan los actuales (puede estar ya en otra liga);
-        # solo se ponen a las jugadoras nuevas, como último club conocido
-        if not comp.get('active', True) and self.store.online:
+        # Temporada antigua o competición internacional (Champions...): el equipo y el dorsal de ahí no pisan
+        # los actuales; solo se ponen a las jugadoras nuevas, como último club conocido
+        intl = es_internacional(comp)
+        if (not comp.get('active', True) or intl) and self.store.online:
             existentes = {p['id'] for p in self.store.select_all('players', 'id')}
             for pid in players.keys() & existentes:
                 players[pid].pop('current_team_id', None)
                 players[pid].pop('shirt_number', None)
+        # Internacional: el club sigue siendo de su liga (competition_id y país); solo los clubes nuevos se crean
+        if intl and self.store.online:
+            existentes_t = {t['id'] for t in self.store.select_all('teams', 'id')}
+            for t in teams:
+                if t['id'] in existentes_t:
+                    t.pop('competition_id', None)
+                    t.pop('country', None)
         # Sin NULLs: no pisar datos ya guardados (equipo actual, altura de FotMob...) con huecos de Opta
         filas = [{k: v for k, v in p.items() if v is not None} for p in players.values()]
-        self.store.upsert('teams', teams)
+        for grupo in _homogeneo(teams):
+            self.store.upsert('teams', grupo)
         # La v1 del pipeline insertaba entrenadores y asistentes como jugadores
         self.store.delete_in('players', 'id', sorted(staff - set(players)))
         for grupo in _homogeneo(filas):
@@ -184,7 +193,7 @@ class IngestionPipeline:
                                              'shirt_number': None, 'updated_at': now_iso()}
         for grupo in _homogeneo(list(miembros.values())):
             self.store.upsert('squad_members', grupo, on_conflict='season_id,player_id')
-        if comp.get('active', True) and self.store.online:
+        if comp.get('active', True) and not es_internacional(comp) and self.store.online:
             activas = {pid for pid, m in miembros.items() if m['active']}
             # Solo se borra el equipo si pertenecía a uno de los equipos de esta competición
             comp_team_ids_set = {t['id'] for t in self.store.select_all('teams', 'id', competition_id=comp['id'])}
@@ -452,12 +461,17 @@ class IngestionPipeline:
         """Jugadores parecidos entre todas las ligas (se guarda en radar_data.similares)."""
         filas = self.store.select_all('player_season_stats', '*')
         similares = calcular_similares(filas)
+        cambiadas = []
         for f in filas:
-            f['radar_data'] = {**(f.get('radar_data') or {}), 'similares': similares.get(f['player_id'], [])}
+            nuevas = similares.get(f['player_id'], [])
+            # Solo las que cambian: reescribir todas (radar_data completo) agota el statement timeout de Supabase
+            if (f.get('radar_data') or {}).get('similares') == nuevas:
+                continue
+            f['radar_data'] = {**(f.get('radar_data') or {}), 'similares': nuevas}
             f.pop('id', None)
-        # Lotes pequeños: cada fila lleva radar_data completo y 200 ya agotan el statement timeout de Supabase
-        self.store.upsert('player_season_stats', filas, on_conflict='player_id,season_id,demarcacion', batch=50)
-        logger.info(f"Similares: {len(filas)} jugadores")
+            cambiadas.append(f)
+        self.store.upsert('player_season_stats', cambiadas, on_conflict='player_id,season_id,demarcacion', batch=50)
+        logger.info(f"Similares: {len(cambiadas)} de {len(filas)} filas actualizadas")
 
     def cargar_objetivos(self) -> List[Dict[str, Any]]:
         return competiciones_objetivo(self.store)

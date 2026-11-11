@@ -53,6 +53,7 @@ export const COUNTRY_IMPORTANCE_ORDER: string[] = [
 
 export function getCountryPriority(country?: string | null): number {
   if (!country) return 999;
+  if (country === "Internacional") return -1; // Champions League, Libertadores... always first
   const idx = COUNTRY_IMPORTANCE_ORDER.indexOf(country);
   return idx >= 0 ? idx : 500;
 }

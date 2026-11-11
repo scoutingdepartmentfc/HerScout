@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { isRetired } from "@/lib/utils";
+import { INTERNATIONAL_IDS, INTERNATIONAL_REGIONS } from "@/lib/internationalCompetitions";
+
+/** Country shown for international competitions in the league filter (grouped apart from countries) */
+const INTERNATIONAL_COUNTRY = "Internacional";
+const isInternational = (id?: string | null, country?: string | null) =>
+  Boolean((id && INTERNATIONAL_IDS.has(id)) || (country && INTERNATIONAL_REGIONS.has(country)));
+// Lowercase, typographic apostrophes → straight, collapsed spaces ("Women’s" == "Women's")
+const normLeague = (s: string) => s.toLowerCase().replace(/[\u2018\u2019\u00b4`]/g, "'").replace(/\s+/g, " ").trim();
 
 const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes cache
 const TREND_FROM_DATE = "2026-08-01";
@@ -110,7 +118,9 @@ async function loadBaseData(db: any): Promise<BaseData> {
       db.from("player_season_stats").select(`
         player_id,
         season_id,
+        competition_id,
         seasons:season_id ( name, is_active, start_date ),
+        competitions:competition_id ( name, country, logo_url ),
         demarcacion,
         grupo_demarcacion,
         matches_played,
@@ -274,9 +284,26 @@ export async function GET(req: NextRequest) {
 
     const list: any[] = [];
 
-    if (season === "all") {
-      // ACCUMULATED MODE (Default): Weighted average across all seasons
-      Array.from(rowsByPlayer.entries()).forEach(([playerId, playerRows]) => {
+    const intlComps = new Map<string, { name: string; logoUrl: string | null }>();
+    {
+      // Weighted average (by minutes) of every row in scope: all seasons, or every competition of one season
+      // (league + Champions League + cups add up)
+      Array.from(rowsByPlayer.entries()).forEach(([playerId, allRows]) => {
+        const playerRows = season === "all" ? allRows : allRows.filter((r: any) => r.seasons?.name === season);
+        if (!playerRows.length) return;
+        // International club competitions she played (filterable as their own "league")
+        const competitions = Array.from(
+          new Set<string>(
+            playerRows
+              .filter((r: any) => isInternational(r.competition_id, r.competitions?.country))
+              .map((r: any) => r.competitions?.name)
+              .filter(Boolean)
+          )
+        );
+        for (const r of playerRows) {
+          if (r.competitions?.name && isInternational(r.competition_id, r.competitions?.country) && !intlComps.has(r.competitions.name))
+            intlComps.set(r.competitions.name, { name: r.competitions.name, logoUrl: r.competitions.logo_url || null });
+        }
         const latestRow = [...playerRows].sort((a, b) =>
           String(b.seasons?.start_date || "").localeCompare(String(a.seasons?.start_date || "")) ||
           (b.minutes_played || 0) - (a.minutes_played || 0)
@@ -320,6 +347,15 @@ export async function GET(req: NextRequest) {
           return item.mins > 0 ? item.sum / item.mins : null;
         };
 
+        const teamName = p.fm_team_name || p.teams?.name || "Unattached";
+        const leagueName = p.current_league_name || p.teams?.league_name || null;
+        const leagueCountry =
+          (p.sd_league_code ? leagueCountryByCode.get(p.sd_league_code) : null) ||
+          (p.current_league_name ? leagueCountryByName.get(p.current_league_name.toLowerCase()) : null) ||
+          (p.teams?.league_name ? leagueCountryByName.get(p.teams.league_name.toLowerCase()) : null) ||
+          p.teams?.country ||
+          null;
+
         list.push({
           id: p.id,
           name: p.name,
@@ -335,14 +371,13 @@ export async function GET(req: NextRequest) {
           preferredFoot: p.preferred_foot,
           marketValue: p.market_value,
           teamId: p.teams?.id,
-          teamName: p.fm_team_name || p.teams?.name || "Unattached",
+          teamName,
           badgeUrl: (p.fm_team_name ? p.fm_team_badge_url : null) || p.teams?.badge_url,
-          leagueName: p.current_league_name || p.teams?.league_name || "Primera División Femenina",
+          leagueName,
           leagueLogoUrl: p.current_league_logo_url || p.teams?.league_logo_url,
-          leagueCountry: (p.sd_league_code ? leagueCountryByCode.get(p.sd_league_code) : null) ||
-            leagueCountryByName.get((p.current_league_name || p.teams?.league_name || "").toLowerCase()) ||
-            null,
-          seasonName: playerRows.length > 1 ? `All seasons (${playerRows.length})` : playerRows[0]?.seasons?.name || null,
+          leagueCountry,
+          seasonName: season !== "all" ? season : playerRows.length > 1 ? `All seasons (${playerRows.length})` : playerRows[0]?.seasons?.name || null,
+          competitions,
           isAccumulated: playerRows.length > 1,
           minutesPlayed: totalMins,
           matchesPlayed: totalMatches,
@@ -352,58 +387,6 @@ export async function GET(req: NextRequest) {
           notaDefensa: getWeightedVal("nota_defensa"),
           notaBalonParado: getWeightedVal("nota_balon_parado"),
           notaDisponibilidad: getWeightedVal("nota_disponibilidad"),
-          notaFisico,
-          hasRatings: true,
-        });
-      });
-
-    } else {
-      // SPECIFIC SEASON FILTER: Only show stats for the selected season
-      Array.from(rowsByPlayer.entries()).forEach(([playerId, playerRows]) => {
-        const matchingRow = playerRows.find((r: any) => r.seasons?.name === season);
-        if (!matchingRow) return;
-
-        const p = matchingRow.players;
-        const ea = Array.isArray(p.player_ea_ratings) ? p.player_ea_ratings[0] : p.player_ea_ratings;
-        const notaFisico = (() => {
-          if (ea?.pace != null && ea?.physicality != null) {
-            return Math.round(Number(ea.pace) * 0.45 + Number(ea.physicality) * 0.55);
-          }
-          return ea?.pace != null ? Number(ea.pace) : ea?.physicality != null ? Number(ea.physicality) : null;
-        })();
-
-        list.push({
-          id: p.id,
-          name: p.name,
-          matchName: p.match_name || p.name,
-          country: p.country,
-          birthDate: p.birth_date,
-          photoUrl: p.photo_url,
-          position: matchingRow.demarcacion || p.primary_position || "Centrocampista",
-          grupoDemarcacion: matchingRow.grupo_demarcacion || p.grupo_demarcacion || "General",
-          shirtNumber: p.shirt_number,
-          height: p.height,
-          weight: p.weight,
-          preferredFoot: p.preferred_foot,
-          marketValue: p.market_value,
-          teamId: p.teams?.id,
-          teamName: p.fm_team_name || p.teams?.name || "Unattached",
-          badgeUrl: (p.fm_team_name ? p.fm_team_badge_url : null) || p.teams?.badge_url,
-          leagueName: p.current_league_name || p.teams?.league_name || "Primera División Femenina",
-          leagueLogoUrl: p.current_league_logo_url || p.teams?.league_logo_url,
-          leagueCountry: (p.sd_league_code ? leagueCountryByCode.get(p.sd_league_code) : null) ||
-            leagueCountryByName.get((p.current_league_name || p.teams?.league_name || "").toLowerCase()) ||
-            null,
-          seasonName: matchingRow.seasons?.name || null,
-          isAccumulated: false,
-          minutesPlayed: matchingRow.minutes_played,
-          matchesPlayed: matchingRow.matches_played,
-          notaGlobal: matchingRow.nota_global,
-          notaAtaque: matchingRow.nota_ataque,
-          notaConstruccion: matchingRow.nota_construccion,
-          notaDefensa: matchingRow.nota_defensa,
-          notaBalonParado: matchingRow.nota_balon_parado,
-          notaDisponibilidad: matchingRow.nota_disponibilidad,
           notaFisico,
           hasRatings: true,
         });
@@ -418,6 +401,15 @@ export async function GET(req: NextRequest) {
         ea?.pace != null && ea?.physicality != null
           ? Math.round(Number(ea.pace) * 0.45 + Number(ea.physicality) * 0.55)
           : ea?.pace != null ? Number(ea.pace) : ea?.physicality != null ? Number(ea.physicality) : null;
+      const teamName = p.fm_team_name || p.teams?.name || "Unattached";
+      const leagueName = p.current_league_name || p.teams?.league_name || null;
+      const leagueCountry =
+        (p.sd_league_code ? leagueCountryByCode.get(p.sd_league_code) : null) ||
+        (p.current_league_name ? leagueCountryByName.get(p.current_league_name.toLowerCase()) : null) ||
+        (p.teams?.league_name ? leagueCountryByName.get(p.teams.league_name.toLowerCase()) : null) ||
+        p.teams?.country ||
+        null;
+
       list.push({
         id: p.id,
         name: p.name,
@@ -433,14 +425,13 @@ export async function GET(req: NextRequest) {
         preferredFoot: p.preferred_foot,
         marketValue: p.market_value,
         teamId: p.teams?.id,
-        teamName: p.fm_team_name || p.teams?.name || "Unattached",
+        teamName,
         badgeUrl: (p.fm_team_name ? p.fm_team_badge_url : null) || p.teams?.badge_url,
-        leagueName: p.current_league_name || p.teams?.league_name || "Primera División Femenina",
+        leagueName,
         leagueLogoUrl: p.current_league_logo_url || p.teams?.league_logo_url,
-        leagueCountry: (p.sd_league_code ? leagueCountryByCode.get(p.sd_league_code) : null) ||
-          leagueCountryByName.get((p.current_league_name || p.teams?.league_name || "").toLowerCase()) ||
-          null,
+        leagueCountry,
         seasonName: null,
+        competitions: [],
         isAccumulated: false,
         minutesPlayed: 0,
         matchesPlayed: 0,
@@ -475,6 +466,10 @@ export async function GET(req: NextRequest) {
           country: p.leagueCountry || null,
         });
       }
+    }
+
+    for (const c of Array.from(intlComps.values())) {
+      if (!leaguesMap.has(c.name)) leaguesMap.set(c.name, { name: c.name, logoUrl: c.logoUrl, country: INTERNATIONAL_COUNTRY });
     }
 
     const availableTeamsList = Array.from(teamsMap.values()).sort((a, b) => a.name.localeCompare(b.name));
@@ -527,18 +522,16 @@ export async function GET(req: NextRequest) {
       list = list.filter((p: any) => selectedTeams.includes((p.teamName || "").toLowerCase()));
     }
 
-    // Leagues filter (support multiple comma-separated or single)
-    // Also support partial matching so "Primera División" matches "Primera División Femenina"
-    const selectedLeagues = leaguesParam
-      ? leaguesParam.split(",").map((l) => l.trim().toLowerCase()).filter(Boolean)
-      : league !== "all"
-      ? [league.trim().toLowerCase()]
-      : [];
+    // Leagues filter (multiple comma-separated or single): her current league, or an international
+    // competition she played (Champions League...)
+    const selectedLeagues = (leaguesParam ? leaguesParam.split(",") : league !== "all" ? [league] : [])
+      .map(normLeague)
+      .filter(Boolean);
 
     if (selectedLeagues.length > 0) {
       list = list.filter((p: any) => {
-        const playerLeague = (p.leagueName || "").toLowerCase();
-        return selectedLeagues.some((sel) => playerLeague === sel || playerLeague.startsWith(sel) || sel.startsWith(playerLeague));
+        const own = [p.leagueName, ...(p.competitions || [])].filter(Boolean).map(normLeague);
+        return own.some((l: string) => selectedLeagues.includes(l));
       });
     }
 

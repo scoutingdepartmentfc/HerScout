@@ -11,12 +11,20 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@
 import { EmptyState, LoadingState } from "@/components/ui/StatusStates";
 import { EscudoEquipo } from "@/components/scouting/EscudoEquipo";
 import { Bandera } from "@/components/scouting/Bandera";
+import { PlayerSilhouette } from "@/components/scouting/PlayerSilhouette";
 import { Search, SlidersHorizontal, Bookmark, Eye, X, Check, ChevronDown, TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { notaClases } from "@/lib/notaColor";
 import { getPositionBadge } from "@/lib/positions";
 import { OptaLogo } from "@/components/scouting/OptaLogo";
 import { CamisetaDorsal } from "@/components/scouting/CamisetaDorsal";
 import { guessLeagueCountry, sortLeaguesByCountryAndTier } from "@/lib/leagueCountry";
+
+// Normaliza nombres de liga: minúsculas, apóstrofos tipográficos → rectos, espacios.
+const normLeague = (s: string) => s.toLowerCase().replace(/[\u2018\u2019\u00b4`]/g, "'").replace(/\s+/g, " ").trim();
+function dedupeLeagues<T extends { name: string }>(arr: T[]): T[] {
+  const seen = new Set<string>();
+  return arr.filter((l) => { const k = normLeague(l.name); if (seen.has(k)) return false; seen.add(k); return true; });
+}
 
 interface PlayerRow {
   id: string;
@@ -36,6 +44,8 @@ interface PlayerRow {
   leagueName?: string;
   leagueLogoUrl?: string;
   leagueCountry?: string | null;
+  /** International club competitions she played (Champions League...) */
+  competitions?: string[];
   seasonName?: string | null;
   isCurrentSeason?: boolean;
   isAccumulated?: boolean;
@@ -156,7 +166,12 @@ function MultiSelectDropdown<T extends { id: string; name: string; badgeUrl?: st
         <div className="flex items-center gap-1.5 shrink-0">
           {selectedIds.length > 0 && (
             <span
+              role="button"
+              tabIndex={0}
               onClick={clearAll}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") clearAll(e as any);
+              }}
               className="p-1 rounded-full hover:bg-white/20 text-muted-foreground hover:text-white transition-colors"
               title="Limpiar filtro"
             >
@@ -199,7 +214,11 @@ function MultiSelectDropdown<T extends { id: string; name: string; badgeUrl?: st
                     {/* Cabecera del país con bandera y selección rápida */}
                     <div className="flex items-center justify-between px-2.5 py-1.5 bg-white/[0.04] border-b border-white/5">
                       <div className="flex items-center gap-1.5 min-w-0">
-                        {grp.country !== "Otras Competiciones" && <Bandera country={grp.country} size="xs" />}
+                        {grp.country === "Internacional" ? (
+                          <span className="text-[11px] leading-none">🌍</span>
+                        ) : (
+                          grp.country !== "Otras Competiciones" && <Bandera country={grp.country} size="xs" />
+                        )}
                         <span className="text-[11px] font-bold text-slate-200 tracking-wide uppercase truncate">
                           {grp.country}
                         </span>
@@ -339,28 +358,16 @@ function PlayersDirectoryContent() {
     }
   };
 
-  const [searchTerm, setSearchTerm] = useState(() => searchParams.get("search") ?? getSaved("search") ?? "");
-  const [positionFilter, setPositionFilter] = useState(() => searchParams.get("position") ?? getSaved("position") ?? "all");
-  const [selectedTeams, setSelectedTeams] = useState<string[]>(() => {
-    const teams = searchParams.get("teams") || searchParams.get("team") || getSaved("teams");
-    return teams && teams !== "all" ? teams.split(",").map((t) => t.trim()).filter(Boolean) : [];
-  });
-  const [selectedLeagues, setSelectedLeagues] = useState<string[]>(() => {
-    const leagues = searchParams.get("leagues") || searchParams.get("league") || getSaved("leagues");
-    return leagues && leagues !== "all" ? leagues.split(",").map((l) => l.trim()).filter(Boolean) : [];
-  });
-  const [seasonFilter, setSeasonFilter] = useState(() => searchParams.get("season") ?? getSaved("season") ?? "all");
-  const [minRatingFilter, setMinRatingFilter] = useState<string>(() => searchParams.get("minRating") ?? getSaved("minRating") ?? "all");
-  const [minAge, setMinAge] = useState<number>(() => {
-    const a = searchParams.get("minAge") || getSaved("minAge");
-    return a ? Number(a) : 15;
-  });
-  const [maxAge, setMaxAge] = useState<number>(() => {
-    const a = searchParams.get("maxAge") || getSaved("maxAge");
-    return a ? Number(a) : 42;
-  });
-  const [sortBy, setSortBy] = useState<string>(() => searchParams.get("sortBy") ?? getSaved("sortBy") ?? "nota_global");
-  const [sortOrder, setSortOrder] = useState<"asc" | "desc">(() => (searchParams.get("order") as "asc" | "desc") ?? (getSaved("order") as "asc" | "desc") ?? "desc");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [positionFilter, setPositionFilter] = useState("all");
+  const [selectedTeams, setSelectedTeams] = useState<string[]>([]);
+  const [selectedLeagues, setSelectedLeagues] = useState<string[]>([]);
+  const [seasonFilter, setSeasonFilter] = useState("all");
+  const [minRatingFilter, setMinRatingFilter] = useState<string>("all");
+  const [minAge, setMinAge] = useState<number>(15);
+  const [maxAge, setMaxAge] = useState<number>(42);
+  const [sortBy, setSortBy] = useState<string>("nota_global");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
 
   const [allPlayers, setAllPlayers] = useState<PlayerRow[]>([]);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
@@ -370,34 +377,38 @@ function PlayersDirectoryContent() {
   const [availableLeagues, setAvailableLeagues] = useState<{ id: string; name: string; logoUrl?: string | null; country?: string | null }[]>([]);
   const [availableSeasons, setAvailableSeasons] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [showAdvancedFilters, setShowAdvancedFilters] = useState(() => {
-    return (
-      Boolean(searchParams.get("teams") || (searchParams.get("team") && searchParams.get("team") !== "all")) ||
-      Boolean(searchParams.get("leagues") || (searchParams.get("league") && searchParams.get("league") !== "all")) ||
-      (searchParams.get("season") && searchParams.get("season") !== "all") ||
-      (searchParams.get("minRating") && searchParams.get("minRating") !== "all") ||
-      Boolean(searchParams.get("minAge") || searchParams.get("maxAge")) ||
-      false
-    );
-  });
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [savedWatchlist, setSavedWatchlist] = useState<Record<string, boolean>>({});
 
   // Synchronize filter states whenever URL searchParams change
   useEffect(() => {
-    setSearchTerm(searchParams.get("search") || "");
-    setPositionFilter(searchParams.get("position") || "all");
-    const teams = searchParams.get("teams") || searchParams.get("team");
+    const sTerm = searchParams.get("search") ?? getSaved("search") ?? "";
+    setSearchTerm(sTerm);
+    const pos = searchParams.get("position") ?? getSaved("position") ?? "all";
+    setPositionFilter(pos);
+    const teams = searchParams.get("teams") || searchParams.get("team") || getSaved("teams");
     setSelectedTeams(teams && teams !== "all" ? teams.split(",").map((t) => t.trim()).filter(Boolean) : []);
-    const leagues = searchParams.get("leagues") || searchParams.get("league");
+    const leagues = searchParams.get("leagues") || searchParams.get("league") || getSaved("leagues");
     setSelectedLeagues(leagues && leagues !== "all" ? leagues.split(",").map((l) => l.trim()).filter(Boolean) : []);
-    setSeasonFilter(searchParams.get("season") || "all");
-    setMinRatingFilter(searchParams.get("minRating") || "all");
-    const pMinAge = searchParams.get("minAge");
-    const pMaxAge = searchParams.get("maxAge");
+    const sSeason = searchParams.get("season") ?? getSaved("season") ?? "all";
+    setSeasonFilter(sSeason);
+    const sMinR = searchParams.get("minRating") ?? getSaved("minRating") ?? "all";
+    setMinRatingFilter(sMinR);
+    const pMinAge = searchParams.get("minAge") || getSaved("minAge");
+    const pMaxAge = searchParams.get("maxAge") || getSaved("maxAge");
     setMinAge(pMinAge ? Number(pMinAge) : 15);
     setMaxAge(pMaxAge ? Number(pMaxAge) : 42);
-    setSortBy(searchParams.get("sortBy") || "nota_global");
-    setSortOrder((searchParams.get("order") as "asc" | "desc") || "desc");
+    setSortBy(searchParams.get("sortBy") ?? getSaved("sortBy") ?? "nota_global");
+    setSortOrder((searchParams.get("order") as "asc" | "desc") ?? (getSaved("order") as "asc" | "desc") ?? "desc");
+
+    const hasAdvanced = Boolean(
+      (teams && teams !== "all") ||
+      (leagues && leagues !== "all") ||
+      (sSeason && sSeason !== "all") ||
+      (sMinR && sMinR !== "all") ||
+      Boolean(pMinAge || pMaxAge)
+    );
+    if (hasAdvanced) setShowAdvancedFilters(true);
   }, [searchParams]);
 
   // Update browser URL query string and persist in sessionStorage
@@ -436,14 +447,14 @@ function PlayersDirectoryContent() {
           logoUrl: l.logoUrl,
           country: l.country || guessLeagueCountry(l.name),
         }));
-        setAvailableLeagues(sortLeaguesByCountryAndTier(mapped));
+        setAvailableLeagues(sortLeaguesByCountryAndTier(dedupeLeagues(mapped)));
       } else if (json.filters.leagues?.length) {
         const mapped = json.filters.leagues.map((l: string) => ({
           id: l,
           name: l,
           country: guessLeagueCountry(l),
         }));
-        setAvailableLeagues(sortLeaguesByCountryAndTier(mapped));
+        setAvailableLeagues(sortLeaguesByCountryAndTier(dedupeLeagues(mapped)));
       }
 
       if (json.filters.seasons?.length) setAvailableSeasons(json.filters.seasons);
@@ -531,10 +542,11 @@ function PlayersDirectoryContent() {
     }
 
     if (selectedLeagues.length > 0) {
-      const leagues = selectedLeagues.map((l) => l.toLowerCase());
+      const leagues = selectedLeagues.map(normLeague);
       list = list.filter((p) => {
-        const pl = (p.leagueName || "").toLowerCase();
-        return leagues.some((sel) => pl === sel || pl.startsWith(sel) || sel.startsWith(pl));
+        // Current league or an international competition she played (Champions League...)
+        const own = [p.leagueName, ...(p.competitions || [])].filter(Boolean).map((l) => normLeague(l as string));
+        return own.some((l) => leagues.includes(l));
       });
     }
 
@@ -1112,7 +1124,9 @@ function PlayersDirectoryContent() {
                               }}
                             />
                           ) : (
-                            <span className="text-sm font-bold text-muted-foreground">⚽</span>
+                            <div className="w-full h-full p-1.5 flex items-center justify-center text-slate-500 group-hover:text-slate-300 transition-colors">
+                              <PlayerSilhouette className="w-full h-full scale-125 object-contain" />
+                            </div>
                           )}
                         </div>
                         <div className="py-1">
@@ -1229,12 +1243,12 @@ function PlayersDirectoryContent() {
                     </TableCell>
 
                     <TableCell>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2.5">
                         <EscudoEquipo
                           teamId={player.teamId}
                           badgeUrl={player.badgeUrl}
                           name={player.teamName}
-                          size={18}
+                          size={28}
                         />
                         <div className="min-w-0">
                           <div className="text-xs text-white font-medium">{player.teamName}</div>
@@ -1249,18 +1263,9 @@ function PlayersDirectoryContent() {
                                 />
                               )}
                               <span className="truncate">{player.leagueName}</span>
-                              {guessLeagueCountry(player.leagueName) && (
-                                <Bandera country={guessLeagueCountry(player.leagueName)} size="xs" className="shrink-0 ml-0.5" />
+                              {(player.leagueCountry || guessLeagueCountry(player.leagueName)) && (
+                                <Bandera country={player.leagueCountry || guessLeagueCountry(player.leagueName)} size="xs" className="shrink-0 ml-0.5" />
                               )}
-                            </div>
-                          )}
-                          {/* Season Indicator Pill */}
-                          {player.seasonName && (
-                            <div
-                              className="mt-0.5 inline-flex rounded border border-white/10 bg-white/5 px-1 text-[9px] font-semibold text-slate-300"
-                              title={player.isAccumulated ? "Promedio acumulado de todas las temporadas" : `Temporada ${player.seasonName}`}
-                            >
-                              {player.seasonName}
                             </div>
                           )}
                         </div>

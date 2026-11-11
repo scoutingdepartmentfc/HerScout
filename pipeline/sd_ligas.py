@@ -195,6 +195,7 @@ def descargar(store: Store, sd: SDClient, liga_code: Optional[str], limit: Optio
     # Jugadoras ya guardadas (también las unidas a su ficha Opta: se actualiza esa fila, no se crea otra "sd-")
     guardadas = {p["sd_id"]: p for p in store.select_all("players", "id,sd_id,sd_updated_at,photo_url") if p.get("sd_id")}
     ids = {k: p["id"] for k, p in guardadas.items()}
+    catalogo_sd = {l["code"]: l for l in store.select_all("sd_leagues", "code,name,level,logo_url")}
     limite = time.time() - refresco_dias * 86400
     for liga in ligas:
         clubes = clubes_liga(sd, liga["url"])
@@ -235,10 +236,16 @@ def descargar(store: Store, sd: SDClient, liga_code: Optional[str], limit: Optio
                     row["fm_team_badge_url"] = imagen_sd(store, sd, SD_MEDIUM.format(id=prof["club_actual_id"]),
                                                          f"sd/{prof['club_actual_id']}.jpg")
                 if prof.get("liga_actual_nombre"):
-                    row["current_league_name"] = prof["liga_actual_nombre"]
-                    cod = prof.get("liga_actual_codigo")
-                    row["current_league_logo_url"] = imagen_sd(store, sd, prof.get("liga_actual_logo"),
-                                                               f"ligas/sd-{(cod or 'x').upper()}.jpg")
+                    # Nombre oficial del catálogo ("Serie A Women", no el texto corto del enlace "Serie A");
+                    # una copa ("Serie A Women's Cup") no es su liga: se queda la que se está descargando
+                    cod = (prof.get("liga_actual_codigo") or "").upper()
+                    cat = catalogo_sd.get(cod)
+                    if not cat or not (cat.get("level") or "").startswith("Tier"):
+                        cat = liga
+                    row["current_league_name"] = cat["name"]
+                    cod = cat["code"]
+                    row["current_league_logo_url"] = (catalogo_sd.get(cod) or {}).get("logo_url") or \
+                        imagen_sd(store, sd, prof.get("liga_actual_logo"), f"ligas/sd-{cod}.jpg")
                 if p["id"].startswith("sd-"):  # las unidas a Opta conservan el equipo Opta (estadísticas)
                     row["current_team_id"] = f"sd-{club['sd_id']}"
                 foto = None if previa and previa.get("photo_url") else \
@@ -275,11 +282,15 @@ def opta(store: Store, liga_code: Optional[str], max_matches: Optional[int], sol
     `solo_ultima`: de cada competición solo su temporada más reciente (y las elegidas que nunca se descargaron)."""
     from .ingest import IngestionPipeline
     from .storage import competiciones_objetivo
+    from .config import COMPETICIONES_INTERNACIONALES
     ligas = ligas_opta(store, liga_code)
-    if not ligas:
+    comp_ids = {l["opta_competition_id"] for l in ligas}
+    # Competiciones internacionales activadas en /admin (Champions...): entran en la descarga general
+    intl = set() if liga_code else {t["competition_id"] for t in store.select_all("ingestion_targets", "competition_id,enabled")
+                                     if t["enabled"] and t["competition_id"] in COMPETICIONES_INTERNACIONALES}
+    if not comp_ids and not intl:
         logger.info("Opta: ninguna liga elegida tiene competición Opta enlazada")
         return
-    comp_ids = {l["opta_competition_id"] for l in ligas}
     ultima = {}
     for c in store.select_all("opta_catalog", "*"):
         if c["competition_id"] in comp_ids and (c.get("data_level") or "").startswith("jugadora"):
@@ -296,6 +307,8 @@ def opta(store: Store, liga_code: Optional[str], max_matches: Optional[int], sol
             for c in nuevas], on_conflict="season_id")
     # competiciones_objetivo ordena de antigua a actual: la temporada activa se procesa la última
     comps = [c for c in competiciones_objetivo(store, solo_admin=True) if c["id"] in comp_ids]
+    # Internacionales al final: sus clubes y jugadoras ya existen desde sus ligas
+    comps += [c for c in competiciones_objetivo(store, solo_admin=True) if c["id"] in intl and c["id"] not in comp_ids]
     if solo_ultima:
         comps = temporadas_semanales(store, comps)
     pipe = IngestionPipeline(skip_photos=True, max_matches_per_comp=max_matches)
@@ -303,7 +316,10 @@ def opta(store: Store, liga_code: Optional[str], max_matches: Optional[int], sol
         logger.info(f"▶ Opta {comp['name']} {comp['season_id']}")
         pipe.procesar_competicion(comp)
     if pipe.totales["matches"]:
-        pipe.actualizar_similares()
+        try:  # extra: si falla, los datos de la liga ya están guardados y la descarga sigue
+            pipe.actualizar_similares()
+        except Exception as e:
+            logger.warning(f"Similares: omitido ({e})")
     logger.info(f"Opta completado: {pipe.totales}")
 
 
@@ -420,12 +436,108 @@ def vincular(store: Store, liga_code: Optional[str]):
     logger.info(f"Vincular entre ligas: {len(pares)} jugadoras unidas con su ficha Opta de otra liga o temporada")
 
 
+def _norm_club(nombre: Optional[str]) -> str:
+    n = normalizar(nombre or "")
+    return re.sub(r"\b(fc|cf|lfc|wfc|afc|sc|cd|club|de|women|w|ladies|femenino|femenil|frauen|ii|b)\b", " ", n).strip()
+
+
+def corregir_clubes(store: Store, dias: int = 60, prueba: bool = False) -> List[Dict[str, Any]]:
+    """El club con el que jugó su último partido oficial (últimos `dias`) manda sobre el guardado (Soccerdonna,
+    FotMob): una plantilla desfasada de Soccerdonna no puede llevarla a otra liga mientras juega en la suya.
+    Las competiciones internacionales no cuentan (allí juega con su club, pero no dicen su liga)."""
+    from .config import es_internacional
+    desde = (datetime.now(timezone.utc) - timedelta(days=dias)).date().isoformat()
+    ultimo: Dict[str, Dict[str, Any]] = {}
+    inicio = 0
+    while True:
+        filas = (store.client.table("player_match_stats").select("player_id,team_id,competition_id,match_date")
+                 .gte("match_date", desde).range(inicio, inicio + 999).execute().data or [])
+        for r in filas:
+            if (r["match_date"] or "") > (ultimo.get(r["player_id"], {}).get("match_date") or ""):
+                ultimo[r["player_id"]] = r
+        if len(filas) < 1000:
+            break
+        inicio += 1000
+    comps = {c["id"]: c for c in store.select_all("competitions", "id,country")}
+    equipos = {t["id"]: t for t in store.select_all("teams", "id,name,badge_url,competition_id,league_name,league_logo_url")}
+    # Liga de cada competición Opta según Soccerdonna (nombre y logo que usa el listado); la liga primero, no la copa
+    ligas: Dict[str, Dict[str, Any]] = {}
+    sd_todas = store.select_all("sd_leagues", "code,name,level,logo_url,opta_competition_id")
+    por_codigo = {l["code"]: l for l in sd_todas}
+    # Varias ligas de Soccerdonna pueden apuntar a la misma competición Opta (BL1 y BL2, SWPL 1 y 2):
+    # gana la de nivel más alto ("Tier 1" antes que "Tier 2", y antes que copas)
+    nivel = lambda l: (l.get("level") or "Z") if (l.get("level") or "").startswith("Tier") else "Z"
+    for l in sd_todas:
+        cid = l.get("opta_competition_id")
+        if cid and (cid not in ligas or nivel(l) < nivel(ligas[cid])):
+            ligas[cid] = l
+    cambios = []
+    for p in store.select_all("players", "id,name,current_team_id,fm_team_name,current_league_name,sd_league_code"):
+        r = ultimo.get(p["id"])
+        if not r or es_internacional({"id": r["competition_id"], "country": (comps.get(r["competition_id"]) or {}).get("country")}):
+            continue
+        eq = equipos.get(r["team_id"]) or {}
+        guardado = p.get("fm_team_name") or (equipos.get(p.get("current_team_id")) or {}).get("name")
+        a, b = _norm_club(eq.get("name")), _norm_club(guardado)
+        # Mismo club con otro nombre ("Köln" / "1. FC Köln", "Hearts" / "Heart of Midlothian")
+        if not eq.get("name") or (guardado and (fuzz.token_set_ratio(a, b) >= 70
+                                                or (min(len(a), len(b)) >= 5 and fuzz.partial_ratio(a, b) >= 90))):
+            continue
+        # Su liga guardada ya es la de esa competición (Apertura/Clausura, SWPL 1...): se conserva
+        actual = por_codigo.get(p.get("sd_league_code") or "")
+        cid_eq = eq.get("competition_id") or r["competition_id"]
+        liga = ligas.get(cid_eq) or ligas.get(r["competition_id"]) or {}
+        if actual and actual.get("opta_competition_id") == cid_eq and nivel(actual) == nivel(liga):
+            liga = actual
+        fila = {"id": p["id"], "current_team_id": r["team_id"], "fm_team_name": eq["name"],
+                "fm_team_badge_url": eq.get("badge_url"),
+                "current_league_name": liga.get("name") or eq.get("league_name"),
+                "current_league_logo_url": liga.get("logo_url") or eq.get("league_logo_url"),
+                "sd_league_code": liga.get("code") or p.get("sd_league_code")}
+        cambios.append({**fila, "_nombre": p["name"], "_antes": f"{guardado} / {p.get('current_league_name')}",
+                        "_fecha": r["match_date"]})
+    # Nombre de liga no oficial o de una copa ("Serie A", "Serie A Women's Cup") → la liga de su sd_league_code
+    oficiales = {l["name"] for l in sd_todas if (l.get("level") or "").startswith("Tier")}
+    oficial_liga = {l["name"]: l for l in sd_todas if (l.get("level") or "").startswith("Tier")}
+    oficial_norm = {normalizar(n): n for n in oficial_liga}
+    ya = {c["id"] for c in cambios}
+    for p in store.select_all("players", "id,name,current_league_name,sd_league_code"):
+        liga = por_codigo.get(p.get("sd_league_code") or "")
+        nombre = p.get("current_league_name")
+        if p["id"] in ya or not nombre or nombre in oficiales:
+            continue
+        # Misma liga oficial escrita de otra forma (apóstrofo recto, espacios): solo se corrige la escritura
+        igual = oficial_norm.get(normalizar(nombre))
+        if igual:
+            l = oficial_liga[igual]
+            cambios.append({"id": p["id"], "current_league_name": igual, "current_league_logo_url": l.get("logo_url"),
+                            "_nombre": p["name"], "_antes": nombre, "_fecha": "-"})
+            continue
+        if not liga or not (liga.get("level") or "").startswith("Tier"):
+            continue
+        # Solo si el nombre guardado es una variante de esa liga (no otra liga de otro país sin catalogar)
+        if fuzz.partial_ratio(normalizar(nombre), normalizar(liga["name"])) < 90:
+            continue
+        cambios.append({"id": p["id"], "current_league_name": liga["name"], "current_league_logo_url": liga.get("logo_url"),
+                        "_nombre": p["name"], "_antes": nombre, "_fecha": "-"})
+    for c in cambios:
+        logger.info(f"  {c['_nombre']}: {c['_antes']} → {c.get('fm_team_name', '(mismo club)')} / {c['current_league_name']} "
+                    f"(último partido {str(c['_fecha'])[:10]})")
+    if not prueba:
+        for c in cambios:
+            store.update("players", {k: v for k, v in c.items() if not k.startswith("_") and k != "id"}, id=c["id"])
+    logger.info(f"Club según el último partido: {len(cambios)} jugadoras {'por corregir (prueba)' if prueba else 'corregidas'}")
+    return cambios
+
+
 def _unir(store: Store, s_: Dict[str, Any], mejor: Dict[str, Any], club_de_soccerdonna: bool = False):
     """Pasa los datos de la ficha "sd-" a la fila Opta (que tiene las estadísticas) y borra la "sd-"."""
     club = ("fm_team_name", "fm_team_badge_url", "current_league_name", "current_league_logo_url")
+    # El club y la liga de Soccerdonna solo si Opta no la tiene en una plantilla actual: aunque la fila Opta no
+    # tenga esos campos, el club de Opta (con el que juega) manda sobre una plantilla de Soccerdonna desfasada
     datos = {k: s_[k] for k in SD_CAMPOS if s_.get(k) is not None and (k.startswith(("sd_", "market", "photo"))
-                                                                      or not mejor.get(k)
-                                                                      or (club_de_soccerdonna and k in club))}
+                                                                      or (k in club and club_de_soccerdonna)
+                                                                      or (k not in club and not mejor.get(k)))}
     if club_de_soccerdonna and s_.get("current_team_id"):
         datos["current_team_id"] = s_["current_team_id"]
     store.update("players", {"sd_id": None}, id=s_["id"])  # sd_id es único: se libera antes de moverlo
@@ -677,7 +789,9 @@ def fotos(store: Store, liga_code: Optional[str], limit: Optional[int] = None):
 def main():
     parser = argparse.ArgumentParser(description="Jugadoras desde las ligas de Soccerdonna elegidas en /admin")
     parser.add_argument("accion", choices=["catalogo", "descargar", "opta", "vincular", "escudos", "fotos", "todo",
-                                           "actualizar-opta", "actualizar-soccerdonna", "recalcular", "retiradas", "completar"])
+                                           "actualizar-opta", "actualizar-soccerdonna", "recalcular", "retiradas", "completar",
+                                           "corregir-clubes"])
+    parser.add_argument("--prueba", action="store_true", help="corregir-clubes: solo mostrar los cambios")
     parser.add_argument("--max-matches", type=int, help="Opta: máximo de partidos nuevos por temporada (pruebas)")
     parser.add_argument("--refresco-dias", type=int, default=REFRESCO_DIAS,
                         help="Volver a leer la ficha de las ya guardadas cada N días (0 = todas)")
@@ -687,6 +801,8 @@ def main():
                         help="actualizar-opta: todas las temporadas elegidas, no solo la última")
     args = parser.parse_args()
     store, sd = Store(get_supabase_client()), SDClient()
+    if args.accion == "corregir-clubes":
+        return corregir_clubes(store, prueba=args.prueba)
     if args.accion == "catalogo":
         return catalogo(store, sd)
     if args.accion == "recalcular":
@@ -700,6 +816,7 @@ def main():
         opta(store, args.liga, args.max_matches, solo_ultima=not args.todas_temporadas)
         vincular(store, args.liga)
         completar(store, limit=args.limit)
+        corregir_clubes(store)
         for code in nuevas:
             escudos(store, code)
         fotos(store, args.liga, args.limit)
@@ -712,6 +829,7 @@ def main():
         descargar(store, sd, args.liga, args.limit, args.refresco_dias)
         vincular(store, args.liga)
         completar(store, limit=args.limit)
+        corregir_clubes(store)
         marcar_retiradas(store, sd, args.refresco_dias)
         escudos(store, args.liga)
         fotos(store, args.liga, args.limit)
@@ -722,6 +840,7 @@ def main():
         opta(store, args.liga, args.max_matches)
     if args.accion in ("vincular", "todo"):
         vincular(store, args.liga)
+        corregir_clubes(store)
     if args.accion in ("escudos", "todo"):
         escudos(store, args.liga)
     if args.accion in ("fotos", "todo"):

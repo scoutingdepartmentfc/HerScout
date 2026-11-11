@@ -37,8 +37,9 @@ HEADERS = {
 }
 PAUSA = 0.4  # respetar el servidor
 # Palabras que no ayudan a distinguir clubes ("FC Ingolstadt 04" vs "Ingolstadt")
+# NOTA: NO incluir "city" ni "united" porque colapsan clubes de la misma ciudad (Manchester City vs Manchester United)
 RUIDO_CLUB = re.compile(r"\b(fc|cf|sc|sv|ac|as|afc|cd|ud|sd|fk|nk|hnk|gnk|ks|sk|bsc|vfl|vfb|tsv|ssv|spvgg|"
-                        r"1\.|calcio|club|de|city|united|town|football|futbol|kv|krc|rsc|royal|us|ss|asd|"
+                        r"1\.|calcio|club|de|town|football|futbol|kv|krc|rsc|royal|us|ss|asd|"
                         r"\d+)\b")
 
 

@@ -1,6 +1,7 @@
 import React from "react";
 import { Bandera } from "./Bandera";
 import { EscudoEquipo } from "./EscudoEquipo";
+import { PlayerSilhouette } from "./PlayerSilhouette";
 
 import { getClubTheme } from "@/lib/clubThemes";
 
@@ -278,8 +279,8 @@ export const CromoJugador: React.FC<CromoPlayerProps> = ({
               }}
             />
           ) : (
-            <div className="h-full flex items-center justify-center font-black text-slate-400 text-5xl">
-              ⚽
+            <div className="h-full w-full flex items-center justify-center text-slate-500/70 drop-shadow-[0_4px_8px_rgba(0,0,0,0.3)]">
+              <PlayerSilhouette className="w-40 h-40 scale-125" />
             </div>
           )}
         </div>

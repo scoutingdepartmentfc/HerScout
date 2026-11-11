@@ -80,18 +80,27 @@ class Store:
         if not self.client or not rows:
             return
         for i in range(0, len(rows), batch):
-            chunk = rows[i:i + batch]
-            for attempt in range(3):
-                try:
-                    q = self.client.table(table).upsert(chunk, on_conflict=on_conflict) if on_conflict \
-                        else self.client.table(table).upsert(chunk)
-                    q.execute()
-                    break
-                except Exception as e:
-                    if attempt == 2:
-                        raise
-                    logger.warning(f"Reintentando upsert en {table} ({e})")
-                    time.sleep(2 * (attempt + 1))
+            self._upsert_lote(table, rows[i:i + batch], on_conflict)
+
+    def _upsert_lote(self, table: str, chunk: List[Dict[str, Any]], on_conflict: Optional[str]):
+        for attempt in range(3):
+            try:
+                q = self.client.table(table).upsert(chunk, on_conflict=on_conflict) if on_conflict \
+                    else self.client.table(table).upsert(chunk)
+                q.execute()
+                return
+            except Exception as e:
+                # Statement timeout (57014): lote demasiado pesado → se parte en dos en vez de reintentar igual
+                if '57014' in str(e) and len(chunk) > 1:
+                    mitad = len(chunk) // 2
+                    logger.warning(f"Timeout en upsert de {table}: lote de {len(chunk)} partido en dos")
+                    self._upsert_lote(table, chunk[:mitad], on_conflict)
+                    self._upsert_lote(table, chunk[mitad:], on_conflict)
+                    return
+                if attempt == 2:
+                    raise
+                logger.warning(f"Reintentando upsert en {table} ({e})")
+                time.sleep(2 * (attempt + 1))
 
     def insert(self, table: str, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         if not self.client:

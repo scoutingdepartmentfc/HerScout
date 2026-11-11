@@ -56,6 +56,43 @@ NIVEL_LIGA = {
     'cydr5rltozch9qnzjurt1r7d9': 52.0,  # SWPL 1
     '2fhhxvyhwkxd6gpgg9nbb2p2i': 42.0,  # Segunda Federación Femenina
 }
+# Competiciones internacionales de CLUBES (Opta): se descargan desde /admin → "Competiciones internacionales".
+# Sus partidos suman a la jugadora, pero NO cambian la liga del club ni el equipo actual de la jugadora.
+COMPETICIONES_INTERNACIONALES = {
+    '55hcphd1ccc6eai1ms77460on': "UEFA Women's Champions League",
+    '1nwgd1b2d903fvnwgnsdadkb8': "UEFA Women's Europa Cup",
+    '65oi3upjiu4lcukayuq66fhuc': "FIFA Women's Champions Cup",
+    '3tybapqetnmdiam9exg1q4yl0': "Concacaf W Champions Cup",
+    '135j6qi3ap8i3vc9hwdo4fjtg': "NWSL x Liga MX Femenil Summer Cup",
+    'avrpx5lanaaxagr4h4duxj3vc': "CONMEBOL Libertadores Femenina",
+    'ep4po13e04rjg268pgete0fvu': "AFC Women's Champions League",
+    'xu2nd3dkwdun0j71tnqabfo4': "CAF Women's Champions League",
+    '8dxigebf8ankjp0ncupwte0b8': "OFC Women's Champions League",
+    '1tn3f9q6oy40vivvsq3ik5awa': "Baltic Women's League",
+    '2irmeeywhndovbhbgkz37v9qs': "All-Island Cup",
+}
+# Regiones de opta_catalog.country que no son un país (competición internacional)
+REGIONES_INTERNACIONALES = {'Europe', 'World', 'Asia', 'Africa', 'N/C America', 'South America', 'Oceania'}
+NIVEL_LIGA.update({
+    '65oi3upjiu4lcukayuq66fhuc': 70.0,  # FIFA Women's Champions Cup (campeonas continentales)
+    '55hcphd1ccc6eai1ms77460on': 67.0,  # UWCL
+    '3tybapqetnmdiam9exg1q4yl0': 60.0,  # Concacaf W Champions Cup
+    '135j6qi3ap8i3vc9hwdo4fjtg': 60.0,  # NWSL x Liga MX Summer Cup
+    '1nwgd1b2d903fvnwgnsdadkb8': 58.0,  # UWEC
+    'avrpx5lanaaxagr4h4duxj3vc': 54.0,  # Libertadores
+    'ep4po13e04rjg268pgete0fvu': 50.0,  # AFC WCL
+    'xu2nd3dkwdun0j71tnqabfo4': 46.0,   # CAF WCL
+    '2irmeeywhndovbhbgkz37v9qs': 44.0,  # All-Island Cup
+    '1tn3f9q6oy40vivvsq3ik5awa': 42.0,  # Baltic Women's League
+    '8dxigebf8ankjp0ncupwte0b8': 40.0,  # OFC WCL
+})
+
+
+def es_internacional(comp) -> bool:
+    """Competición entre clubes/selecciones de varios países (por ID conocido o por región del catálogo Opta)."""
+    return comp.get('id') in COMPETICIONES_INTERNACIONALES or comp.get('country') in REGIONES_INTERNACIONALES
+
+
 NIVEL_LIGA_DEFECTO = 52.0  # Ligas nuevas de /admin hasta darles nivel aquí
 # Grupos de demarcación con menos jugadoras que esto se comparan con toda la liga
 MIN_JUGADORAS_GRUPO = 5

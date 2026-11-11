@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Input } from "@/components/ui/Input";
 import { Bandera } from "@/components/scouting/Bandera";
 import { OptaLogo } from "@/components/scouting/OptaLogo";
-import { Check, CheckCircle2, Download, Filter, Globe2, Layers, Search, Shield, Sparkles, Trash2, Trophy, Users, X } from "lucide-react";
+import { Check, CheckCircle2, Download, Filter, RefreshCw, Globe2, Layers, Search, Shield, Sparkles, Trash2, Trophy, Users, X } from "lucide-react";
 
 interface SdLeague {
   code: string;
@@ -54,6 +54,8 @@ export function SoccerdonnaLeagues() {
   const [tab, setTab] = useState<"all" | "selected" | "tier1" | "cups">("all");
   const [displayLimit, setDisplayLimit] = useState<number>(24);
   const [deleting, setDeleting] = useState<SdLeague | null>(null);
+  // true = after deleting, re-download the league from scratch (Soccerdonna + Opta, every season)
+  const [rebuildAfter, setRebuildAfter] = useState(false);
   const [password, setPassword] = useState("");
   const [countryMenuOpen, setCountryMenuOpen] = useState(false);
   const countryMenuRef = React.useRef<HTMLDivElement>(null);
@@ -558,6 +560,7 @@ export function SoccerdonnaLeagues() {
                           type="button"
                           onClick={() => {
                             setDeleting(l);
+                            setRebuildAfter(false);
                             setPassword("");
                             setError(null);
                           }}
@@ -571,6 +574,39 @@ export function SoccerdonnaLeagues() {
                       <span>Pendiente de descarga</span>
                     )}
                   </div>
+
+                  {l.enabled && (
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Button
+                        size="xs"
+                        variant="outline"
+                        isLoading={saving === `upd-${l.code}`}
+                        leftIcon={<RefreshCw className="w-3 h-3" />}
+                        title="Descarga solo lo nuevo (partidos, fichas y fotos) de esta liga"
+                        onClick={async () => {
+                          setNotice(null);
+                          if (await send(`upd-${l.code}`, { action: "run", modo: "todo", code: l.code }))
+                            setNotice(`${l.name}: actualización iniciada en GitHub Actions.`);
+                        }}
+                      >
+                        Actualizar
+                      </Button>
+                      <Button
+                        size="xs"
+                        variant="outline"
+                        className="border-amber-500/40 text-amber-300 hover:bg-amber-500/10"
+                        title="Borra todo lo de esta liga y lo vuelve a descargar desde cero"
+                        onClick={() => {
+                          setDeleting(l);
+                          setRebuildAfter(true);
+                          setPassword("");
+                          setError(null);
+                        }}
+                      >
+                        De 0
+                      </Button>
+                    </div>
+                  )}
 
                   <Button
                     size="xs"
@@ -630,15 +666,26 @@ export function SoccerdonnaLeagues() {
                 e.preventDefault();
                 const ok = await send("delete", { action: "deleteData", code: deleting.code, password });
                 if (ok) {
-                  setNotice(`Datos de ${deleting.name} borrados.`);
+                  if (rebuildAfter) {
+                    const started = await send("delete", { action: "run", modo: "todo", code: deleting.code });
+                    setNotice(
+                      started
+                        ? `${deleting.name}: datos borrados y descarga desde cero iniciada en GitHub Actions.`
+                        : `${deleting.name}: datos borrados, pero no se pudo iniciar la descarga.`
+                    );
+                  } else {
+                    setNotice(`Datos de ${deleting.name} borrados.`);
+                  }
                   setDeleting(null);
                 }
               }}
             >
-              <p className="text-sm font-bold text-white">Borrar {deleting.name}</p>
+              <p className="text-sm font-bold text-white">{rebuildAfter ? "Procesar de 0" : "Borrar"} {deleting.name}</p>
               <p className="text-xs text-muted-foreground">
                 Se borran definitivamente de Supabase sus {downloaded[deleting.code] || 0} jugadoras, clubes, partidos,
-                estadísticas y datos de Soccerdonna. La liga sigue en el catálogo y se puede volver a descargar.
+                estadísticas y datos de Soccerdonna. {rebuildAfter
+                  ? "Después se vuelve a descargar entera (todas las temporadas) en GitHub Actions."
+                  : "La liga sigue en el catálogo y se puede volver a descargar."}
               </p>
               <Input
                 type="password"
@@ -654,7 +701,7 @@ export function SoccerdonnaLeagues() {
                   Cancelar
                 </Button>
                 <Button type="submit" variant="destructive" size="sm" disabled={!password} isLoading={saving === "delete"}>
-                  Borrar definitivamente
+                  {rebuildAfter ? "Borrar y descargar de 0" : "Borrar definitivamente"}
                 </Button>
               </div>
             </form>

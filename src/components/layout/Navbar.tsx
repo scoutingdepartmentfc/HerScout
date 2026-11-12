@@ -17,6 +17,7 @@ import {
   Bookmark,
   Settings,
   Trophy,
+  Scale,
   Menu,
   X,
 } from "lucide-react";
@@ -24,6 +25,7 @@ import {
 const navigation = [
   { name: "The Hub", href: "/hub", icon: LayoutDashboard },
   { name: "Player Database", href: "/players", icon: Users },
+  { name: "Comparison", href: "/compare", icon: Scale },
   { name: "11 Builder", href: "/builder", icon: Trophy },
   { name: "Reports & Analysis", href: "/reports", icon: FileText },
   { name: "Matches", href: "/matches", icon: Calendar },

@@ -6,121 +6,179 @@ import React, { createContext, useContext, useEffect, useRef, useState } from "r
 export const PITCH_CARD_W = 128;
 export const PITCH_CARD_H = 164;
 const MIN_SCALE = 0.38;
-const SLOT_GAP = 8;
+const SLOT_GAP = 10;
+/** Inner padding of the slots area (px per side). */
+const PAD = 14;
 
-/** Scale (0.38–1) cards should render at so the widest line and every line fit the pitch. */
+/** Scale slots render at so the whole pitch fits. */
 export const PitchScaleContext = createContext(1);
 export const usePitchScale = () => useContext(PitchScaleContext);
 
-/** Scales content designed at w x h (default: an empty card slot) like the cards around it. */
+/** Scales content designed at w x h like the other slots of the pitch. */
 export const EmptyPitchSlot: React.FC<{ children: React.ReactNode; w?: number; h?: number }> = ({ children, w = 96, h = 144 }) => {
   const scale = usePitchScale();
   return (
-    <div style={{ width: w * scale, height: h * scale }}>
+    <div style={{ width: w * scale, height: h * scale }} className="relative hover:z-40">
       <div style={{ width: w, height: h, transform: `scale(${scale})`, transformOrigin: "top left" }}>{children}</div>
     </div>
   );
 };
 
 interface StadiumPitchProps {
-  children: React.ReactNode;
-  /** Players in the widest line of the formation (drives card size). */
-  maxPerLine?: number;
-  /** Lines of the formation: with `fill`, cards also shrink so every line fits the height. */
-  lines?: number;
-  /** Design size of what sits in each slot (defaults to a pitch card). */
-  cardW?: number;
-  cardH?: number;
-  /** Take the parent's height (the whole pitch always visible) instead of a fixed minimum height. */
-  fill?: boolean;
+  /** Slots of each line of the system, from attack to goalkeeper. */
+  lines: React.ReactNode[][];
+  /** Horizontal: goalkeeper on the left, attack on the right. Vertical: attack on top. */
+  orientation?: "horizontal" | "vertical";
+  /** Design size of each slot. */
+  slotW?: number;
+  slotH?: number;
+  /** Take the parent's height and scale so the whole pitch is always visible (otherwise the height follows the content). */
+  fit?: boolean;
+  /** Only some lines shown: they may be laid across the pitch when that makes the slots bigger. */
+  focus?: boolean;
+  minScale?: number;
+  maxScale?: number;
 }
 
 export const StadiumPitch: React.FC<StadiumPitchProps> = ({
-  children, maxPerLine = 4, lines = 4, cardW = PITCH_CARD_W, cardH = PITCH_CARD_H, fill = false,
+  lines, orientation = "vertical", slotW = PITCH_CARD_W, slotH = PITCH_CARD_H, fit = false, focus = false,
+  minScale = MIN_SCALE, maxScale = 1,
 }) => {
   const contentRef = useRef<HTMLDivElement>(null);
-  const [scale, setScale] = useState(1);
+  const horizontal = orientation === "horizontal";
+  const [layout, setLayout] = useState({ scale: 1, columns: horizontal });
+  /** Sin `fit`: alto mínimo para la proporción del campo (crece si el contenido lo necesita) */
+  const [minH, setMinH] = useState(0);
+  const shape = lines.map((l) => l.length).join(",");
+  const ratio = horizontal ? 100 / 60 : 60 / 100;
 
+  // Mayor rectángulo con la proporción del campo que cabe en el hueco
+  const boxRef = useRef<HTMLDivElement>(null);
+  const [box, setBox] = useState({ w: 0, h: 0 });
   useEffect(() => {
-    const el = contentRef.current;
-    if (!el) return;
+    const el = boxRef.current;
+    if (!fit || !el) return;
     const update = () => {
-      const perSlot = el.clientWidth / Math.max(1, maxPerLine) - SLOT_GAP;
-      let s = perSlot / cardW;
-      if (fill) s = Math.min(s, (el.clientHeight / Math.max(1, lines) - SLOT_GAP) / cardH);
-      setScale(Math.min(1, Math.max(MIN_SCALE, s)));
+      const w = Math.min(el.clientWidth, el.clientHeight * ratio);
+      setBox({ w: Math.floor(w), h: Math.floor(w / ratio) });
     };
     update();
     const ro = new ResizeObserver(update);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [maxPerLine, lines, cardW, cardH, fill]);
+  }, [fit, ratio]);
 
-  return (
-    <div className={`relative w-full overflow-hidden rounded-2xl border-2 border-emerald-500/30 bg-[#06190f] shadow-2xl ${fill ? "h-full" : ""}`}>
-      {/* 3D Perspective & Grass texture background */}
+  useEffect(() => {
+    const el = contentRef.current;
+    if (!el) return;
+    const counts = shape ? shape.split(",").map(Number) : [1];
+    const n = Math.max(1, counts.length);
+    const maxPer = Math.max(1, ...counts);
+    const update = () => {
+      if (!fit) setMinH(Math.round(el.clientWidth / ratio));
+      const W = el.clientWidth - 2 * PAD;
+      const H = el.clientHeight - 2 * PAD;
+      // Lines as columns (horizontal pitch) or as rows (vertical pitch)
+      const asColumns = Math.min((W / n - SLOT_GAP) / slotW, (H / maxPer - SLOT_GAP) / slotH);
+      const asRows = fit
+        ? Math.min((W / maxPer - SLOT_GAP) / slotW, (H / n - SLOT_GAP) / slotH)
+        : (W / maxPer - SLOT_GAP) / slotW;
+      let columns = horizontal;
+      if (focus && fit) columns = asColumns > asRows;
+      const s = columns ? asColumns : asRows;
+      setLayout({ scale: Math.min(maxScale, Math.max(minScale, s)), columns });
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [shape, horizontal, slotW, slotH, fit, focus, minScale, maxScale, box.w > 0, ratio]);
+
+  // Columns: goalkeeper on the left → attack on the right
+  const ordered = layout.columns ? [...lines].reverse() : lines;
+
+  const pitch = (style?: React.CSSProperties) => (
+    <div
+      className={`relative overflow-hidden rounded-2xl border-2 border-emerald-500/30 bg-[#06190f] shadow-2xl flex flex-col ${fit ? "" : "w-full"}`}
+      style={style}
+    >
+      <PitchMarkings horizontal={horizontal} />
       <div
-        className={`relative w-full px-1 py-4 flex flex-col justify-between ${
-          fill ? "h-full sm:px-4 sm:py-5" : "min-h-[480px] sm:min-h-[720px] lg:min-h-[820px] sm:p-6"
-        }`}
-        style={{
-          background: `
-            radial-gradient(ellipse at 50% 20%, rgba(16, 185, 129, 0.25) 0%, transparent 70%),
-            repeating-linear-gradient(
-              0deg,
-              #134e2f 0px,
-              #134e2f 48px,
-              #0f3f26 48px,
-              #0f3f26 96px
-            )
-          `,
-        }}
+        ref={contentRef}
+        className={`relative z-10 w-full flex-1 flex ${fit ? "min-h-0" : "gap-y-5"} ${layout.columns ? "flex-row" : "flex-col"} justify-around`}
+        style={{ padding: PAD, minHeight: fit ? undefined : minH }}
       >
-        {/* Stadium lighting glow at top */}
-        <div className="absolute top-0 inset-x-0 h-32 bg-gradient-to-b from-emerald-400/15 via-emerald-500/5 to-transparent pointer-events-none" />
-
-        {/* Pitch Lines (FIFA Regulation) */}
-        <div className="absolute inset-2 sm:inset-8 border-2 border-white/35 rounded-lg pointer-events-none">
-          {/* Halfway line */}
-          <div className="absolute top-1/2 inset-x-0 -translate-y-1/2 border-b-2 border-white/35" />
-
-          {/* Center circle */}
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-24 h-24 sm:w-44 sm:h-44 rounded-full border-2 border-white/35" />
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-white/40" />
-
-          {/* Top Penalty Area (Opponent Box) - Doble de grande */}
-          <div className={`absolute top-0 left-1/2 -translate-x-1/2 w-[520px] max-w-[60%] border-b-2 border-x-2 border-white/35 rounded-b-xl ${fill ? "h-[16%]" : "h-28 sm:h-52"}`}>
-            {/* Goal area chica */}
-            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-1/2 h-12 sm:h-24 border-b-2 border-x-2 border-white/35 rounded-b-md" />
-            {/* Punto de penalti */}
-            <div className="absolute bottom-4 sm:bottom-8 left-1/2 -translate-x-1/2 w-2.5 h-2.5 rounded-full bg-white/50" />
-            {/* Top Penalty Arc */}
-            <div className="absolute -bottom-8 sm:-bottom-14 left-1/2 -translate-x-1/2 w-24 h-8 sm:w-44 sm:h-14 border-b-2 border-white/35 rounded-b-full" />
-          </div>
-
-          {/* Bottom Penalty Area (Own Box) - Doble de grande */}
-          <div className={`absolute bottom-0 left-1/2 -translate-x-1/2 w-[520px] max-w-[60%] border-t-2 border-x-2 border-white/35 rounded-t-xl ${fill ? "h-[16%]" : "h-28 sm:h-52"}`}>
-            {/* Goal area chica */}
-            <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-1/2 h-12 sm:h-24 border-t-2 border-x-2 border-white/35 rounded-t-md" />
-            {/* Punto de penalti */}
-            <div className="absolute top-4 sm:top-8 left-1/2 -translate-x-1/2 w-2.5 h-2.5 rounded-full bg-white/50" />
-            {/* Bottom Penalty Arc */}
-            <div className="absolute -top-8 sm:-top-14 left-1/2 -translate-x-1/2 w-24 h-8 sm:w-44 sm:h-14 border-t-2 border-white/35 rounded-t-full" />
-          </div>
-
-          {/* Corner arcs */}
-          <div className="absolute top-0 left-0 w-8 h-8 border-b-2 border-r-2 border-white/35 rounded-br-full" />
-          <div className="absolute top-0 right-0 w-8 h-8 border-b-2 border-l-2 border-white/35 rounded-bl-full" />
-          <div className="absolute bottom-0 left-0 w-8 h-8 border-t-2 border-r-2 border-white/35 rounded-tr-full" />
-          <div className="absolute bottom-0 right-0 w-8 h-8 border-t-2 border-l-2 border-white/35 rounded-tl-full" />
-        </div>
-
-        {/* Content: cards arranged inside */}
-        <div ref={contentRef} className={`relative z-10 w-full h-full flex flex-col justify-between ${fill ? "" : "py-2 sm:py-6"}`}>
-          <PitchScaleContext.Provider value={scale}>{children}</PitchScaleContext.Provider>
-        </div>
+        <PitchScaleContext.Provider value={layout.scale}>
+          {ordered.map((line, i) => (
+            <div
+              key={i}
+              className={`flex items-center justify-around ${layout.columns ? "flex-col" : "flex-row flex-wrap gap-y-3"}`}
+              style={layout.columns ? undefined : { columnGap: SLOT_GAP }}
+            >
+              {line}
+            </div>
+          ))}
+        </PitchScaleContext.Provider>
       </div>
+    </div>
+  );
+
+  // Siempre en proporción real: 100×60 (horizontal) o 60×100 (vertical)
+  if (!fit) return pitch();
+  return (
+    <div ref={boxRef} className="w-full h-full flex items-center justify-center">
+      {box.w > 0 && pitch({ width: box.w, height: box.h })}
     </div>
   );
 };
 
+/** Grass and FIFA-style markings, drawn in % so they follow any size. */
+function PitchMarkings({ horizontal }: { horizontal: boolean }) {
+  const ln = "border-white/30";
+  return (
+    <div
+      className="absolute inset-0 pointer-events-none"
+      style={{
+        background: `radial-gradient(ellipse at 50% 50%, rgba(16, 185, 129, 0.16) 0%, transparent 70%),
+          repeating-linear-gradient(${horizontal ? "90deg" : "0deg"}, #134e2f 0 6.25%, #0f3f26 6.25% 12.5%)`,
+      }}
+    >
+      <div className={`absolute inset-2 sm:inset-3 border-2 ${ln} rounded-md`}>
+        {horizontal ? (
+          <div className={`absolute inset-y-0 left-1/2 -translate-x-1/2 border-l-2 ${ln}`} />
+        ) : (
+          <div className={`absolute inset-x-0 top-1/2 -translate-y-1/2 border-t-2 ${ln}`} />
+        )}
+        <div
+          className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 aspect-square rounded-full border-2 ${ln} ${
+            horizontal ? "h-[30.5%]" : "w-[30.5%]"
+          }`}
+        />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-white/40" />
+        {horizontal ? (
+          <>
+            <div className={`absolute left-0 top-1/2 -translate-y-1/2 h-[67%] w-[16.5%] border-2 border-l-0 ${ln}`}>
+              <div className={`absolute left-0 top-1/2 -translate-y-1/2 h-[45%] w-[33%] border-2 border-l-0 ${ln}`} />
+              <div className="absolute left-[67%] top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-white/45" />
+            </div>
+            <div className={`absolute right-0 top-1/2 -translate-y-1/2 h-[67%] w-[16.5%] border-2 border-r-0 ${ln}`}>
+              <div className={`absolute right-0 top-1/2 -translate-y-1/2 h-[45%] w-[33%] border-2 border-r-0 ${ln}`} />
+              <div className="absolute right-[67%] top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-white/45" />
+            </div>
+          </>
+        ) : (
+          <>
+            <div className={`absolute top-0 left-1/2 -translate-x-1/2 w-[67%] h-[16.5%] border-2 border-t-0 ${ln}`}>
+              <div className={`absolute top-0 left-1/2 -translate-x-1/2 w-[45%] h-[33%] border-2 border-t-0 ${ln}`} />
+              <div className="absolute top-[67%] left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-white/45" />
+            </div>
+            <div className={`absolute bottom-0 left-1/2 -translate-x-1/2 w-[67%] h-[16.5%] border-2 border-b-0 ${ln}`}>
+              <div className={`absolute bottom-0 left-1/2 -translate-x-1/2 w-[45%] h-[33%] border-2 border-b-0 ${ln}`} />
+              <div className="absolute bottom-[67%] left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-white/45" />
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}

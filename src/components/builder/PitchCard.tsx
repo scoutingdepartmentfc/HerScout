@@ -43,9 +43,13 @@ interface PitchCardProps {
   draggable?: boolean;
   /** Scout's note on this player: shows a marker (and the text on hover). */
   note?: string;
+  /** Custom drag data (makes the card draggable). */
+  onDragStart?: React.DragEventHandler<HTMLDivElement>;
+  /** On-screen scale when the card is scaled by a parent (keeps the name legible). */
+  textScale?: number;
 }
 
-export const PitchCard: React.FC<PitchCardProps> = ({ player, assignedRole, onClick, draggable, note }) => {
+export const PitchCard: React.FC<PitchCardProps> = ({ player, assignedRole, onClick, draggable, note, onDragStart, textScale }) => {
   const rawScore = player.notaGlobal ?? player.score_general;
   const ovr =
     rawScore != null
@@ -58,7 +62,7 @@ export const PitchCard: React.FC<PitchCardProps> = ({ player, assignedRole, onCl
   // The card is laid out at its full design size and scaled to the space the pitch gives it.
   const scale = usePitchScale();
   // Keep the name legible when the card shrinks (never below ~7px on screen)
-  const nameSize = Math.max(10, 7 / scale);
+  const nameSize = Math.max(10, 7 / (textScale ?? scale));
 
   const cardClipPath =
     "polygon(0% 12%, 8% 4%, 22% 1.5%, 50% 0%, 78% 1.5%, 92% 4%, 100% 12%, 100% 92%, 92% 98.5%, 78% 100%, 22% 100%, 8% 98.5%, 0% 92%)";
@@ -67,17 +71,18 @@ export const PitchCard: React.FC<PitchCardProps> = ({ player, assignedRole, onCl
     <div style={{ width: PITCH_CARD_W * scale, height: PITCH_CARD_H * scale }}>
     <div
       onClick={onClick}
-      draggable={draggable}
+      draggable={draggable || !!onDragStart}
       onDragStart={
-        draggable
+        onDragStart ??
+        (draggable
           ? (e) => {
               e.dataTransfer.setData(PLAYER_DRAG_TYPE, JSON.stringify(player));
               e.dataTransfer.effectAllowed = "copy";
             }
-          : undefined
+          : undefined)
       }
       className={`group relative flex flex-col items-center select-none transition-transform duration-200 hover:scale-105 hover:z-40 ${
-        draggable ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"
+        draggable || onDragStart ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"
       }`}
       style={{
         width: PITCH_CARD_W,

@@ -76,41 +76,21 @@ async function fetchTrends(db: any): Promise<Map<string, "up" | "neutral" | "dow
     d.setMonth(d.getMonth() - 3);
     const trendFromDate = d.toISOString().split("T")[0];
 
-    const { count, error: countErr } = await db
+    const { data: scores, error } = await db
       .from("player_match_scores")
-      .select("player_id", { count: "exact", head: true })
-      .gte("match_date", trendFromDate);
-    if (countErr) throw countErr;
+      .select("player_id, score_general, match_date")
+      .gte("match_date", trendFromDate)
+      .order("match_date", { ascending: true })
+      .limit(10000);
 
-    const total = Math.min(count || 0, 50000);
-    const offsets: number[] = [];
-    for (let from = 0; from < total; from += PAGE) offsets.push(from);
-
-    // Fetch all pages in parallel (stable order: match_date, then player_id)
-    const results = await Promise.all(
-      offsets.map((from) =>
-        db
-          .from("player_match_scores")
-          .select("player_id, score_general, match_date")
-          .gte("match_date", trendFromDate)
-          .order("match_date", { ascending: true })
-          .order("player_id", { ascending: true })
-          .range(from, from + PAGE - 1)
-      )
-    );
+    if (error || !scores) return trendByPlayer;
 
     const playerMatchesMap = new Map<string, Array<{ date: string; score: number }>>();
-    for (const res of results as any[]) {
-      if (res.error) {
-        console.error("[TREND] Error fetching match scores:", res.error);
-        continue;
-      }
-      for (const row of res.data || []) {
-        if (row.score_general != null && !isNaN(Number(row.score_general))) {
-          const arr = playerMatchesMap.get(row.player_id) || [];
-          arr.push({ date: row.match_date, score: Number(row.score_general) });
-          playerMatchesMap.set(row.player_id, arr);
-        }
+    for (const row of scores) {
+      if (row.score_general != null && !isNaN(Number(row.score_general))) {
+        const arr = playerMatchesMap.get(row.player_id) || [];
+        arr.push({ date: row.match_date, score: Number(row.score_general) });
+        playerMatchesMap.set(row.player_id, arr);
       }
     }
 
@@ -187,24 +167,31 @@ async function loadBaseData(db: any): Promise<BaseData> {
       teams:current_team_id ( id, name, badge_url, league_name, league_logo_url ),
       player_ea_ratings ( pace, physicality )`;
     const fetchAllPlayers = async () => {
-      const { count } = await db.from("players").select("id", { count: "exact", head: true });
-      const offs: number[] = [];
-      for (let from = 0; from < (count || 0); from += PAGE) offs.push(from);
-      const res = await Promise.all(
-        offs.map((from) => db.from("players").select(PLAYER_FIELDS).order("id").range(from, from + PAGE - 1))
-      );
-      const out: any[] = [];
-      for (const r of res as any[]) {
-        if (r.error) throw r.error;
-        if (r.data) out.push(...r.data);
+      try {
+        const { count, error: cErr } = await db.from("players").select("id", { count: "exact", head: true });
+        if (cErr) throw cErr;
+        const offs: number[] = [];
+        for (let from = 0; from < (count || 0); from += PAGE) offs.push(from);
+        const res = await Promise.all(
+          offs.map((from) => db.from("players").select(PLAYER_FIELDS).order("id").range(from, from + PAGE - 1))
+        );
+        const out: any[] = [];
+        for (const r of res as any[]) {
+          if (r.error) throw r.error;
+          if (r.data) out.push(...r.data);
+        }
+        return out;
+      } catch (e) {
+        console.warn("[FETCH_ALL_PLAYERS] Fallback limited:", e);
+        const { data } = await db.from("players").select(PLAYER_FIELDS).limit(5000);
+        return data || [];
       }
-      return out;
     };
 
     const [statsCountRes, sdLRes, trendByPlayer, allPlayers] = await Promise.all([
       statsCountPromise,
       db.from("sd_leagues").select("code, name, country"),
-      fetchTrends(db),
+      fetchTrends(db).catch(() => new Map()),
       fetchAllPlayers(),
     ]);
 
@@ -212,14 +199,19 @@ async function loadBaseData(db: any): Promise<BaseData> {
     const offsets: number[] = [];
     for (let from = 0; from < totalStats; from += PAGE) offsets.push(from);
 
-    const batchResults = await Promise.all(
-      offsets.map((from) => selectStats().order("player_id").order("season_id").range(from, from + PAGE - 1))
-    );
-
     const rows: any[] = [];
-    for (const res of batchResults as any[]) {
-      if (res.error) throw res.error;
-      if (res.data) rows.push(...res.data);
+    try {
+      const batchResults = await Promise.all(
+        offsets.map((from) => selectStats().order("player_id").order("season_id").range(from, from + PAGE - 1))
+      );
+      for (const res of batchResults as any[]) {
+        if (res.error) throw res.error;
+        if (res.data) rows.push(...res.data);
+      }
+    } catch (statsErr) {
+      console.warn("[SELECT_STATS] Fallback limited due to timeout:", statsErr);
+      const { data } = await selectStats().order("updated_at", { ascending: false }).limit(5000);
+      if (data) rows.push(...data);
     }
 
     const leagueCountryByCode = new Map<string, string>();

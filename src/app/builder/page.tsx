@@ -8,6 +8,7 @@ import { PitchCard } from "@/components/builder/PitchCard";
 import { MultiSelectFilter } from "@/components/builder/MultiSelectFilter";
 import { RangeSlider } from "@/components/builder/RangeSlider";
 import { CromoJugador } from "@/components/scouting/CromoJugador";
+import { EscudoEquipo } from "@/components/scouting/EscudoEquipo";
 import { LoadingState } from "@/components/ui/StatusStates";
 import {
   SlidersHorizontal, Trophy, X, ChevronRight, ChevronDown, ChevronLeft, ChevronUp, Eye, Plus, Search, Loader2, RotateCcw,
@@ -85,10 +86,9 @@ const TEAM_DRAG_TYPE = "application/x-herscout-team";
 // Tamaño de diseño de cada posición (se escala para que el campo se vea entero)
 const STARTER_W = 136;
 const STARTER_H = 194;
-const LIST_W = 188;
-const LIST_ROW_H = 34;
-const LIST_HEAD_H = 22;
-const LIST_H = LIST_HEAD_H + TEAM_SLOT_MAX * LIST_ROW_H + 8;
+const LIST_W = 280;
+const LIST_ROW_H = 48;
+const LIST_H = TEAM_SLOT_MAX * LIST_ROW_H + 12;
 
 type ViewMode = "starters" | "lists";
 type ZoneId = "all" | "def" | "mid" | "att" | GroupId;
@@ -1555,120 +1555,188 @@ function RoleList({
       }}
       onDragLeave={() => setOver(false)}
       onDrop={(e) => drop(e, list.length)}
-      className="w-full h-full rounded-xl border-2 flex flex-col overflow-hidden backdrop-blur-sm transition-colors"
+      className="w-full h-full rounded-2xl border flex overflow-hidden backdrop-blur-md transition-all duration-200 shadow-[0_18px_40px_-6px_rgba(0,0,0,0.85),0_8px_16px_-4px_rgba(0,0,0,0.7)] hover:shadow-[0_24px_48px_-4px_rgba(0,0,0,0.95)] hover:-translate-y-0.5"
       style={{
         borderColor: over ? color : `${color}66`,
         borderStyle: auto ? "dashed" : "solid",
-        background: over ? `${color}26` : "rgba(4, 10, 20, 0.84)",
+        background: over ? `${color}2e` : "linear-gradient(180deg, rgba(11, 20, 38, 0.94) 0%, rgba(6, 12, 24, 0.96) 100%)",
       }}
     >
-      <div className="flex items-center gap-1.5 px-2 shrink-0" style={{ height: LIST_HEAD_H, background: `${color}26` }}>
-        <span className="text-[11px] font-black uppercase tracking-wider" style={{ color }}>{role}</span>
-        <span className="text-[10px] font-bold tabular-nums text-slate-400">{list.length}/{TEAM_SLOT_MAX}</span>
-        {auto ? (
-          <span className="px-1 rounded text-[8px] font-black uppercase bg-sky-500/20 text-sky-300" title="Follows the filters: edit it to make it yours">
-            Auto
-          </span>
-        ) : (
-          <button onClick={onReset} className="text-slate-500 hover:text-sky-300" title="Back to the filters' picks" aria-label="Back to the filters' picks">
-            <RotateCcw className="w-3 h-3" />
-          </button>
-        )}
-        {!full && (
+      {/* Lateral Bar: Big Position Label + Auto / Reset / Add status */}
+      <div
+        className="w-8 shrink-0 flex flex-col items-center justify-between py-2 border-r border-white/10 select-none"
+        style={{ background: `${color}22` }}
+      >
+        <span
+          className="text-[13px] font-black uppercase tracking-wider writing-mode-vertical"
+          style={{ color, writingMode: "vertical-rl", transform: "rotate(180deg)" }}
+        >
+          {role}
+        </span>
+
+        <div className="flex flex-col items-center gap-1.5 mt-auto">
+          {auto ? (
+            <span
+              className="px-1 py-0.5 rounded text-[8px] font-black uppercase bg-sky-500/25 text-sky-300 border border-sky-400/40"
+              title="Auto-filled from filters"
+            >
+              A
+            </span>
+          ) : (
+            <button
+              onClick={onReset}
+              className="text-slate-400 hover:text-sky-300 p-0.5"
+              title="Back to filter picks"
+              aria-label="Back to filter picks"
+            >
+              <RotateCcw className="w-3 h-3" />
+            </button>
+          )}
+
+          {!full && (
+            <button
+              onClick={onAdd}
+              className="w-5 h-5 rounded-md flex items-center justify-center text-slate-200 bg-white/10 hover:bg-white/20 border border-white/15"
+              title="Add player"
+            >
+              <Plus className="w-3 h-3" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Main Content: 5 full rows */}
+      <div className="flex-1 flex flex-col min-w-0 p-1">
+        {list.length === 0 && auto ? (
           <button
-            onClick={onAdd}
-            className="ml-auto inline-flex items-center gap-0.5 h-4 px-1 rounded text-[9px] font-bold text-slate-200 bg-white/10 hover:bg-white/20"
-            title="Add player"
+            onClick={onNoCandidates}
+            className="flex-1 flex flex-col items-center justify-center gap-1.5 px-3 text-center text-xs text-slate-400 hover:text-white"
           >
-            <Plus className="w-2.5 h-2.5" /> Add
+            <Plus className="w-4 h-4" />
+            No candidate matches these filters
           </button>
+        ) : (
+          <ol className="flex-1 flex flex-col justify-between gap-1">
+            {list.map((p, i) => (
+              <li
+                key={p.id}
+                draggable
+                onDragStart={(e) => {
+                  e.stopPropagation();
+                  e.dataTransfer.setData(TEAM_DRAG_TYPE, JSON.stringify({ role, id: p.id }));
+                  e.dataTransfer.effectAllowed = "move";
+                }}
+                onDragOver={(e) => isTeamDrag(e) && e.preventDefault()}
+                onDrop={(e) => drop(e, i)}
+                className={`group relative flex items-center gap-2.5 px-2 rounded-xl cursor-grab active:cursor-grabbing transition-all ${
+                  i === 0
+                    ? "bg-white/[0.14] border border-white/20 shadow-sm"
+                    : "hover:bg-white/[0.08] border border-transparent hover:border-white/10"
+                }`}
+                style={{ height: LIST_ROW_H - 2 }}
+              >
+                {/* Rank number */}
+                <span
+                  className="w-4 text-[12px] font-black tabular-nums text-center shrink-0"
+                  style={{ color: i === 0 ? color : "#94a3b8" }}
+                >
+                  {i + 1}
+                </span>
+
+                {/* Big face avatar */}
+                <div className="relative shrink-0">
+                  <Avatar p={p} size={36} />
+                  {notes[p.id] && (
+                    <StickyNote
+                      className="absolute -top-1 -right-1 w-3.5 h-3.5 text-amber-300 drop-shadow"
+                      aria-label="Has notes"
+                    />
+                  )}
+                </div>
+
+                {/* Player Name (FULL, uncropped) & Club */}
+                <button
+                  onClick={() => onOpenPlayer(p)}
+                  className="min-w-0 flex-1 text-left leading-tight py-0.5"
+                  title={`${p.name}${p.teamName ? ` · ${p.teamName}` : ""}${notes[p.id] ? `\n\n${notes[p.id]}` : ""}`}
+                >
+                  <div
+                    className={`text-[13px] leading-snug ${
+                      i === 0 ? "font-bold text-white tracking-tight" : "font-semibold text-slate-100"
+                    }`}
+                  >
+                    {p.name}
+                  </div>
+                  <div className="flex items-center gap-1.5 text-[10.5px] text-slate-400 min-w-0 mt-0.5">
+                    <span className="truncate">{p.teamName}</span>
+                  </div>
+                </button>
+
+                {/* Big Club Crest on the side */}
+                <div className="shrink-0 flex items-center justify-center p-1 rounded-lg bg-white/[0.06] border border-white/10 shadow-sm">
+                  <EscudoEquipo
+                    badgeUrl={p.badgeUrl}
+                    name={p.teamName}
+                    size={28}
+                  />
+                </div>
+
+                {/* Rating score */}
+                <span
+                  className="text-[14px] font-black tabular-nums shrink-0 min-w-[28px] text-right font-mono"
+                  style={{ color }}
+                >
+                  {fmtRating(p.notaGlobal)}
+                </span>
+
+                {/* Quick actions popup */}
+                <div
+                  className={`${
+                    actionsAlways ? "flex" : "hidden group-hover:flex absolute right-1.5 top-1/2 -translate-y-1/2 shadow-xl"
+                  } items-center gap-0.5 rounded-lg bg-[#0a1224]/98 border border-white/25 p-0.5 shrink-0 z-30`}
+                >
+                  <IconButton onClick={() => onMove(p.id, i - 1)} disabled={i === 0} label="Move up">
+                    <ChevronUp className="w-3.5 h-3.5" />
+                  </IconButton>
+                  <IconButton onClick={() => onMove(p.id, i + 1)} disabled={i === list.length - 1} label="Move down">
+                    <ChevronDown className="w-3.5 h-3.5" />
+                  </IconButton>
+                  <IconButton onClick={() => onReplace(i)} label="Replace">
+                    <Replace className="w-3.5 h-3.5" />
+                  </IconButton>
+                  <IconButton onClick={() => onRemove(p.id)} label="Remove" danger>
+                    <X className="w-3.5 h-3.5" />
+                  </IconButton>
+                </div>
+              </li>
+            ))}
+
+            {/* Empty slots */}
+            {Array.from({ length: TEAM_SLOT_MAX - list.length }, (_, k) => (
+              <li
+                key={`free-${k}`}
+                onDragOver={(e) => isTeamDrag(e) && e.preventDefault()}
+                onDrop={(e) => drop(e, list.length)}
+                style={{ height: LIST_ROW_H - 2 }}
+              >
+                <button
+                  onClick={onAdd}
+                  className="w-full h-full flex items-center gap-2.5 px-2 rounded-xl border border-dashed border-white/15 text-xs font-semibold text-slate-400 hover:text-white hover:border-white/40 hover:bg-white/[0.05] transition-all"
+                  title="Search and pick a player"
+                >
+                  <span className="w-4 text-[11px] font-black tabular-nums text-center text-slate-600">
+                    {list.length + k + 1}
+                  </span>
+                  <span className="w-8 h-8 rounded-full border border-dashed border-white/20 flex items-center justify-center shrink-0">
+                    <Plus className="w-3.5 h-3.5" />
+                  </span>
+                  <span>Add player</span>
+                </button>
+              </li>
+            ))}
+          </ol>
         )}
       </div>
-      {list.length === 0 && auto ? (
-        <button
-          onClick={onNoCandidates}
-          className="flex-1 flex flex-col items-center justify-center gap-1 px-3 text-center text-[11px] text-slate-400 hover:text-white"
-        >
-          <Plus className="w-4 h-4" />
-          No candidate matches these filters
-        </button>
-      ) : (
-        <ol className="flex-1 p-[3px] flex flex-col gap-px">
-          {list.map((p, i) => (
-            <li
-              key={p.id}
-              draggable
-              onDragStart={(e) => {
-                e.stopPropagation();
-                e.dataTransfer.setData(TEAM_DRAG_TYPE, JSON.stringify({ role, id: p.id }));
-                e.dataTransfer.effectAllowed = "move";
-              }}
-              onDragOver={(e) => isTeamDrag(e) && e.preventDefault()}
-              onDrop={(e) => drop(e, i)}
-              className={`group relative flex items-center gap-1.5 px-1 rounded-md cursor-grab active:cursor-grabbing ${
-                i === 0 ? "bg-white/[0.11]" : "hover:bg-white/[0.06]"
-              }`}
-              style={{ height: LIST_ROW_H - 1 }}
-            >
-              <span className="w-3 text-[10px] font-black tabular-nums text-center" style={{ color: i === 0 ? color : "#64748b" }}>
-                {i + 1}
-              </span>
-              <div className="relative">
-                <Avatar p={p} size={26} />
-                {notes[p.id] && <StickyNote className="absolute -top-1 -right-1 w-3 h-3 text-amber-300 drop-shadow" aria-label="Has notes" />}
-              </div>
-              <button
-                onClick={() => onOpenPlayer(p)}
-                className="min-w-0 flex-1 text-left leading-tight"
-                title={`${p.name}${p.teamName ? ` · ${p.teamName}` : ""}${notes[p.id] ? `\n\n${notes[p.id]}` : ""}`}
-              >
-                <div className={`truncate text-[12px] ${i === 0 ? "font-bold text-white" : "font-medium text-slate-200"}`}>
-                  {p.matchName || p.name}
-                </div>
-                <div className="flex items-center gap-1 text-[9px] text-slate-400 min-w-0">
-                  {p.badgeUrl && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={p.badgeUrl} alt="" className="w-2.5 h-2.5 object-contain shrink-0" loading="lazy" />
-                  )}
-                  <span className="truncate">{p.teamName}</span>
-                </div>
-              </button>
-              <span className="text-[12px] font-black tabular-nums shrink-0" style={{ color }}>{fmtRating(p.notaGlobal)}</span>
-              <div
-                className={`${
-                  actionsAlways ? "flex" : "hidden group-hover:flex absolute right-0.5 top-1/2 -translate-y-1/2"
-                } items-center gap-px rounded-md bg-[#0a1224]/95 border border-white/10 p-px shrink-0`}
-              >
-                <IconButton onClick={() => onMove(p.id, i - 1)} disabled={i === 0} label="Move up"><ChevronUp className="w-3 h-3" /></IconButton>
-                <IconButton onClick={() => onMove(p.id, i + 1)} disabled={i === list.length - 1} label="Move down"><ChevronDown className="w-3 h-3" /></IconButton>
-                <IconButton onClick={() => onReplace(i)} label="Replace"><Replace className="w-3 h-3" /></IconButton>
-                <IconButton onClick={() => onRemove(p.id)} label="Remove" danger><X className="w-3 h-3" /></IconButton>
-              </div>
-            </li>
-          ))}
-          {/* Huecos libres: se pulsan para buscar y elegir otra jugadora */}
-          {Array.from({ length: TEAM_SLOT_MAX - list.length }, (_, k) => (
-            <li
-              key={`free-${k}`}
-              onDragOver={(e) => isTeamDrag(e) && e.preventDefault()}
-              onDrop={(e) => drop(e, list.length)}
-              style={{ height: LIST_ROW_H - 1 }}
-            >
-              <button
-                onClick={onAdd}
-                className="w-full h-full flex items-center gap-1.5 px-1 rounded-md border border-dashed border-white/15 text-[11px] font-semibold text-slate-400 hover:text-white hover:border-white/40 hover:bg-white/[0.05] transition-colors"
-                title="Search and pick a player"
-              >
-                <span className="w-3 text-[10px] font-black tabular-nums text-center text-slate-600">{list.length + k + 1}</span>
-                <span className="w-[26px] h-[26px] rounded-full border border-dashed border-white/20 flex items-center justify-center">
-                  <Plus className="w-3 h-3" />
-                </span>
-                Add player
-              </button>
-            </li>
-          ))}
-        </ol>
-      )}
     </div>
   );
 }

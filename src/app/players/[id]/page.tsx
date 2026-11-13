@@ -50,6 +50,11 @@ const translatePosition = (pos?: string | null) => {
 export default function PlayerProfilePage() {
   const params = useParams();
   const router = useRouter();
+  // Opened from a match lineup (Matches page): Back returns there with the lineup open
+  const [fromLineup, setFromLineup] = useState(false);
+  useEffect(() => {
+    setFromLineup(new URLSearchParams(window.location.search).get("from") === "lineup");
+  }, []);
   const { currentClub } = useThemeContext();
   const playerId = params?.id as string;
 
@@ -225,7 +230,7 @@ export default function PlayerProfilePage() {
           className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-lg border border-white/10 bg-navy-900/60 hover:bg-navy-800 text-slate-200 hover:text-white transition-all shadow-sm"
         >
           <ArrowLeft className="w-3.5 h-3.5" />
-          Back to Player Directory
+          {fromLineup ? "Back to lineup" : "Back to Player Directory"}
         </button>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" leftIcon={<Pencil className="w-3.5 h-3.5" />} onClick={() => setEditOpen(true)}>

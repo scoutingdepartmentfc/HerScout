@@ -295,13 +295,15 @@ def opta(store: Store, liga_code: Optional[str], max_matches: Optional[int], sol
     if not comp_ids and not intl:
         logger.info("Opta: ninguna liga elegida tiene competición Opta enlazada")
         return
+    catalogo = store.select_all("opta_catalog", "*")
     ultima = {}
-    for c in store.select_all("opta_catalog", "*"):
+    for c in catalogo:
         if c["competition_id"] in comp_ids and (c.get("data_level") or "").startswith("jugadora"):
             if (c.get("start_date") or "") > (ultima.get(c["competition_id"], {}).get("start_date") or ""):
                 ultima[c["competition_id"]] = c
     # Temporadas elegidas en /admin; la liga sin ninguna elegida descarga solo la última
-    elegidas = {t["competition_id"] for t in store.select_all("ingestion_targets", "competition_id,enabled") if t["enabled"]}
+    targets = [t for t in store.select_all("ingestion_targets", "*") if t["enabled"]]
+    elegidas = {t["competition_id"] for t in targets}
     nuevas = [c for cid, c in ultima.items() if cid not in elegidas]
     if nuevas:
         store.upsert("ingestion_targets", [{
@@ -309,6 +311,8 @@ def opta(store: Store, liga_code: Optional[str], max_matches: Optional[int], sol
             "country": c["country"], "season_name": c["season_name"], "is_active": True, "enabled": True,
             "fuente": "eventing" if c.get("has_eventing") else "matchstats", "updated_at": now_iso()}
             for c in nuevas], on_conflict="season_id")
+    if solo_ultima:  # martes: que ninguna liga activada se quede en la temporada pasada
+        temporada_nueva(store, catalogo, targets, comp_ids | intl)
     # competiciones_objetivo ordena de antigua a actual: la temporada activa se procesa la última
     comps = [c for c in competiciones_objetivo(store, solo_admin=True) if c["id"] in comp_ids]
     # Internacionales al final: sus clubes y jugadoras ya existen desde sus ligas
@@ -325,6 +329,39 @@ def opta(store: Store, liga_code: Optional[str], max_matches: Optional[int], sol
         except Exception as e:
             logger.warning(f"Similares: omitido ({e})")
     logger.info(f"Opta completado: {pipe.totales}")
+
+
+def temporada_nueva(store: Store, catalogo: List[Dict[str, Any]], targets: List[Dict[str, Any]], comp_ids: set,
+                    margen_dias: int = 14):
+    """Competiciones activadas cuya temporada más nueva del catálogo ya ha empezado (o empieza en `margen_dias`)
+    y aún no está elegida: se activa y pasa a ser la actual (como al marcarla en /admin). Sin esto, una liga con
+    la 2025/26 elegida nunca descargaría la 2026/27. No se exige nivel "jugadora" en el catálogo: es una foto
+    fija del CSV y la temporada que empieza figura como "sin jugados"; se hereda la fuente de la anterior."""
+    limite = (datetime.now(timezone.utc) + timedelta(days=margen_dias)).date().isoformat()
+    inicio = {c["season_id"]: c.get("start_date") or "" for c in catalogo}
+    altas, desactivar = [], set()
+    for cid in comp_ids:
+        mias = [t for t in targets if t["competition_id"] == cid]
+        if not mias:
+            continue
+        actual = max(mias, key=lambda t: inicio.get(t["season_id"], ""))
+        candidatas = [c for c in catalogo if c["competition_id"] == cid and c.get("start_date")
+                      and inicio.get(actual["season_id"], "") < c["start_date"] <= limite]
+        if not candidatas:
+            continue
+        c = max(candidatas, key=lambda c: c["start_date"])
+        logger.info(f"Opta {c['competition_name']}: temporada nueva {c['season_name']} ({c['start_date']}) "
+                    f"→ se activa (antes {actual.get('season_name')})")
+        altas.append({
+            "season_id": c["season_id"], "competition_id": cid, "competition_name": c["competition_name"],
+            "country": c.get("country") or actual.get("country"), "season_name": c["season_name"],
+            "is_active": True, "enabled": True, "fuente": actual.get("fuente") or "matchstats",
+            "fotmob_id": actual.get("fotmob_id"), "updated_at": now_iso()})
+        desactivar.add(cid)
+    for cid in desactivar:
+        store.client.table("ingestion_targets").update({"is_active": False}).eq("competition_id", cid).execute()
+    if altas:
+        store.upsert("ingestion_targets", altas, on_conflict="season_id")
 
 
 def temporadas_semanales(store: Store, comps: List[Dict[str, Any]]) -> List[Dict[str, Any]]:

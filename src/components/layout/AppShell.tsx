@@ -6,8 +6,8 @@ import { Navbar } from "./Navbar";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  // Full-screen tools: no max width, the page gets the whole height
-  const fullBleed = pathname?.startsWith("/builder");
+  // Full-screen / wide-canvas tools: no restrictive max width
+  const fullBleed = pathname?.startsWith("/builder") || pathname?.startsWith("/matches") || pathname?.startsWith("/compare");
 
   // Login screen: no navigation until signed in
   if (pathname === "/login") {

@@ -164,7 +164,12 @@ class Store:
         if not self.client:
             return None
         self.ensure_bucket(bucket)
-        self.client.storage.from_(bucket).upload(path, content, {"content-type": content_type, "upsert": "true"})
+        opts = {"content-type": content_type, "upsert": "true"}
+        if bucket in PUBLIC_BUCKETS:
+            # Fotos y escudos: el navegador/CDN los reutiliza 7 días en vez de 1 h (por defecto) → mucho menos egress.
+            # No más: algunas rutas se sobrescriben sin ?v= en la URL y tardarían en verse.
+            opts["cache-control"] = "604800"
+        self.client.storage.from_(bucket).upload(path, content, opts)
         return self.client.storage.from_(bucket).get_public_url(path) if bucket in PUBLIC_BUCKETS else None
 
     def download(self, bucket: str, path: str) -> Optional[bytes]:

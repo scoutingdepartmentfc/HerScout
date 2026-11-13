@@ -126,7 +126,7 @@ const writeStore = (key: string, value: unknown) => {
   } catch {}
 };
 const fmtSaveDate = (iso: string) =>
-  new Date(iso).toLocaleString("es-ES", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  new Date(iso).toLocaleString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
 interface TeamPlayer {
   id: string;
@@ -1314,7 +1314,7 @@ function BuilderContent() {
       {saveDialog && (
         <SaveDialog
           current={currentSave}
-          defaultName={currentSave?.name || `11 ${new Date().toLocaleDateString("es-ES")}`}
+          defaultName={currentSave?.name || `11 ${new Date().toLocaleDateString("en-GB")}`}
           onSave={saveGame}
           onClose={() => setSaveDialog(false)}
         />

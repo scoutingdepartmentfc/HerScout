@@ -24,6 +24,7 @@ export interface MatchRatingPoint {
   isHome?: boolean;
   goalsFor?: number | null;
   goalsAgainst?: number | null;
+  hasReport?: boolean;
 }
 
 interface RatingEvolutionChartProps {
@@ -330,7 +331,10 @@ export const RatingEvolutionChart: React.FC<RatingEvolutionChartProps> = ({
                       year: "numeric",
                     })}
                   </span>
-                  <span className="font-mono font-black text-emerald-400 text-sm px-1.5 py-0.2 rounded bg-emerald-500/15 shrink-0">
+                  <span className="font-mono font-black text-emerald-400 text-sm px-1.5 py-0.2 rounded bg-emerald-500/15 shrink-0 flex items-center gap-1">
+                    {hoveredPoint.hasReport && (
+                      <span className="inline-block w-2 h-2 rounded-full bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.9)]" title="Scouting Report Available" />
+                    )}
                     {hoveredPoint.ratingNum.toFixed(1)}
                   </span>
                 </div>
@@ -492,11 +496,31 @@ export const RatingEvolutionChart: React.FC<RatingEvolutionChartProps> = ({
                     cx={pt.x}
                     cy={pt.y}
                     r={isHovered ? 5.5 : 3.5}
-                    fill="#0b1329"
-                    stroke={col.stroke}
+                    fill={pt.hasReport ? "#f59e0b" : "#0b1329"}
+                    stroke={pt.hasReport ? "#fbbf24" : col.stroke}
                     strokeWidth={isHovered ? "2.5" : "2"}
                     filter="drop-shadow(0 2px 4px rgba(0,0,0,0.8))"
                   />
+
+                  {/* Scouting Report Badge Indicator on point */}
+                  {pt.hasReport && (
+                    <g transform={`translate(${pt.x - 4}, ${pt.y - 12})`}>
+                      <rect
+                        width="8"
+                        height="8"
+                        rx="2"
+                        fill="#f59e0b"
+                        stroke="#0b1329"
+                        strokeWidth="1"
+                      />
+                      <path
+                        d="M2 3h4M2 5h3"
+                        stroke="#0b1329"
+                        strokeWidth="0.8"
+                        strokeLinecap="round"
+                      />
+                    </g>
+                  )}
 
                   {/* Opponent Crest on hover or for notable matches */}
                   {isHovered && pt.opponent?.badgeUrl && (

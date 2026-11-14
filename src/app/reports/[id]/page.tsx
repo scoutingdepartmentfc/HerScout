@@ -22,6 +22,11 @@ import {
   FileCheck,
   MessageSquare,
   Lock,
+  Star,
+  Video,
+  Award,
+  AlertTriangle,
+  Target,
 } from "lucide-react";
 
 export default function ReportDetailPage() {
@@ -134,38 +139,43 @@ export default function ReportDetailPage() {
       )}
 
       {/* Printable Dossier Header with Club Branding */}
-      <div className="p-6 rounded-lg border border-border/80 bg-card shadow-sm space-y-4 print:border-black print:text-black">
-        <div className="flex items-start justify-between border-b border-border/60 pb-4">
-          <div className="flex items-center gap-3">
-            <div
-              className="w-12 h-12 rounded-lg flex items-center justify-center font-bold text-lg text-white"
-              style={{ backgroundColor: `hsl(${currentClub.primaryColor})` }}
-            >
-              {currentClub.shortName.slice(0, 2).toUpperCase()}
+      <div className="p-6 rounded-2xl border border-white/10 bg-[#070e1e]/95 shadow-xl space-y-5 print:border-black print:text-black print:bg-white">
+        <div className="flex items-start justify-between border-b border-white/10 pb-4">
+          <div className="flex items-center gap-3.5">
+            {/* SPONDA App Brand Icon / Shield */}
+            <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-xl border border-white/20 bg-black shadow-md flex items-center justify-center">
+              <img
+                src="/logo1.png"
+                alt="SPONDA"
+                className="absolute max-w-none"
+                style={{ width: 160, height: "auto", left: -98, top: -22 }}
+              />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="text-xs uppercase font-bold tracking-wider text-primary">
-                  {currentClub.name} • Scouting Department
+                <span className="text-[11px] uppercase font-black tracking-widest text-primary flex items-center gap-1.5">
+                  SPONDA PRO SCOUTING DOSSIER
                 </span>
+                <span className="text-slate-500">•</span>
+                <span className="text-xs text-slate-300 font-semibold">{currentClub.name}</span>
                 {report.visibility === "author_private" && (
                   <Badge variant="warning" size="sm">
                     <Lock className="w-2.5 h-2.5 mr-1" /> Confidential Draft
                   </Badge>
                 )}
               </div>
-              <h1 className="text-2xl font-bold tracking-tight text-white print:text-black mt-0.5">
+              <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white print:text-black mt-0.5">
                 {report.playerName}
               </h1>
               <p className="text-xs text-muted-foreground print:text-gray-700">
-                {report.primaryPosition} • {report.playerClub} ({report.playerCountry})
+                {report.primaryPosition} • {report.playerClub} {report.playerCountry ? `(${report.playerCountry})` : ""}
               </p>
             </div>
           </div>
 
           <div className="text-right">
             <div className="text-xs font-mono text-muted-foreground print:text-gray-600">
-              Dossier ID: {report.id}
+              Dossier #{report.id}
             </div>
             <div className="mt-1 flex items-center justify-end gap-1.5">
               <Badge variant="outline" size="sm">
@@ -182,132 +192,240 @@ export default function ReportDetailPage() {
         </div>
 
         {/* Observation Metadata Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 py-2 border-b border-border/40 text-xs">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 py-2 border-b border-white/10 text-xs">
           <div>
             <span className="text-muted-foreground block text-[11px]">Lead Scout</span>
-            <span className="font-semibold text-white print:text-black">{report.authorName}</span>
+            <span className="font-bold text-white print:text-black flex items-center gap-1 mt-0.5">
+              <User className="w-3.5 h-3.5 text-primary" />
+              {report.scoutName || report.authorName}
+            </span>
           </div>
           <div>
             <span className="text-muted-foreground block text-[11px]">Observation Date</span>
-            <span className="font-semibold text-white print:text-black">{report.observationDate}</span>
+            <span className="font-semibold text-white print:text-black block mt-0.5">
+              {new Date(report.observationDate).toLocaleDateString("en-GB", {
+                day: "numeric",
+                month: "short",
+                year: "numeric",
+              })}
+            </span>
           </div>
           <div>
             <span className="text-muted-foreground block text-[11px]">Competition</span>
-            <span className="font-semibold text-white print:text-black truncate block">{report.competition}</span>
+            <span className="font-semibold text-white print:text-black truncate block mt-0.5">
+              {report.competition}
+            </span>
           </div>
           <div>
-            <span className="text-muted-foreground block text-[11px]">Match Observed</span>
-            <span className="font-semibold text-white print:text-black truncate block">{report.matchFixture || "General Tracking"}</span>
+            <span className="text-muted-foreground block text-[11px]">Observed Fixture</span>
+            <span className="font-semibold text-white print:text-black truncate block mt-0.5">
+              {report.matchFixture || "Direct Scouting"}
+            </span>
           </div>
         </div>
 
-        {/* Tactical Context */}
-        {report.tacticalContext && (
-          <div className="p-3 rounded-md bg-navy-900/60 border border-border/60 text-xs print:bg-gray-100">
-            <span className="font-semibold text-primary block mb-0.5">Tactical Role & Opponent Context</span>
-            <p className="text-muted-foreground print:text-gray-800">{report.tacticalContext}</p>
+        {/* SPONDA Dossier Overview Badges (Role, Potential, Decision, Risk) */}
+        {report.spondaData && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3.5 rounded-xl bg-navy-900/80 border border-white/10">
+            <div>
+              <span className="text-[10.5px] uppercase font-bold text-slate-400 block">Squad Role</span>
+              <span className="text-sm font-extrabold text-white mt-0.5 block">{report.spondaData.role || "Starter"}</span>
+            </div>
+            <div>
+              <span className="text-[10.5px] uppercase font-bold text-slate-400 block">Development Potential</span>
+              <span className="text-sm font-extrabold text-sky-400 mt-0.5 block">{report.spondaData.developmentPotential || "High"}</span>
+            </div>
+            <div>
+              <span className="text-[10.5px] uppercase font-bold text-slate-400 block">Transfer Risk</span>
+              <span className={`text-sm font-extrabold mt-0.5 block ${report.spondaData.transferRisk === "High" ? "text-red-400" : report.spondaData.transferRisk === "Medium" ? "text-amber-400" : "text-emerald-400"}`}>
+                {report.spondaData.transferRisk || "Low"}
+              </span>
+            </div>
+            <div>
+              <span className="text-[10.5px] uppercase font-bold text-slate-400 block">Scout Final Decision</span>
+              <span className="text-sm font-black text-amber-400 mt-0.5 block">{report.spondaData.scoutDecision || "To Sign"}</span>
+            </div>
           </div>
         )}
 
-        {/* Assessments Matrix & Overall Score */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-2">
-          {/* 4 Dimension Ratings */}
-          <div className="md:col-span-2 space-y-3">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-              Performance Dimensions (1.0 to 10.0 Scale)
-            </h3>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="p-3 rounded-md bg-secondary/40 border border-border/60">
-                <span className="text-[11px] text-muted-foreground block">Technical Assessment</span>
-                <span className="text-xl font-bold text-white print:text-black">
-                  {report.ratings.technical !== null ? report.ratings.technical.toFixed(1) : "N/A"}
-                </span>
-                <span className="text-[10px] text-muted-foreground block mt-0.5">First touch, passing, ball security</span>
+        {/* Tactical Context & Archetype */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+          {report.spondaData?.positionalProfile && (
+            <div className="p-3 rounded-xl bg-navy-950/70 border border-white/10">
+              <span className="text-primary font-bold uppercase tracking-wider text-[10.5px] block mb-1">
+                Positional Profile Archetype
+              </span>
+              <p className="font-bold text-white text-sm">{report.spondaData.positionalProfile}</p>
+              {report.spondaData.typeOfPlayer && (
+                <span className="text-xs text-slate-400 block mt-0.5">Type: {report.spondaData.typeOfPlayer}</span>
+              )}
+            </div>
+          )}
+
+          {report.spondaData?.clubsStatus && (
+            <div className="p-3 rounded-xl bg-navy-950/70 border border-white/10">
+              <span className="text-primary font-bold uppercase tracking-wider text-[10.5px] block mb-1">
+                Club Target Standard (Club Status)
+              </span>
+              <p className="font-bold text-amber-300 text-sm">{report.spondaData.clubsStatus}</p>
+              <span className="text-xs text-slate-400 block mt-0.5">Scouting Status: {report.spondaData.scoutingStatus || "Priority"}</span>
+            </div>
+          )}
+        </div>
+
+        {/* SPONDA Rating Stars & Final Decision Box */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5 pt-2">
+          {/* Rating Stars card */}
+          <div className="p-4 rounded-xl bg-gradient-to-br from-amber-500/15 via-navy-950 to-navy-950 border border-amber-500/30 flex flex-col justify-between">
+            <div>
+              <span className="text-xs uppercase font-extrabold text-amber-300 tracking-wider flex items-center gap-1.5">
+                <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
+                SPONDA Rating Score
+              </span>
+              <div className="text-4xl font-black text-white print:text-black mt-2 font-mono flex items-baseline gap-1.5">
+                <span>{report.spondaData?.ratingStars ? report.spondaData.ratingStars.toFixed(1) : report.overallRating !== null ? (report.overallRating / 2).toFixed(1) : "3.5"}</span>
+                <span className="text-sm text-slate-400 font-normal">/ 5.0 Stars</span>
               </div>
-              <div className="p-3 rounded-md bg-secondary/40 border border-border/60">
-                <span className="text-[11px] text-muted-foreground block">Tactical Assessment</span>
-                <span className="text-xl font-bold text-white print:text-black">
-                  {report.ratings.tactical !== null ? report.ratings.tactical.toFixed(1) : "N/A"}
-                </span>
-                <span className="text-[10px] text-muted-foreground block mt-0.5">Positioning, press resistance, spatial IQ</span>
-              </div>
-              <div className="p-3 rounded-md bg-secondary/40 border border-border/60">
-                <span className="text-[11px] text-muted-foreground block">Physical Assessment</span>
-                <span className="text-xl font-bold text-white print:text-black">
-                  {report.ratings.physical !== null ? report.ratings.physical.toFixed(1) : "N/A"}
-                </span>
-                <span className="text-[10px] text-muted-foreground block mt-0.5">Acceleration, duel stamina, recovery</span>
-              </div>
-              <div className="p-3 rounded-md bg-secondary/40 border border-border/60">
-                <span className="text-[11px] text-muted-foreground block">Psychological & Mental</span>
-                <span className="text-xl font-bold text-white print:text-black">
-                  {report.ratings.psychological !== null ? report.ratings.psychological.toFixed(1) : "Not Assessed"}
-                </span>
-                <span className="text-[10px] text-muted-foreground block mt-0.5">Composure, work ethic, leadership</span>
+            </div>
+            <div className="pt-2">
+              <div className="flex gap-1 text-amber-400 text-lg">
+                {"★★★★★".slice(0, Math.round(report.spondaData?.ratingStars || (report.overallRating ? report.overallRating / 2 : 3.5)))}
               </div>
             </div>
           </div>
 
-          {/* Overall Rating & Recommendation Box */}
-          <div className="p-4 rounded-lg border border-primary/40 bg-primary/10 flex flex-col justify-between text-center print:border-black print:bg-gray-100">
+          {/* Board Recommendation */}
+          <div className="md:col-span-2 p-4 rounded-xl bg-gradient-to-br from-primary/15 via-navy-950 to-navy-950 border border-primary/30 flex flex-col justify-between">
             <div>
-              <span className="text-xs uppercase font-bold text-primary tracking-wider">
-                Overall Transparent Grade
+              <span className="text-xs uppercase font-extrabold text-primary tracking-wider flex items-center gap-1.5">
+                <Target className="w-4 h-4" />
+                Scouting Verdict &amp; Target Tier
               </span>
-              <div className="text-4xl font-black text-white print:text-black mt-2">
-                {report.overallRating !== null ? report.overallRating.toFixed(1) : "N/A"}
+              <div className="text-xl font-bold text-white mt-2">
+                {report.spondaData?.scoutDecision || report.recommendation.replace("_tier_", " Tier ").toUpperCase()}
               </div>
-              <p className="text-[10px] text-muted-foreground print:text-gray-600 mt-1">
-                Arithmetic mean of all assessed dimensions
+              <p className="text-xs text-muted-foreground mt-1">
+                {report.spondaData?.reputation ? `Reputation: ${report.spondaData.reputation} • Projected Potential: ${report.spondaData.reputationPotential || "Global"}` : "Dossier recommendation recorded for sports direction review."}
               </p>
             </div>
-
-            <div className="pt-4 border-t border-primary/20">
-              <span className="text-[10px] uppercase font-semibold text-muted-foreground block mb-1">
-                Final Board Recommendation
-              </span>
-              <Badge
-                variant={report.recommendation.includes("tier_a") ? "tier-a" : "tier-b"}
-                size="md"
-                className="justify-center w-full"
-              >
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Badge variant="tier-a" size="md">
                 {report.recommendation.replace("_tier_", " Tier ").toUpperCase()}
               </Badge>
+              {report.spondaData?.transferRisk && (
+                <Badge variant="outline" size="md">
+                  Risk Level: {report.spondaData.transferRisk}
+                </Badge>
+              )}
             </div>
           </div>
         </div>
 
-        {/* Strengths & Weaknesses Breakdown */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4 border-t border-border/40 text-xs">
-          <div className="space-y-2">
-            <span className="font-bold text-emerald-400 uppercase tracking-wide text-[11px] block">
-              Observed Strengths
+        {/* Technical-Tactical Tags (Tec-Tac Tags) */}
+        {report.spondaData?.tecTacTags && report.spondaData.tecTacTags.length > 0 && (
+          <div className="p-4 rounded-xl bg-navy-950/70 border border-white/10 space-y-2">
+            <span className="font-bold text-white text-xs block">
+              Observed Technical &amp; Tactical Traits (Tec-Tac Tags)
             </span>
-            <ul className="space-y-1 text-muted-foreground print:text-gray-800 list-disc list-inside">
-              {report.strengths.map((str, idx) => (
-                <li key={idx}>{str}</li>
+            <div className="flex flex-wrap gap-1.5">
+              {report.spondaData.tecTacTags.map((tag, idx) => (
+                <span
+                  key={idx}
+                  className="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-primary/15 text-primary border border-primary/30"
+                >
+                  {tag}
+                </span>
               ))}
-            </ul>
+            </div>
           </div>
-          <div className="space-y-2">
-            <span className="font-bold text-amber-400 uppercase tracking-wide text-[11px] block">
-              Weaknesses & Areas for Development
+        )}
+
+        {/* Specialities & Debilities */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 text-xs">
+          {/* Specialities */}
+          <div className="p-4 rounded-xl bg-navy-950/70 border border-emerald-500/20 space-y-2">
+            <span className="font-bold text-emerald-400 uppercase tracking-wide text-[11px] flex items-center gap-1.5">
+              <Award className="w-3.5 h-3.5" />
+              Specialities &amp; Key Virtues
             </span>
-            <ul className="space-y-1 text-muted-foreground print:text-gray-800 list-disc list-inside">
-              {report.weaknesses.map((w, idx) => (
-                <li key={idx}>{w}</li>
+            <div className="flex flex-wrap gap-1.5">
+              {(report.spondaData?.specialities || report.strengths).map((spec, idx) => (
+                <span
+                  key={idx}
+                  className="px-2 py-0.5 rounded text-[11px] font-medium bg-emerald-500/10 text-emerald-300 border border-emerald-500/30"
+                >
+                  {spec}
+                </span>
               ))}
-            </ul>
+            </div>
+          </div>
+
+          {/* Debilities */}
+          <div className="p-4 rounded-xl bg-navy-950/70 border border-red-500/20 space-y-2">
+            <span className="font-bold text-red-400 uppercase tracking-wide text-[11px] flex items-center gap-1.5">
+              <AlertTriangle className="w-3.5 h-3.5" />
+              Debilities &amp; Weaknesses
+            </span>
+            <div className="flex flex-wrap gap-1.5">
+              {(report.spondaData?.debilities || report.weaknesses).map((deb, idx) => (
+                <span
+                  key={idx}
+                  className="px-2 py-0.5 rounded text-[11px] font-medium bg-red-500/10 text-red-300 border border-red-500/30"
+                >
+                  {deb}
+                </span>
+              ))}
+            </div>
           </div>
         </div>
 
-        {/* Free Text Notes */}
-        <div className="pt-4 border-t border-border/40 text-xs space-y-1">
-          <span className="font-bold text-white print:text-black block">Comprehensive Scout Notes</span>
-          <p className="text-muted-foreground print:text-gray-800 leading-relaxed whitespace-pre-wrap">
-            {report.freeTextNotes}
-          </p>
-        </div>
+        {/* Pros and Cons */}
+        {(report.spondaData?.pros || report.spondaData?.cons) && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs pt-2">
+            {report.spondaData.pros && (
+              <div className="p-3.5 rounded-xl bg-navy-950/70 border border-white/10 space-y-1">
+                <span className="font-bold text-emerald-400 uppercase text-[11px] block">Pros</span>
+                <p className="text-slate-300 whitespace-pre-wrap">{report.spondaData.pros}</p>
+              </div>
+            )}
+            {report.spondaData.cons && (
+              <div className="p-3.5 rounded-xl bg-navy-950/70 border border-white/10 space-y-1">
+                <span className="font-bold text-amber-400 uppercase text-[11px] block">Cons</span>
+                <p className="text-slate-300 whitespace-pre-wrap">{report.spondaData.cons}</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Scout Qualitative Opinion */}
+        {(report.spondaData?.scoutOpinion || report.freeTextNotes) && (
+          <div className="p-4 rounded-xl bg-navy-950/70 border border-white/10 space-y-1.5 text-xs">
+            <span className="font-bold text-white text-xs block">
+              Scout Qualitative Opinion &amp; Synthesis
+            </span>
+            <p className="text-slate-300 leading-relaxed whitespace-pre-wrap">
+              {report.spondaData?.scoutOpinion || report.freeTextNotes}
+            </p>
+          </div>
+        )}
+
+        {/* Video Link */}
+        {report.spondaData?.videoUrl && (
+          <div className="p-3.5 rounded-xl bg-navy-950/70 border border-primary/30 flex items-center justify-between text-xs">
+            <div className="flex items-center gap-2">
+              <Video className="w-4 h-4 text-primary" />
+              <span className="font-bold text-white">Video Footage / Match Clip</span>
+            </div>
+            <a
+              href={report.spondaData.videoUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="text-primary hover:underline font-mono text-[11px] truncate max-w-sm"
+            >
+              {report.spondaData.videoUrl}
+            </a>
+          </div>
+        )}
       </div>
 
       {/* Version History & Audit Log */}

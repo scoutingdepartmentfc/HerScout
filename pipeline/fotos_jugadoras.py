@@ -49,18 +49,19 @@ def sincronizar_fotos_jugadoras(store: Store, fotmob: FotMobClient, sd: SDClient
     `solo_fotmob`: sin foto en FotMob la jugadora se queda sin foto (no se usa Soccerdonna ni Opta)."""
     totales = {"soccerdonna": 0, "fotmob": 0, "365scores": 0, "opta": 0, "sin_foto": 0}
     filas: List[Dict[str, Any]] = []
+    fotmob.cargar_asignados(store)
     for n, p in enumerate(jugadoras, 1):
         actual = p.get("photo_url")
         if es_foto_fotmob(actual) and not refrescar:
             continue
         club = clubes.get(p.get("current_team_id"))
-        url, fuente = None, None
+        url, fuente, fm_id = None, None, None
 
         m = fotmob.buscar_jugador(p, club, liga_fotmob)
         if m:
             img = fotmob.image(FOTMOB_PLAYER_IMG.format(id=m["id"]))
             url = store.upload(BUCKET_PLAYER_PHOTOS, f"{p['id']}.png", img, "image/png") if img else None
-            fuente = "fotmob"
+            fuente, fm_id = "fotmob", (int(m["id"]) if img else None)
 
         # Sin FotMob: se conserva la de Soccerdonna/Opta que ya tuviera
         if not url and actual and not refrescar:
@@ -84,7 +85,7 @@ def sincronizar_fotos_jugadoras(store: Store, fotmob: FotMobClient, sd: SDClient
         if url:
             # ?v= evita que el navegador muestre la foto anterior guardada en la misma ruta
             filas.append({"id": p["id"], "name": p["name"], "photo_url": f"{url}?v={int(time.time())}",
-                          "photo_updated_at": now_iso()})
+                          "photo_updated_at": now_iso(), "fotmob_id": fm_id})
             totales[fuente] += 1
         else:
             totales["sin_foto"] += 1
@@ -113,7 +114,7 @@ def jugadoras_objetivo(store: Store, comps: List[Dict[str, Any]]):
     dorsales = dorsales_actuales(store, comps)
     jugadoras = []
     for p in store.select_all("players", "id,name,match_name,first_name,last_name,birth_date,place_of_birth,photo_url,"
-                                  "current_team_id,country,citizenship"):
+                                  "current_team_id,country,citizenship,fotmob_id"):
         p["shirt_number"] = dorsales.get(p["id"])
         p["current_team_id"] = p.get("current_team_id") if p.get("current_team_id") in clubes else ultimo.get(p["id"])
         if p["current_team_id"] in clubes:
@@ -121,14 +122,42 @@ def jugadoras_objetivo(store: Store, comps: List[Dict[str, Any]]):
     return jugadoras, clubes
 
 
+def jugadoras_sin_club_sin_foto(store: Store, ids: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+    """Jugadoras sin foto y sin club actual (agentes libres, o solo en plantillas de temporadas o copas antiguas).
+    jugadoras_objetivo() solo mira las de los equipos de las competiciones actuales, así que estas nunca se buscaban.
+    Sin club, buscar_jugador() solo las confirma con la fecha de nacimiento y un nombre muy parecido."""
+    filas = store.select_all("players", "id,name,match_name,first_name,last_name,birth_date,place_of_birth,photo_url,"
+                                        "current_team_id,country,citizenship,fotmob_id")
+    return [p for p in filas if not p.get("photo_url") and not p.get("current_team_id")
+            and p.get("birth_date") and (not ids or p["id"] in ids)]
+
+
+def fotos_sin_club(store: Store, limit: Optional[int] = None) -> Dict[str, int]:
+    """Paso del proceso semanal: foto para las jugadoras sin foto y sin club actual."""
+    jugadoras = jugadoras_sin_club_sin_foto(store)[:limit]
+    logger.info(f"Fotos (sin club): {len(jugadoras)} jugadoras")
+    res = sincronizar_fotos_jugadoras(store, FotMobClient(), SDClient(), jugadoras, {})
+    logger.info(f"Fotos (sin club) completado: {res}")
+    return res
+
+
 def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
     parser = argparse.ArgumentParser(description="Fotos de jugadoras por nombre: FotMob > Soccerdonna > Opta")
     parser.add_argument("--comp-id", type=str, default=None)
     parser.add_argument("--refresh-photos", action="store_true", help="Volver a buscar todas las fotos")
+    parser.add_argument("--sin-club", action="store_true", help="Jugadoras sin foto y sin club actual (agentes libres)")
+    parser.add_argument("--id", action="append", default=None, help="Con --sin-club: solo estas jugadoras")
     args = parser.parse_args()
     from .storage import competiciones_objetivo
     store = Store(get_supabase_client())
+    if args.sin_club:
+        if args.id:
+            jugadoras = jugadoras_sin_club_sin_foto(store, args.id)
+            logger.info(f"Fotos completado: {sincronizar_fotos_jugadoras(store, FotMobClient(), SDClient(), jugadoras, {})}")
+        else:
+            fotos_sin_club(store)
+        return
     comps = [c for c in competiciones_objetivo(store) if not args.comp_id or c["id"] == args.comp_id]
     jugadoras, clubes = jugadoras_objetivo(store, comps)
     logger.info(f"Fotos: {len(jugadoras)} jugadoras")

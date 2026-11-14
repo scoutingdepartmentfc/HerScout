@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { requireAdmin } from "@/lib/adminGuard";
+import { reportsStore } from "@/lib/reportsStore";
+import { NO_CLUB_DATA, preferOptaClub } from "@/lib/playerClub";
 
 // Fields that can be edited by hand from the profile (stored in players.manual_overrides)
 const EDITABLE: Record<string, "text" | "number" | "date" | "list"> = {
@@ -124,7 +126,7 @@ export async function GET(
       return NextResponse.json({ error: "Player not found" }, { status: 404 });
     }
 
-    const p = playerRes.data;
+    const p = preferOptaClub(playerRes.data);
 
     // 2. Player Season Stats with raw metric breakdown
     const statsRes = await (supabaseAdmin as any)
@@ -177,11 +179,16 @@ export async function GET(
     // Fetch league averages for metrics (cached in memory or queried from player_season_stats)
     const leagueAverages = await getLeagueAverages(db);
 
+    // Fetch reports for this player (from memory store and/or supabase)
+    const playerReports = reportsStore.filter((r) => r.playerId === playerId);
+    const reportsByMatch = new Set(playerReports.map((r) => r.matchId).filter(Boolean));
+
     const matchLog = (matchStats.data || []).map((r: any) => {
       const m = r.matches || {};
       const isHome = m.home_team_id === r.team_id;
       const opponent = isHome ? m.away_team : m.home_team;
       const sc = scoreByMatch.get(r.match_id);
+      const hasReport = reportsByMatch.has(r.match_id);
       return {
         matchId: r.match_id,
         seasonId: r.season_id,
@@ -189,6 +196,7 @@ export async function GET(
         competitionLogoUrl: m.competitions?.logo_url || null,
         hasEvents: !!m.has_events,
         hasStats: m.has_stats !== false,
+        hasReport,
         date: r.match_date,
         competition: m.competitions?.name,
         isHome,
@@ -342,7 +350,7 @@ export async function GET(
         citizenship: p.citizenship || [],
         teamId: p.teams?.id || fallbackTeam?.id,
         // Club actual y su liga según Soccerdonna; si no, el equipo Opta
-        teamName: p.fm_team_name || p.teams?.name || fallbackTeam?.name || "Unattached",
+        teamName: p.fm_team_name || p.teams?.name || fallbackTeam?.name || NO_CLUB_DATA,
         badgeUrl: (p.fm_team_name ? p.fm_team_badge_url : null) || p.teams?.badge_url || fallbackTeam?.badge_url,
         // Without a current club (and no match in the last 3 months) the league of an old season is not shown either
         leagueName: p.current_league_name || p.teams?.league_name || (hasClub ? seasonRow?.competitions?.name || seasonRow?.teams?.league_name : null),
@@ -362,6 +370,7 @@ export async function GET(
       injuries: injuries.data || [],
       physical: physical.error ? null : physical.data || null,
       eaRatings: eaRatings.error ? null : eaRatings.data || null,
+      reports: playerReports,
       metricas: metricasMap,
       leagueAverages,
     });

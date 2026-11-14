@@ -8,6 +8,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   // Full-screen / wide-canvas tools: no restrictive max width
   const fullBleed = pathname?.startsWith("/builder") || pathname?.startsWith("/matches") || pathname?.startsWith("/compare");
+  // Full-width pages that keep normal padding/scroll
+  const fullWidth = pathname === "/players";
 
   // Login screen: no navigation until signed in
   if (pathname === "/login") {
@@ -22,7 +24,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <div className="pointer-events-none absolute top-4 right-6 sm:right-12 z-0 opacity-[0.05] select-none">
           <img src="/logo-brand.png" alt="" className="w-72 sm:w-96 max-h-48 object-contain" />
         </div>
-        <div className={fullBleed ? "relative z-10 min-h-full lg:h-full" : "relative z-10 max-w-7xl mx-auto space-y-5"}>{children}</div>
+        <div className={fullBleed ? "relative z-10 min-h-full lg:h-full" : `relative z-10 ${fullWidth ? "max-w-none" : "max-w-7xl"} mx-auto space-y-5`}>{children}</div>
       </main>
     </div>
   );

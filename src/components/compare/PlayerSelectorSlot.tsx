@@ -110,7 +110,7 @@ export const PlayerSelectorSlot: React.FC<PlayerSelectorSlotProps> = ({
           </div>
 
           <p className="text-[11px] text-slate-400 truncate mt-0.5">
-            {player.position || "Player"} · {player.teamName || "Unattached"}
+            {player.position || "Player"} · {player.teamName || "Without club"}
           </p>
 
           <div className="flex items-center gap-2 mt-1">

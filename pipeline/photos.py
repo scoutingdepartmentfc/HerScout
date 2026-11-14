@@ -225,10 +225,45 @@ def variantes_nombre(player: Dict[str, Any], busqueda: bool = False) -> List[str
 
 
 
+def _nombres_de_pila(player: Dict[str, Any]) -> set:
+    """Primer nombre de pila (Opta a veces mete el primer apellido en first_name: 'Laura Martínez' + 'Aldao').
+    Sin first_name: el primer token del nombre completo."""
+    pila = normalizar(player.get("first_name")).split() or normalizar(player.get("name")).split()
+    return set(pila[:1])
+
+
 def sim_nombre(player: Dict[str, Any], nombre: Any) -> float:
-    """Mejor parecido entre cualquier variante del nombre y el de la otra web."""
+    """Mejor parecido entre cualquier variante del nombre y el de la otra web.
+
+    `token_set_ratio` da 100 cuando un nombre está contenido en el otro ('laia' ⊂ 'laia aleixandri'), lo que
+    emparejaba a cualquier Laia con cualquier otra Laia (y a cualquier 'Bronze' con cualquier otra 'Bronze').
+    Por eso:
+    - si alguno de los dos nombres es de una sola palabra, se compara la cadena completa (`ratio`);
+    - si las palabras en común son solo el nombre de pila, el parecido se limita a 50: hace falta compartir
+      al menos un apellido (o el apodo) para que dos nombres se consideren la misma persona."""
     n = normalizar(nombre)
-    return max((fuzz.token_set_ratio(normalizar(v), n) for v in variantes_nombre(player)), default=0)
+    if not n:
+        return 0
+    tokens_n = n.split()
+    pila = _nombres_de_pila(player)
+    mejor = 0.0
+    for v in variantes_nombre(player):
+        nv = normalizar(v)
+        if not nv:
+            continue
+        tokens_v = nv.split()
+        if len(tokens_v) == 1 or len(tokens_n) == 1:
+            s = fuzz.ratio(nv, n)
+        else:
+            s = fuzz.token_set_ratio(nv, n)
+            comunes = {t for t in tokens_v if any(fuzz.ratio(t, u) >= 85 for u in tokens_n)}
+            if not (comunes - pila) and len(set(tokens_v)) > 1:
+                s = min(s, 50)
+            # Mismo apellido pero otro nombre ('Chloe Bronze' vs 'Lucy Bronze'): parecido, pero no la misma
+            elif not any(fuzz.ratio(tokens_n[0], t) >= 80 for t in tokens_v):
+                s = min(s, 70)
+        mejor = max(mejor, s)
+    return mejor
 
 
 class FotMobClient:
@@ -239,6 +274,18 @@ class FotMobClient:
         self._ligas_equipo: Dict[int, Optional[Dict[str, Any]]] = {}
         self._catalogo: Optional[Dict[int, Dict[str, Any]]] = None
         self._fichas: Dict[int, Dict[str, Any]] = {}
+        # fotmob_id → player_id: una ficha de FotMob solo puede ser de una jugadora
+        self._asignados: Dict[int, str] = {}
+
+    def cargar_asignados(self, store) -> None:
+        """Ids de FotMob ya vinculados en la base de datos (columna players.fotmob_id)."""
+        for r in store.select_all("players", "id,fotmob_id"):
+            if r.get("fotmob_id"):
+                self._asignados[int(r["fotmob_id"])] = r["id"]
+
+    def libre(self, fotmob_id: Any, player_id: Optional[str]) -> bool:
+        dueno = self._asignados.get(int(fotmob_id))
+        return dueno is None or player_id is None or dueno == player_id
 
     def _json(self, path: str, **params) -> Optional[Dict[str, Any]]:
         for attempt in range(3):
@@ -340,9 +387,15 @@ class FotMobClient:
             return sorted(out, key=lambda t: -t[0])[:8]
 
         def confirmar(sim, sim_club, c) -> bool:
+            if not self.libre(c["id"], player.get("id")):
+                return False  # ya es la foto de otra jugadora
             ficha = self.jugador(int(c["id"]))
-            if not ficha:
-                return sim_club >= 70 and sim >= 80
+            # Sin ficha no se puede comprobar ni el género ni la fecha: no se arriesga la foto
+            if not ficha or ficha.get("isCoach"):
+                return False
+            # El buscador de FotMob mezcla hombres y mujeres ('Noela Sánchez' → 'Noel Sánchez')
+            if str(ficha.get("gender") or "").lower() != "female":
+                return False
             info = extraer_info(ficha)
             fm_dob = info["birth_date"]
             fm_age = info["age"]
@@ -397,6 +450,8 @@ class FotMobClient:
         def elegir(cands):
             for _, sim, sim_club, c in puntuar(cands):
                 if confirmar(sim, sim_club, c):
+                    if player.get("id"):
+                        self._asignados[int(c["id"])] = player["id"]
                     return c
             return None
 
@@ -524,16 +579,9 @@ def emparejar_jugador(player: Dict[str, Any], squad: List[Dict[str, Any]]) -> Op
     pais_opta = normalizar(player.get("country") or player.get("citizenship") or "")
     dorsal = player.get("shirt_number")
 
-    def sim_nombre(m: Dict[str, Any]) -> int:
-        nombre_m = normalizar(m.get("name"))
-        if not nombre_m:
-            return 0
-        mejores = [fuzz.token_set_ratio(v, nombre_m) for v in variantes_nombre(player)]
-        return max(mejores) if mejores else 0
-
     puntuados = []
     for m in squad:
-        s_nom = sim_nombre(m)
+        s_nom = sim_nombre(player, m.get("name"))
         m_dob = misma_fecha(dob, m.get("dateOfBirth")) if dob else False
         
         m_edad = False
@@ -569,7 +617,7 @@ def emparejar_jugador(player: Dict[str, Any], squad: List[Dict[str, Any]]) -> Op
 
         # Validación mínima para evitar falsos positivos
         valido = False
-        if m_dob and (s_nom >= 40 or m_dorsal or m_pais):
+        if m_dob and (s_nom >= 60 or m_dorsal or (s_nom >= 50 and m_pais)):
             valido = True
         elif m_dorsal and (s_nom >= 60 or m_edad or m_pais):
             valido = True

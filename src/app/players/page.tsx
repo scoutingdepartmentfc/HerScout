@@ -16,7 +16,6 @@ import { Search, SlidersHorizontal, Bookmark, Eye, X, Check, ChevronDown, Trendi
 import { notaClases } from "@/lib/notaColor";
 import { getPositionBadge } from "@/lib/positions";
 import { OptaLogo } from "@/components/scouting/OptaLogo";
-import { CamisetaDorsal } from "@/components/scouting/CamisetaDorsal";
 import { guessLeagueCountry, sortLeaguesByCountryAndTier } from "@/lib/leagueCountry";
 
 // Normaliza nombres de liga: minúsculas, apóstrofos tipográficos → rectos, espacios.
@@ -409,7 +408,6 @@ function PlayersDirectoryContent() {
   const [availableLeagues, setAvailableLeagues] = useState<{ id: string; name: string; logoUrl?: string | null; country?: string | null }[]>([]);
   const [availableSeasons, setAvailableSeasons] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [savedWatchlist, setSavedWatchlist] = useState<Record<string, boolean>>({});
 
   // Synchronize filter states whenever URL searchParams change
@@ -432,15 +430,6 @@ function PlayersDirectoryContent() {
     setMaxAge(pMaxAge ? Number(pMaxAge) : 42);
     setSortBy(searchParams.get("sortBy") ?? getSaved("sortBy") ?? "nota_global");
     setSortOrder((searchParams.get("order") as "asc" | "desc") ?? (getSaved("order") as "asc" | "desc") ?? "desc");
-
-    const hasAdvanced = Boolean(
-      (teams && teams !== "all") ||
-      (leagues && leagues !== "all") ||
-      (sSeason && sSeason !== "all") ||
-      (sMinR && sMinR !== "all") ||
-      Boolean(pMinAge || pMaxAge)
-    );
-    if (hasAdvanced) setShowAdvancedFilters(true);
   }, [searchParams]);
 
   // Update browser URL query string and persist in sessionStorage
@@ -766,85 +755,81 @@ function PlayersDirectoryContent() {
         </div>
       </div>
 
-      {/* Modern Compact Filter Bar */}
-      <Card className="bg-[#070c18] border-border/80 shadow-xl relative z-30 overflow-visible">
-        <CardContent className="p-3 space-y-3 overflow-visible">
-          {/* Main Search Row */}
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5 items-center">
-            {/* Search Input */}
-            <div className="md:col-span-6">
-              <Input
-                placeholder="Search player name... (Bonmatí, Paralluelo, Guijarro, Weir)"
-                leftIcon={<Search className="w-4 h-4 text-muted-foreground" />}
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="bg-navy-950 h-9 text-xs"
-              />
-            </div>
-
-            {/* Position Select */}
-            <div className="md:col-span-3">
-              <Select
-                value={positionFilter}
-                onChange={(e) => setPositionFilter(e.target.value)}
-                className="bg-navy-950 h-9 text-xs"
-              >
-                <option value="all">All Positions (GK, DEF, MID, ATT)</option>
-                <optgroup label="Goalkeepers">
-                  <option value="Portero">GK · Goalkeepers</option>
-                </optgroup>
-                <optgroup label="Defenders">
-                  <option value="Central">CB · Centre-Backs</option>
-                  <option value="Lateral">FB · Full-Backs (RB / LB)</option>
-                </optgroup>
-                <optgroup label="Midfielders">
-                  <option value="Mediocentro Defensivo">CDM · Defensive Midfielders</option>
-                  <option value="Mediocentro">CM · Central Midfielders</option>
-                  <option value="Mediapunta">CAM · Attacking Midfielders</option>
-                </optgroup>
-                <optgroup label="Attackers">
-                  <option value="Extremo">W · Wingers (LW / RW)</option>
-                  <option value="Delantero">ST · Centre-Forwards / Strikers</option>
-                </optgroup>
-              </Select>
-            </div>
-
-            {/* Filter Toggle & Quick Reset */}
-            <div className="md:col-span-3 flex items-center gap-2">
-              <Button
-                type="button"
-                variant={showAdvancedFilters ? "pitch" : "outline"}
-                size="sm"
-                onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
-                className="h-9 px-3 text-xs w-full justify-between"
-                leftIcon={<SlidersHorizontal className="w-3.5 h-3.5" />}
-              >
-                <span>Filters</span>
-                {activeFiltersCount > 0 && (
-                  <span className="ml-1.5 px-1.5 py-0.2 bg-white/20 text-white rounded text-[10px] font-bold">
-                    {activeFiltersCount}
-                  </span>
-                )}
-              </Button>
-
+      <div className="grid grid-cols-1 lg:grid-cols-[290px_minmax(0,1fr)] gap-5 items-start">
+      {/* Filters Sidebar */}
+      <Card className="bg-[#070c18] border-border/80 shadow-xl relative z-30 overflow-visible lg:sticky lg:top-0">
+        <CardContent className="p-4 space-y-4 overflow-visible">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-white">
+              <SlidersHorizontal className="w-4 h-4 text-amber-400" />
+              <span className="font-display text-base font-bold uppercase tracking-wide">Filters</span>
               {activeFiltersCount > 0 && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={resetAllFilters}
-                  className="h-9 px-2 text-xs text-muted-foreground hover:text-white shrink-0"
-                  title="Reset all filters"
-                >
-                  <X className="w-4 h-4" />
-                </Button>
+                <span className="px-1.5 py-0.5 bg-amber-400/15 text-amber-300 border border-amber-400/30 rounded text-[10px] font-bold">
+                  {activeFiltersCount}
+                </span>
               )}
             </div>
+            {activeFiltersCount > 0 && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={resetAllFilters}
+                className="h-7 px-2 text-[11px] text-muted-foreground hover:text-white"
+                leftIcon={<X className="w-3.5 h-3.5" />}
+              >
+                Reset
+              </Button>
+            )}
           </div>
 
-          {/* Collapsible Advanced Filters Drawer */}
-          {showAdvancedFilters && (
-            <div className="pt-2.5 pb-1 border-t border-border/40 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 items-end">
+          {/* Search Input */}
+          <div>
+            <label className="text-[10px] font-semibold text-slate-300 uppercase tracking-wider block mb-1">
+              Player
+            </label>
+            <Input
+              placeholder="Search player name..."
+              leftIcon={<Search className="w-4 h-4 text-muted-foreground" />}
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="bg-navy-950 h-9 text-xs"
+            />
+          </div>
+
+          {/* Position Select */}
+          <div>
+            <label className="text-[10px] font-semibold text-slate-300 uppercase tracking-wider block mb-1">
+              Position
+            </label>
+            <Select
+              value={positionFilter}
+              onChange={(e) => setPositionFilter(e.target.value)}
+              className="bg-navy-950 h-9 text-xs"
+            >
+            <option value="all">All Positions (GK, DEF, MID, ATT)</option>
+            <optgroup label="Goalkeepers">
+              <option value="Portero">GK · Goalkeepers</option>
+            </optgroup>
+            <optgroup label="Defenders">
+              <option value="Central">CB · Centre-Backs</option>
+              <option value="Lateral">FB · Full-Backs (RB / LB)</option>
+            </optgroup>
+            <optgroup label="Midfielders">
+              <option value="Mediocentro Defensivo">CDM · Defensive Midfielders</option>
+              <option value="Mediocentro">CM · Central Midfielders</option>
+              <option value="Mediapunta">CAM · Attacking Midfielders</option>
+            </optgroup>
+            <optgroup label="Attackers">
+              <option value="Extremo">W · Wingers (LW / RW)</option>
+              <option value="Delantero">ST · Centre-Forwards / Strikers</option>
+            </optgroup>
+            </Select>
+          </div>
+
+          {/* Advanced Filters */}
+          {(
+            <div className="space-y-4">
               {/* Season Filter */}
               <div>
                 <label className="text-[10px] font-semibold text-slate-300 uppercase tracking-wider block mb-1">
@@ -987,6 +972,7 @@ function PlayersDirectoryContent() {
       </Card>
 
       {/* Data Table */}
+      <div className="min-w-0">
       <Card className="bg-[#070c18] border-border/80 shadow-2xl overflow-hidden relative z-10">
         <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 py-3 px-4 border-b border-border/40">
           <div className="flex items-center gap-2">
@@ -1167,20 +1153,15 @@ function PlayersDirectoryContent() {
                           )}
                         </div>
                         <div className="py-1">
-                          <div className="flex items-center gap-2">
-                            {player.shirtNumber && (
-                              <CamisetaDorsal number={player.shirtNumber} size="xs" />
-                            )}
-                            <span
-                              className="font-semibold text-white group-hover:text-primary transition-colors leading-tight"
-                              title={player.name !== player.matchName ? player.name : undefined}
-                            >
-                              {player.matchName || player.name}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-1.5 mt-0.5">
+                          <span
+                            className="block font-display text-[17px] font-bold uppercase tracking-wide leading-none text-white group-hover:text-amber-300 transition-colors"
+                            title={player.name !== player.matchName ? player.name : undefined}
+                          >
+                            {player.matchName || player.name}
+                          </span>
+                          <div className="flex items-center gap-1.5 mt-1.5">
                             <Bandera country={player.country} size="xs" />
-                            <span className="text-[10px] text-muted-foreground">{player.country || "—"}</span>
+                            <span className="text-[11px] font-medium text-slate-400">{player.country || "—"}</span>
                           </div>
                         </div>
                       </Link>
@@ -1365,6 +1346,8 @@ function PlayersDirectoryContent() {
           )}
         </CardContent>
       </Card>
+      </div>
+      </div>
     </div>
   );
 }

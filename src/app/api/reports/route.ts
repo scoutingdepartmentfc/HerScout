@@ -79,6 +79,7 @@ export async function POST(req: NextRequest) {
       playerName,
       playerClub,
       primaryPosition,
+      matchId,
       matchFixture,
       competition,
       observationDate,
@@ -90,6 +91,8 @@ export async function POST(req: NextRequest) {
       developmentAreas,
       recommendation,
       freeTextNotes,
+      scoutName,
+      spondaData,
     } = body;
 
     const targetOrg = organizationId || callerOrgId;
@@ -118,13 +121,15 @@ export async function POST(req: NextRequest) {
       authorId: userId,
       authorName: userName,
       authorRole: userRole.replace("_", " "),
+      scoutName: scoutName || spondaData?.scoutName || userName,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
 
       playerId: playerId || "p-custom",
       playerName: playerName || "Target Player",
       playerClub: playerClub || "Observed Team",
-      primaryPosition: primaryPosition || "Unspecified",
+      primaryPosition: primaryPosition || spondaData?.bestPosition?.[0] || "Unspecified",
+      matchId: matchId || null,
       matchFixture: matchFixture || "Scouted Match",
       competition: competition || "Official Monitored League",
       observationDate: observationDate || new Date().toISOString().split("T")[0],
@@ -136,21 +141,23 @@ export async function POST(req: NextRequest) {
         physical: ratings?.physical ?? null,
         psychological: ratings?.psychological ?? null,
       },
-      overallRating: calculatedRating,
+      overallRating: calculatedRating ?? (spondaData?.ratingStars ? spondaData.ratingStars * 2 : null),
       confidence: confidence || "medium",
 
       strengths: Array.isArray(strengths) ? strengths : [],
       weaknesses: Array.isArray(weaknesses) ? weaknesses : [],
       developmentAreas: Array.isArray(developmentAreas) ? developmentAreas : [],
       recommendation: recommendation || "monitor_tier_b",
-      freeTextNotes: freeTextNotes || "",
+      freeTextNotes: freeTextNotes || spondaData?.scoutOpinion || "",
+
+      spondaData: spondaData || undefined,
 
       currentVersion: 1,
       versionHistory: [
         {
           version: 1,
           timestamp: new Date().toISOString(),
-          authorName: userName,
+          authorName: scoutName || userName,
           summary: "Initial report draft filed.",
           changes: "Created dossier.",
         },

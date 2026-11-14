@@ -4,6 +4,8 @@
  * review workflow, version history, and tenant/scout privacy.
  */
 
+import { SpondaReportData } from "./spondaReportOptions";
+
 export type ReportType =
   | "full_scouting"
   | "match_observation"
@@ -59,6 +61,7 @@ export interface ScoutingReport {
   authorId: string;
   authorName: string;
   authorRole: string;
+  scoutName?: string; // Specific Scout Name assigned on report
   createdAt: string;
   updatedAt: string;
 
@@ -88,6 +91,9 @@ export interface ScoutingReport {
   // Notes & Evidence
   freeTextNotes: string;
   videoClipsUrls?: string[];
+
+  // Full SPONDA Dossier Profile items (from SPONDA REPORT.xlsx)
+  spondaData?: SpondaReportData;
 
   // Workflow & Versioning
   currentVersion: number;

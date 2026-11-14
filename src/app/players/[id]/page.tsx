@@ -275,39 +275,51 @@ export default function PlayerProfilePage() {
 
           {/* Right Column: Name + Club line + Stats Summary + Datos Personales */}
           <div className="space-y-6 w-full">
-            {/* Player Name and Club/League Header */}
-            <div>
-              <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight text-white">
-                {p.matchName || p.name}
-              </h1>
-              {p.matchName && p.matchName !== p.name && (
-                <p className="text-sm font-medium text-slate-400 mt-1 tracking-wide">
-                  {p.name}
-                </p>
-              )}
-              <div className="mt-2.5 flex flex-wrap items-center gap-3 text-xs sm:text-sm">
-                <span className="inline-flex items-center gap-2 font-semibold text-white">
-                  {p.shirtNumber && (
-                    <CamisetaDorsal number={p.shirtNumber} size="sm" />
-                  )}
-                  <EscudoEquipo teamId={p.teamId} badgeUrl={p.badgeUrl} name={p.teamName} size={22} />
-                  <span>{p.teamName}</span>
-                </span>
-                <span className="inline-flex items-center gap-2 px-2.5 py-1 rounded-md bg-sky-500/10 text-sky-300 font-semibold border border-sky-400/20 text-xs shadow-sm">
-                  {p.leagueLogoUrl && (
-                    <img
-                      src={p.leagueLogoUrl}
-                      alt=""
-                      className="h-4.5 w-auto max-w-[20px] rounded-sm object-contain"
-                    />
-                  )}
-                  <span>{p.leagueName || "No current league"}</span>
-                </span>
-                <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-400/10 text-amber-300 border border-amber-400/30">
-                  {selected?.seasons?.name || "No Opta season"}
-                </span>
-                {selected && <CoberturaBadges c={selected.coverage} />}
+            {/* Player Name and Club/League Header with Modern Hero Jersey */}
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1 min-w-0">
+                <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight text-white">
+                  {p.matchName || p.name}
+                </h1>
+                {p.matchName && p.matchName !== p.name && (
+                  <p className="text-sm font-medium text-slate-400 mt-1 tracking-wide">
+                    {p.name}
+                  </p>
+                )}
+                <div className="mt-2.5 flex flex-wrap items-center gap-3 text-xs sm:text-sm">
+                  <span className="inline-flex items-center gap-2 font-semibold text-white">
+                    <EscudoEquipo teamId={p.teamId} badgeUrl={p.badgeUrl} name={p.teamName} size={22} />
+                    <span>{p.teamName}</span>
+                  </span>
+                  <span className="inline-flex items-center gap-2 px-2.5 py-1 rounded-md bg-sky-500/10 text-sky-300 font-semibold border border-sky-400/20 text-xs shadow-sm">
+                    {p.leagueLogoUrl && (
+                      <img
+                        src={p.leagueLogoUrl}
+                        alt=""
+                        className="h-4.5 w-auto max-w-[20px] rounded-sm object-contain"
+                      />
+                    )}
+                    <span>{p.leagueName || "No current league"}</span>
+                  </span>
+                  <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-400/10 text-amber-300 border border-amber-400/30">
+                    {selected?.seasons?.name || "No Opta season"}
+                  </span>
+                  {selected && <CoberturaBadges c={selected.coverage} />}
+                </div>
               </div>
+
+              {/* Camiseta con dorsal: formato moderno grande que abarca desde la línea del club hasta la parte superior del nombre */}
+              {p.shirtNumber && (
+                <div className="shrink-0 flex flex-col items-center justify-center -mt-1 sm:-mt-2">
+                  <CamisetaDorsal
+                    number={p.shirtNumber}
+                    teamName={p.teamName}
+                    size="hero"
+                  />
+                </div>
+              )}
+            </div>
+            <div>
 
               {/* Competition Filter & Quick Stats Row */}
               <div className="mt-4 pt-4 border-t border-border/40 text-xs space-y-3">

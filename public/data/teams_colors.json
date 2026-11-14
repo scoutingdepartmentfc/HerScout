@@ -1,0 +1,338 @@
+{
+  "Alavés Gloriosas": {
+    "id": "144771",
+    "name": "Alavés Gloriosas",
+    "league": "Spanish Liga F",
+    "colors": {
+      "primary": "#0030A0",
+      "secondary": "#F0F0F0",
+      "tertiary": null
+    },
+    "badge": "https://r2.thesportsdb.com/images/media/team/badge/0aaifo1734673843.png",
+    "jersey": ""
+  },
+  "Athletic Club Women": {
+    "id": "144772",
+    "name": "Athletic Club Women",
+    "league": "Spanish Liga F",
+    "colors": {
+      "primary": "#EE2524",
+      "secondary": "#FFFFFF",
+      "tertiary": "#000000"
+    },
+    "badge": "https://r2.thesportsdb.com/images/media/team/badge/y4dp9v1641554845.png",
+    "jersey": ""
+  },
+  "Atlético Madrid Femenino": {
+    "id": "144773",
+    "name": "Atlético Madrid Femenino",
+    "league": "Spanish Liga F",
+    "colors": {
+      "primary": "#001070",
+      "secondary": "#F0F0F0",
+      "tertiary": null
+    },
+    "badge": "https://r2.thesportsdb.com/images/media/team/badge/n50qxy1719566251.png",
+    "jersey": ""
+  },
+  "Badalona Women": {
+    "id": "146807",
+    "name": "Badalona Women",
+    "league": "Spanish Liga F",
+    "colors": {
+      "primary": "#808080",
+      "secondary": "#000000",
+      "tertiary": null
+    },
+    "badge": "https://r2.thesportsdb.com/images/media/team/badge/hqgbe91753204520.png",
+    "jersey": ""
+  },
+  "Barcelona Femení": {
+    "id": "144766",
+    "name": "Barcelona Femení",
+    "league": "Spanish Liga F",
+    "colors": {
+      "primary": "#A50044",
+      "secondary": "#004D98",
+      "tertiary": "#EDBB00"
+    },
+    "badge": "https://r2.thesportsdb.com/images/media/team/badge/2we5kr1641409884.png",
+    "jersey": ""
+  },
+  "Deportivo de La Coruña Women": {
+    "id": "146411",
+    "name": "Deportivo de La Coruña Women",
+    "league": "Spanish Liga F",
+    "colors": {
+      "primary": "#1D4ED8",
+      "secondary": "#FFFFFF",
+      "tertiary": "#000000"
+    },
+    "badge": "https://r2.thesportsdb.com/images/media/team/badge/e0d1cf1783013166.png",
+    "jersey": ""
+  },
+  "Eibar Women": {
+    "id": "144775",
+    "name": "Eibar Women",
+    "league": "Spanish Liga F",
+    "colors": {
+      "primary": "#991B1B",
+      "secondary": "#1E3A8A",
+      "tertiary": "#FFFFFF"
+    },
+    "badge": "https://r2.thesportsdb.com/images/media/team/badge/n2g9mp1641560234.png",
+    "jersey": ""
+  },
+  "Espanyol Femení": {
+    "id": "144784",
+    "name": "Espanyol Femení",
+    "league": "Spanish Liga F",
+    "colors": {
+      "primary": "#0284C7",
+      "secondary": "#FFFFFF",
+      "tertiary": "#000000"
+    },
+    "badge": "https://r2.thesportsdb.com/images/media/team/badge/wwdohe1641563745.png",
+    "jersey": ""
+  },
+  "Granada Femenino": {
+    "id": "147383",
+    "name": "Granada Femenino",
+    "league": "Spanish Liga F",
+    "colors": {
+      "primary": "#C01030",
+      "secondary": "#F0F0F0",
+      "tertiary": null
+    },
+    "badge": "https://r2.thesportsdb.com/images/media/team/badge/xecwzu1685869518.png",
+    "jersey": ""
+  },
+  "Logroño United": {
+    "id": "146759",
+    "name": "Logroño United",
+    "league": "Spanish Liga F",
+    "colors": {
+      "primary": "#E0D0A0",
+      "secondary": "#F0F0F0",
+      "tertiary": null
+    },
+    "badge": "https://r2.thesportsdb.com/images/media/team/badge/w8j6th1784540525.png",
+    "jersey": ""
+  },
+  "Real Madrid": {
+    "id": "std-real madrid",
+    "name": "Real Madrid",
+    "league": "Top Global Women Football",
+    "colors": {
+      "primary": "#FFFFFF",
+      "secondary": "#00529F",
+      "tertiary": "#FEBE10"
+    },
+    "badge": "",
+    "jersey": ""
+  },
+  "Atletico Madrid": {
+    "id": "std-atletico madrid",
+    "name": "Atletico Madrid",
+    "league": "Top Global Women Football",
+    "colors": {
+      "primary": "#CB3524",
+      "secondary": "#1E3B70",
+      "tertiary": "#FFFFFF"
+    },
+    "badge": "",
+    "jersey": ""
+  },
+  "Levante": {
+    "id": "std-levante",
+    "name": "Levante",
+    "league": "Top Global Women Football",
+    "colors": {
+      "primary": "#A50044",
+      "secondary": "#004D98",
+      "tertiary": "#FFFFFF"
+    },
+    "badge": "",
+    "jersey": ""
+  },
+  "Sevilla": {
+    "id": "std-sevilla",
+    "name": "Sevilla",
+    "league": "Top Global Women Football",
+    "colors": {
+      "primary": "#FFFFFF",
+      "secondary": "#D4141E",
+      "tertiary": "#000000"
+    },
+    "badge": "",
+    "jersey": ""
+  },
+  "Sociedad": {
+    "id": "std-sociedad",
+    "name": "Sociedad",
+    "league": "Top Global Women Football",
+    "colors": {
+      "primary": "#00519E",
+      "secondary": "#FFFFFF",
+      "tertiary": "#000000"
+    },
+    "badge": "",
+    "jersey": ""
+  },
+  "Arsenal": {
+    "id": "std-arsenal",
+    "name": "Arsenal",
+    "league": "Top Global Women Football",
+    "colors": {
+      "primary": "#EF0107",
+      "secondary": "#FFFFFF",
+      "tertiary": "#063672"
+    },
+    "badge": "",
+    "jersey": ""
+  },
+  "Chelsea": {
+    "id": "std-chelsea",
+    "name": "Chelsea",
+    "league": "Top Global Women Football",
+    "colors": {
+      "primary": "#034694",
+      "secondary": "#FFFFFF",
+      "tertiary": "#DBA111"
+    },
+    "badge": "",
+    "jersey": ""
+  },
+  "Manchester City": {
+    "id": "std-manchester city",
+    "name": "Manchester City",
+    "league": "Top Global Women Football",
+    "colors": {
+      "primary": "#6CABDD",
+      "secondary": "#1C2C5B",
+      "tertiary": "#FFFFFF"
+    },
+    "badge": "",
+    "jersey": ""
+  },
+  "Manchester United": {
+    "id": "std-manchester united",
+    "name": "Manchester United",
+    "league": "Top Global Women Football",
+    "colors": {
+      "primary": "#DA291C",
+      "secondary": "#000000",
+      "tertiary": "#FBE122"
+    },
+    "badge": "",
+    "jersey": ""
+  },
+  "Lyon": {
+    "id": "std-lyon",
+    "name": "Lyon",
+    "league": "Top Global Women Football",
+    "colors": {
+      "primary": "#FFFFFF",
+      "secondary": "#1E3A8A",
+      "tertiary": "#DC2626"
+    },
+    "badge": "",
+    "jersey": ""
+  },
+  "Psg": {
+    "id": "std-psg",
+    "name": "Psg",
+    "league": "Top Global Women Football",
+    "colors": {
+      "primary": "#004170",
+      "secondary": "#DA291C",
+      "tertiary": "#FFFFFF"
+    },
+    "badge": "",
+    "jersey": ""
+  },
+  "Wolfsburg": {
+    "id": "std-wolfsburg",
+    "name": "Wolfsburg",
+    "league": "Top Global Women Football",
+    "colors": {
+      "primary": "#65B32E",
+      "secondary": "#FFFFFF",
+      "tertiary": "#000000"
+    },
+    "badge": "",
+    "jersey": ""
+  },
+  "Bayern": {
+    "id": "std-bayern",
+    "name": "Bayern",
+    "league": "Top Global Women Football",
+    "colors": {
+      "primary": "#DC052D",
+      "secondary": "#0066B2",
+      "tertiary": "#FFFFFF"
+    },
+    "badge": "",
+    "jersey": ""
+  },
+  "Juventus": {
+    "id": "std-juventus",
+    "name": "Juventus",
+    "league": "Top Global Women Football",
+    "colors": {
+      "primary": "#000000",
+      "secondary": "#FFFFFF",
+      "tertiary": "#C8A051"
+    },
+    "badge": "",
+    "jersey": ""
+  },
+  "Roma": {
+    "id": "std-roma",
+    "name": "Roma",
+    "league": "Top Global Women Football",
+    "colors": {
+      "primary": "#8E1F2F",
+      "secondary": "#F0BC42",
+      "tertiary": "#FFFFFF"
+    },
+    "badge": "",
+    "jersey": ""
+  },
+  "Valencia": {
+    "id": "std-valencia",
+    "name": "Valencia",
+    "league": "Top Global Women Football",
+    "colors": {
+      "primary": "#FFFFFF",
+      "secondary": "#000000",
+      "tertiary": "#EE2524"
+    },
+    "badge": "",
+    "jersey": ""
+  },
+  "Villareal": {
+    "id": "std-villareal",
+    "name": "Villareal",
+    "league": "Top Global Women Football",
+    "colors": {
+      "primary": "#FDE047",
+      "secondary": "#1E3A8A",
+      "tertiary": "#FFFFFF"
+    },
+    "badge": "",
+    "jersey": ""
+  },
+  "Betis": {
+    "id": "std-betis",
+    "name": "Betis",
+    "league": "Top Global Women Football",
+    "colors": {
+      "primary": "#16A34A",
+      "secondary": "#FFFFFF",
+      "tertiary": "#000000"
+    },
+    "badge": "",
+    "jersey": ""
+  }
+}

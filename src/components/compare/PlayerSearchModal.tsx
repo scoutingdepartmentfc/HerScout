@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { Search, X, Check, Filter } from "lucide-react";
+import { Search, X, Check, Filter, UserPlus, Plus } from "lucide-react";
 import { EscudoEquipo } from "@/components/scouting/EscudoEquipo";
 import { LogoLiga } from "@/components/scouting/LogoLiga";
 
@@ -8,7 +8,9 @@ interface PlayerSearchModalProps {
   onClose: () => void;
   onSelectPlayer: (player: any) => void;
   allPlayers: any[];
-  alreadySelectedIds: string[];
+  alreadySelectedIds?: string[];
+  allowCreateCustom?: boolean;
+  onCreateCustomPlayer?: (customPlayer: { name: string; club?: string; position?: string }) => void;
 }
 
 export const PlayerSearchModal: React.FC<PlayerSearchModalProps> = ({
@@ -16,10 +18,16 @@ export const PlayerSearchModal: React.FC<PlayerSearchModalProps> = ({
   onClose,
   onSelectPlayer,
   allPlayers,
-  alreadySelectedIds,
+  alreadySelectedIds = [],
+  allowCreateCustom = false,
+  onCreateCustomPlayer,
 }) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [positionFilter, setPositionFilter] = useState("all");
+  const [isCreatingCustom, setIsCreatingCustom] = useState(false);
+  const [customName, setCustomName] = useState("");
+  const [customClub, setCustomClub] = useState("");
+  const [customPosition, setCustomPosition] = useState("Central Midfielder (CM)");
 
   const filtered = useMemo(() => {
     let list = allPlayers || [];
@@ -56,19 +64,132 @@ export const PlayerSearchModal: React.FC<PlayerSearchModalProps> = ({
         {/* Header */}
         <div className="p-4 border-b border-border/40 flex items-center justify-between">
           <div>
-            <h3 className="text-base font-bold text-white">Select Player to Compare</h3>
+            <h3 className="text-base font-bold text-white">Select Player</h3>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Choose from players with verified Opta metrics and ratings
+              Choose from players with verified Opta metrics or create a new player
             </p>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-slate-400 hover:text-white transition-colors"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            {allowCreateCustom && !isCreatingCustom && (
+              <button
+                type="button"
+                onClick={() => {
+                  setCustomName(searchQuery.trim());
+                  setIsCreatingCustom(true);
+                }}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-primary/20 border border-primary/40 text-primary text-xs font-bold hover:bg-primary/30 transition-colors"
+              >
+                <UserPlus className="w-3.5 h-3.5" />
+                <span>Create New Player</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-slate-400 hover:text-white transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
+
+        {/* Custom Player Inline Creation Form */}
+        {isCreatingCustom && (
+          <div className="p-4 border-b border-primary/30 bg-primary/5 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-white text-xs flex items-center gap-1.5">
+                <UserPlus className="w-4 h-4 text-primary" />
+                New Player Profile (Not in database yet)
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsCreatingCustom(false)}
+                className="text-[11px] text-slate-400 hover:text-white underline"
+              >
+                Back to search
+              </button>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label className="text-[11px] font-bold text-slate-200 block mb-1">
+                  Full Player Name <span className="text-amber-400">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={customName}
+                  onChange={(e) => setCustomName(e.target.value)}
+                  placeholder="e.g. Maria Gonzalez"
+                  className="w-full px-2.5 py-1.5 bg-[#0b1329] border border-border/60 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-primary"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="text-[11px] font-bold text-slate-200 block mb-1">
+                  Current Club / Team
+                </label>
+                <input
+                  type="text"
+                  value={customClub}
+                  onChange={(e) => setCustomClub(e.target.value)}
+                  placeholder="e.g. Levante Badalona"
+                  className="w-full px-2.5 py-1.5 bg-[#0b1329] border border-border/60 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-primary"
+                />
+              </div>
+              <div>
+                <label className="text-[11px] font-bold text-slate-200 block mb-1">
+                  Primary Position
+                </label>
+                <input
+                  type="text"
+                  value={customPosition}
+                  onChange={(e) => setCustomPosition(e.target.value)}
+                  placeholder="e.g. Left Winger (LW)"
+                  className="w-full px-2.5 py-1.5 bg-[#0b1329] border border-border/60 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-primary"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setIsCreatingCustom(false)}
+                className="px-3 py-1.5 rounded-lg border border-white/10 text-xs font-semibold text-slate-400 hover:text-white"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!customName.trim()) {
+                    alert("Please provide the player's name.");
+                    return;
+                  }
+                  const customObj = {
+                    id: `custom-${Date.now()}`,
+                    name: customName.trim(),
+                    matchName: customName.trim(),
+                    teamName: customClub.trim() || "Independent / Unattached",
+                    position: customPosition.trim() || "Player",
+                    primary_position: customPosition.trim() || "Player",
+                  };
+                  if (onCreateCustomPlayer) {
+                    onCreateCustomPlayer({
+                      name: customName.trim(),
+                      club: customClub.trim(),
+                      position: customPosition.trim(),
+                    });
+                  } else {
+                    onSelectPlayer(customObj);
+                  }
+                  onClose();
+                }}
+                className="px-4 py-1.5 rounded-lg bg-primary text-slate-950 text-xs font-black hover:bg-primary/90 transition-colors flex items-center gap-1.5 shadow-sm"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Continue with New Player</span>
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Search input & position filter */}
         <div className="p-4 border-b border-border/40 bg-navy-950/40 flex flex-col sm:flex-row gap-3">
@@ -111,8 +232,23 @@ export const PlayerSearchModal: React.FC<PlayerSearchModalProps> = ({
         {/* Player List */}
         <div className="flex-1 overflow-y-auto p-3 space-y-1.5 scrollbar-thin scrollbar-thumb-white/10">
           {filtered.length === 0 ? (
-            <div className="py-12 text-center text-xs text-slate-400">
-              No players found matching your criteria.
+            <div className="py-10 text-center space-y-3">
+              <p className="text-xs text-slate-400">
+                No players found matching &quot;{searchQuery}&quot;.
+              </p>
+              {allowCreateCustom && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCustomName(searchQuery.trim());
+                    setIsCreatingCustom(true);
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/20 border border-primary/40 text-primary text-xs font-bold hover:bg-primary/30 transition-colors"
+                >
+                  <UserPlus className="w-3.5 h-3.5" />
+                  <span>Create &quot;{searchQuery.trim() || "New Player"}&quot;</span>
+                </button>
+              )}
             </div>
           ) : (
             filtered.map((p) => {
@@ -160,7 +296,7 @@ export const PlayerSearchModal: React.FC<PlayerSearchModalProps> = ({
                           name={p.teamName || p.teams?.name}
                           size={13}
                         />
-                        <span>{p.teamName || p.teams?.name || "Unattached"}</span>
+                        <span>{p.teamName || p.teams?.name || "Without club"}</span>
                         <span>·</span>
                         <span>{p.position || p.primary_position || "Player"}</span>
                       </p>

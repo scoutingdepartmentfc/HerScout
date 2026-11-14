@@ -177,7 +177,7 @@ def plantilla(sd: SDClient, club: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 def foto_fotmob(store: Store, fotmob: FotMobClient, p: Dict[str, Any], club: str) -> Optional[str]:
     partes = p["name"].split()
-    jugadora = {"name": p["name"], "match_name": p["name"], "first_name": partes[0] if partes else None,
+    jugadora = {"id": p["id"], "name": p["name"], "match_name": p["name"], "first_name": partes[0] if partes else None,
                 "last_name": " ".join(partes[1:]) or None, "birth_date": p.get("birth_date")}
     m = fotmob.buscar_jugador(jugadora, club, None)
     img = fotmob.image(FOTMOB_PLAYER_IMG.format(id=m["id"])) if m else None
@@ -192,9 +192,11 @@ def descargar(store: Store, sd: SDClient, liga_code: Optional[str], limit: Optio
     if not ligas:
         raise SystemExit("No hay ligas de Soccerdonna marcadas en /admin")
     fotmob = FotMobClient()
+    fotmob.cargar_asignados(store)
     tot = {"jugadoras": 0, "nuevas": 0, "al_dia": 0, "fotos": 0, "sin_ficha": 0}
     # Jugadoras ya guardadas (también las unidas a su ficha Opta: se actualiza esa fila, no se crea otra "sd-")
-    guardadas = {p["sd_id"]: p for p in store.select_all("players", "id,sd_id,sd_updated_at,photo_url") if p.get("sd_id")}
+    guardadas = {p["sd_id"]: p for p in store.select_all("players", "id,sd_id,sd_updated_at,photo_url,fm_team_name")
+                 if p.get("sd_id")}
     ids = {k: p["id"] for k, p in guardadas.items()}
     catalogo_sd = {l["code"]: l for l in store.select_all("sd_leagues", "code,name,level,logo_url")}
     limite = time.time() - refresco_dias * 86400
@@ -216,7 +218,10 @@ def descargar(store: Store, sd: SDClient, liga_code: Optional[str], limit: Optio
                 previa = guardadas.get(j["sd_id"])
                 if previa and previa.get("sd_updated_at"):
                     hecha = datetime.fromisoformat(previa["sd_updated_at"].replace("Z", "+00:00")).timestamp()
-                    if hecha > limite:
+                    # Ficha reciente, pero si aparece en la plantilla de otro club (fichaje, o era agente libre)
+                    # se vuelve a leer ya: el cambio de club no espera al refresco de `refresco_dias`
+                    mismo_club = normalizar_club(previa.get("fm_team_name")) == normalizar_club(club["name"])
+                    if hecha > limite and mismo_club:
                         tot["al_dia"] += 1
                         # Sigue en la liga (o ha llegado de otra elegida): solo se actualiza su club
                         store.update("players", {"sd_league_code": liga["code"]}, id=previa["id"])
@@ -625,6 +630,7 @@ def completar(store: Store, comp_id: Optional[str] = None, limit: Optional[int] 
     sin_foto = [p for p in store.select_all("players", "id,name,first_name,last_name,match_name,birth_date,country,photo_url")
                 if p["id"] in clubes and not p.get("photo_url")][:limit]
     fotmob, tot = FotMobClient(), {"fotmob": 0, "365scores": 0, "sin_foto": 0}
+    fotmob.cargar_asignados(store)
     for n, p in enumerate(sin_foto, 1):
         club = clubes[p["id"]]
         m = fotmob.buscar_jugador(p, club)
@@ -634,7 +640,8 @@ def completar(store: Store, comp_id: Optional[str] = None, limit: Optional[int] 
         if not url:
             url, fuente = fotos_365.subir_foto(store, p, club), "365scores"
         if url:
-            store.update("players", {"photo_url": f"{url}?v={int(time.time())}", "photo_updated_at": now_iso()}, id=p["id"])
+            store.update("players", {"photo_url": f"{url}?v={int(time.time())}", "photo_updated_at": now_iso(),
+                                     "fotmob_id": int(m["id"]) if fuente == "fotmob" else None}, id=p["id"])
         tot[fuente if url else "sin_foto"] += 1
         if n % 25 == 0:
             logger.info(f"  Fotos sin plantilla: {n}/{len(sin_foto)} {tot}")
@@ -745,6 +752,7 @@ def fotos(store: Store, liga_code: Optional[str], limit: Optional[int] = None):
              if (l["code"] == liga_code if liga_code else l["enabled"])]
     equipos = store.select_all("teams", "id,name,competition_id,sd_league_code")
     fotmob = FotMobClient()
+    fotmob.cargar_asignados(store)
     for liga in ligas:
         clubes = {t["id"]: t["name"] for t in equipos if t.get("sd_league_code") == liga["code"]
                   or (liga.get("opta_competition_id") and t.get("competition_id") == liga["opta_competition_id"])}
@@ -768,7 +776,8 @@ def fotos(store: Store, liga_code: Optional[str], limit: Optional[int] = None):
             if not url and not p["id"].startswith("sd-"):
                 url, fuente = fotmob.subir_foto_opta(store, p["id"], (p["current_team_id"],)), "opta"
             if url:
-                store.update("players", {"photo_url": f"{url}?v={int(time.time())}", "photo_updated_at": now_iso()}, id=p["id"])
+                store.update("players", {"photo_url": f"{url}?v={int(time.time())}", "photo_updated_at": now_iso(),
+                                     "fotmob_id": int(m["id"]) if fuente == "fotmob" else None}, id=p["id"])
                 tot[fuente] += 1
             else:
                 tot["sin_foto"] += 1
@@ -862,7 +871,14 @@ def flujo(store: Store, sd: SDClient, liga_code: Optional[str], limit: Optional[
         marcar_retiradas(store, sd, refresco_dias)
     for code in (escudos_ligas if escudos_ligas is not None else [liga_code]):
         escudos(store, code)
+    # Fichas de Soccerdonna que acabaron en la jugadora equivocada (la misma ficha en dos jugadoras con distinto
+    # nombre): se deshacen y esas jugadoras se quedan sin el club, los datos y la foto que venían de ella
+    from .auditar_vinculos import revisar_fichas_sd
+    revisar_fichas_sd(store)
     fotos(store, liga_code, limit)
+    # Agentes libres y jugadoras solo en plantillas antiguas: no salen en las plantillas de las ligas de arriba
+    from .fotos_jugadoras import fotos_sin_club
+    fotos_sin_club(store, limit)
     if coche_escoba:
         from .ceroacero import CeroaceroSync
         try:  # si falla, lo descargado ya está guardado

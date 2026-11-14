@@ -516,6 +516,7 @@ class SoccerdonnaSync:
         self.refresh_photos = refresh_photos
         self.pendiente: Dict[str, List[Dict[str, Any]]] = {}
         self.asignadas: Dict[int, str] = {}  # sd_id → player_id
+        self.nombres: Dict[str, str] = {}  # player_id → nombre (para distinguir duplicados de Opta de homónimas)
         # (ficha "sd-" de Soccerdonna, jugadora Opta) confirmadas como la misma: sd_ligas.completar las une
         self.pares_sd: List[tuple] = []
         self.totales = {"emparejadas": 0, "sin_emparejar": 0, "fotos": 0}
@@ -554,6 +555,12 @@ class SoccerdonnaSync:
             return
         otra = self.asignadas.get(c["sd_id"])
         es_duplicado = False
+        if otra and otra != p["id"] and sim_nombre(p, self.nombres.get(otra)) < 90:
+            # La ficha ya es de otra jugadora con otro nombre: no es un duplicado de Opta, es un falso positivo
+            # (así acabó Laia Rius con la fecha, el lugar de nacimiento y la foto de Laia Aleixandri)
+            logger.info(f"  {p['name']}: ficha Soccerdonna {c['sd_id']} ya es de {self.nombres.get(otra)} — descartada")
+            self.totales["sin_emparejar"] += 1
+            return
         if otra and otra != p["id"]:
             # Opta a veces repite a una jugadora con otro ID: sincronizar perfil y foto pero sin pisar sd_id si es único
             logger.info(f"  {p['name']}: ficha Soccerdonna {c['sd_id']} ya asignada a Opta {otra} (duplicado Opta; sincronizando perfil)")
@@ -600,6 +607,7 @@ class SoccerdonnaSync:
                 "players", "id,name,first_name,last_name,match_name,birth_date,height,preferred_foot,"
                            "place_of_birth,photo_url,current_team_id,sd_updated_at,sd_id"):
             p["shirt_number"] = dorsales.get(p["id"])
+            self.nombres[p["id"]] = p["name"]
             if p.get("sd_id"):
                 self.asignadas[p["sd_id"]] = p["id"]
             if p.get("current_team_id") not in equipos:

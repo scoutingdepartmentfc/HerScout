@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase";
 import { isRetired } from "@/lib/utils";
 import { INTERNATIONAL_IDS, INTERNATIONAL_REGIONS } from "@/lib/internationalCompetitions";
 import { computeRatingTrend, PlayerTrend } from "@/lib/ratingTrend";
+import { NO_CLUB_DATA, preferOptaClub } from "@/lib/playerClub";
 
 /** Country shown for international competitions in the league filter (grouped apart from countries) */
 const INTERNATIONAL_COUNTRY = "Internacional";
@@ -325,7 +326,7 @@ export async function GET(req: NextRequest) {
           String(b.seasons?.start_date || "").localeCompare(String(a.seasons?.start_date || "")) ||
           (b.minutes_played || 0) - (a.minutes_played || 0)
         )[0];
-        const p = latestRow.players;
+        const p = preferOptaClub(latestRow.players);
 
         const ea = Array.isArray(p.player_ea_ratings) ? p.player_ea_ratings[0] : p.player_ea_ratings;
         const notaFisico = (() => {
@@ -371,7 +372,7 @@ export async function GET(req: NextRequest) {
 
         // No current club (Soccerdonna / current_team_id): club of her latest match, only if within the last 3 months
         const fallbackTeam = !p.fm_team_name && !p.teams ? recentTeamByPlayer.get(p.id) || null : null;
-        const teamName = p.fm_team_name || p.teams?.name || fallbackTeam?.name || "Unattached";
+        const teamName = p.fm_team_name || p.teams?.name || fallbackTeam?.name || NO_CLUB_DATA;
         const hasClub = !!(p.fm_team_name || p.teams || fallbackTeam);
         const leagueName = p.current_league_name || p.teams?.league_name || (hasClub ? latestRow.competitions?.name : null) || null;
         const leagueCountry =
@@ -430,12 +431,13 @@ export async function GET(req: NextRequest) {
     // Players without season stats (e.g. leagues where Opta has no player data): listed without ratings
     for (const p of allPlayers) {
       if (rowsByPlayer.has(p.id) || isRetired(p)) continue;
+      preferOptaClub(p);
       const ea = Array.isArray(p.player_ea_ratings) ? p.player_ea_ratings[0] : p.player_ea_ratings;
       const notaFisico =
         ea?.pace != null && ea?.physicality != null
           ? Math.round(Number(ea.pace) * 0.45 + Number(ea.physicality) * 0.55)
           : ea?.pace != null ? Number(ea.pace) : ea?.physicality != null ? Number(ea.physicality) : null;
-      const teamName = p.fm_team_name || p.teams?.name || "Unattached";
+      const teamName = p.fm_team_name || p.teams?.name || NO_CLUB_DATA;
       const leagueName = p.current_league_name || p.teams?.league_name || null;
       const leagueCountry =
         (p.sd_league_code ? leagueCountryByCode.get(p.sd_league_code) : null) ||

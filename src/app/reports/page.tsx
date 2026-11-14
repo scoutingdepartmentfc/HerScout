@@ -2,15 +2,17 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useThemeContext } from "@/context/ThemeContext";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Input, Select } from "@/components/ui/Input";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/Table";
-import { Modal } from "@/components/ui/Modal";
 import { LoadingState, EmptyState, ErrorState, SuccessBanner } from "@/components/ui/StatusStates";
 import { ScoutingReport, ReportType, ReportStatus, calculateTransparentOverallRating } from "@/lib/reports";
+import { SpondaReportEditorModal } from "@/components/scouting/SpondaReportEditorModal";
+import { PlayerSearchModal } from "@/components/compare/PlayerSearchModal";
 import {
   FileText,
   Plus,
@@ -25,10 +27,12 @@ import {
   Clock,
   Sparkles,
   Lock,
+  Star,
 } from "lucide-react";
 
 export default function ReportsListPage() {
   const { currentClub, user, userRole } = useThemeContext();
+  const searchParams = useSearchParams();
   const [reports, setReports] = useState<ScoutingReport[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -38,27 +42,93 @@ export default function ReportsListPage() {
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState<string>("");
 
-  // Editor Modal
+  // Editor & Player Selection Modal
   const [isEditorOpen, setIsEditorOpen] = useState(false);
+  const [isPlayerSelectOpen, setIsPlayerSelectOpen] = useState(false);
+  const [allPlayersList, setAllPlayersList] = useState<any[]>([]);
+  const [loadingPlayers, setLoadingPlayers] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [initialModalPlayer, setInitialModalPlayer] = useState<{
+    id?: string;
+    name?: string;
+    club?: string;
+    position?: string;
+  } | undefined>(undefined);
 
-  // Form states
-  const [formPlayer, setFormPlayer] = useState("");
-  const [formClub, setFormClub] = useState("FC Barcelona");
-  const [formPosition, setFormPosition] = useState("Attacking Midfielder (AMF)");
-  const [formType, setFormType] = useState<ReportType>("full_scouting");
-  const [formMatch, setFormMatch] = useState("");
-  const [formCompetition, setFormCompetition] = useState("UEFA Women's Champions League");
-  const [formTacticalContext, setFormTacticalContext] = useState("Interior #10 against mid-block press");
-  const [formTechnical, setFormTechnical] = useState<string>("9.0");
-  const [formTactical, setFormTactical] = useState<string>("8.5");
-  const [formPhysical, setFormPhysical] = useState<string>("7.5");
-  const [formPsychological, setFormPsychological] = useState<string>(""); // empty = Not Assessed
-  const [formStrengths, setFormStrengths] = useState("First touch in half-spaces, progressive vision");
-  const [formWeaknesses, setFormWeaknesses] = useState("Aerial contestation against deep blocks");
-  const [formRecommendation, setFormRecommendation] = useState("sign_tier_a");
-  const [formNotes, setFormNotes] = useState("Scouted live from stadium. Elite prospect profile.");
-  const [formVisibility, setFormVisibility] = useState("club_private");
+  // Preload players list on mount for instant searching
+  const fetchAllPlayers = async () => {
+    if (allPlayersList.length > 0) return;
+    setLoadingPlayers(true);
+    try {
+      const res = await fetch("/api/players");
+      if (res.ok) {
+        const json = await res.json();
+        const players = json.players || json.data || (Array.isArray(json) ? json : []);
+        setAllPlayersList(players);
+      }
+    } catch (e) {
+      console.error("Error loading players for report selector:", e);
+    } finally {
+      setLoadingPlayers(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchAllPlayers();
+  }, []);
+
+  const handleStartNewReport = () => {
+    fetchAllPlayers();
+    setIsPlayerSelectOpen(true);
+  };
+
+  const handlePlayerChosen = (player: any) => {
+    setInitialModalPlayer({
+      id: player.id,
+      name: player.matchName || player.match_name || player.name,
+      club: player.teamName || player.teams?.name || "",
+      position: player.position || player.primary_position || "",
+    });
+    setIsPlayerSelectOpen(false);
+    setIsEditorOpen(true);
+  };
+
+  const handleCustomPlayerCreated = (custom: { name: string; club?: string; position?: string }) => {
+    setInitialModalPlayer({
+      id: `custom-${Date.now()}`,
+      name: custom.name,
+      club: custom.club || "",
+      position: custom.position || "",
+    });
+    setIsPlayerSelectOpen(false);
+    setIsEditorOpen(true);
+  };
+
+  // Open editor if query param has ?newReport=1
+  useEffect(() => {
+    if (searchParams) {
+      const isNew = searchParams.get("newReport") === "1";
+      const pName = searchParams.get("playerName");
+      const pId = searchParams.get("playerId");
+      const pClub = searchParams.get("playerClub");
+      const pPos = searchParams.get("primaryPosition");
+      const pSearch = searchParams.get("player");
+
+      if (pSearch) {
+        setSearchQuery(pSearch);
+      }
+
+      if (isNew) {
+        setInitialModalPlayer({
+          id: pId || undefined,
+          name: pName || undefined,
+          club: pClub || undefined,
+          position: pPos || undefined,
+        });
+        setIsEditorOpen(true);
+      }
+    }
+  }, [searchParams]);
 
   const loadReports = async () => {
     setIsLoading(true);
@@ -85,33 +155,7 @@ export default function ReportsListPage() {
     loadReports();
   }, [currentClub.id, userRole]);
 
-  const handleCreateReport = async () => {
-    const ratings = {
-      technical: formTechnical ? parseFloat(formTechnical) : null,
-      tactical: formTactical ? parseFloat(formTactical) : null,
-      physical: formPhysical ? parseFloat(formPhysical) : null,
-      psychological: formPsychological ? parseFloat(formPsychological) : null,
-    };
-
-    const payload = {
-      organizationId: currentClub.id,
-      reportType: formType,
-      status: "draft",
-      visibility: formVisibility,
-      playerName: formPlayer,
-      playerClub: formClub,
-      primaryPosition: formPosition,
-      matchFixture: formMatch,
-      competition: formCompetition,
-      tacticalContext: formTacticalContext,
-      ratings,
-      confidence: "high",
-      strengths: formStrengths.split(",").map((s) => s.trim()),
-      weaknesses: formWeaknesses.split(",").map((w) => w.trim()),
-      recommendation: formRecommendation,
-      freeTextNotes: formNotes,
-    };
-
+  const handleCreateReport = async (payload: any) => {
     try {
       const res = await fetch("/api/reports", {
         method: "POST",
@@ -125,14 +169,18 @@ export default function ReportsListPage() {
         body: JSON.stringify(payload),
       });
 
-      if (res.ok) {
-        setIsEditorOpen(false);
-        setSaveSuccess(true);
-        loadReports();
-        setTimeout(() => setSaveSuccess(false), 4000);
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to save report");
       }
-    } catch (err) {
+
+      setIsEditorOpen(false);
+      setSaveSuccess(true);
+      loadReports();
+      setTimeout(() => setSaveSuccess(false), 4000);
+    } catch (err: any) {
       console.error("Save report error:", err);
+      throw err;
     }
   };
 
@@ -162,7 +210,7 @@ export default function ReportsListPage() {
         <div className="flex items-center gap-2">
           <Button
             size="sm"
-            onClick={() => setIsEditorOpen(true)}
+            onClick={handleStartNewReport}
             leftIcon={<Plus className="w-3.5 h-3.5" />}
           >
             Create Scouting Report
@@ -274,13 +322,25 @@ export default function ReportsListPage() {
                       <div className="text-[10px] text-muted-foreground">{rep.observationDate}</div>
                     </TableCell>
                     <TableCell>
-                      <div className="text-white">{rep.authorName}</div>
+                      <div className="text-white flex items-center gap-1.5">
+                        <User className="w-3.5 h-3.5 text-primary shrink-0" />
+                        <span>{rep.scoutName || rep.authorName}</span>
+                      </div>
                       <div className="text-[10px] text-muted-foreground">{rep.authorRole}</div>
                     </TableCell>
                     <TableCell>
-                      <span className="font-bold text-emerald-400 text-sm">
-                        {rep.overallRating !== null ? rep.overallRating.toFixed(1) : "N/A"}
-                      </span>
+                      {rep.spondaData?.ratingStars ? (
+                        <div className="flex items-center gap-1">
+                          <span className="font-bold text-amber-400 text-sm font-mono">
+                            ★ {rep.spondaData.ratingStars}
+                          </span>
+                          <span className="text-[10px] text-slate-500">/ 5</span>
+                        </div>
+                      ) : (
+                        <span className="font-bold text-emerald-400 text-sm font-mono">
+                          {rep.overallRating !== null ? rep.overallRating.toFixed(1) : "N/A"}
+                        </span>
+                      )}
                     </TableCell>
                     <TableCell>
                       <Badge
@@ -319,155 +379,34 @@ export default function ReportsListPage() {
         </CardContent>
       </Card>
 
-      {/* Structured Report Editor Modal */}
-      <Modal
+      {/* Player Selection Modal before opening Editor (with Create Custom Player support) */}
+      <PlayerSearchModal
+        isOpen={isPlayerSelectOpen}
+        onClose={() => setIsPlayerSelectOpen(false)}
+        onSelectPlayer={handlePlayerChosen}
+        allPlayers={allPlayersList}
+        alreadySelectedIds={[]}
+        allowCreateCustom={true}
+        onCreateCustomPlayer={handleCustomPlayerCreated}
+      />
+
+      {/* Structured SPONDA Report Editor Modal */}
+      <SpondaReportEditorModal
         isOpen={isEditorOpen}
         onClose={() => setIsEditorOpen(false)}
-        title="Create Professional Scouting Report"
-        description="Compile structured tactical, physical, and technical observations."
-        size="lg"
-        footer={
-          <>
-            <Button variant="ghost" size="sm" onClick={() => setIsEditorOpen(false)}>
-              Discard Draft
-            </Button>
-            <Button size="sm" onClick={handleCreateReport} leftIcon={<Sparkles className="w-3.5 h-3.5" />}>
-              Save and Commit Dossier
-            </Button>
-          </>
-        }
-      >
-        <div className="space-y-4 text-xs">
-          {/* Metadata Section */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <label className="font-semibold text-white block mb-1">Target Player Name</label>
-              <Input value={formPlayer} onChange={(e) => setFormPlayer(e.target.value)} />
-            </div>
-            <div>
-              <label className="font-semibold text-white block mb-1">Current Club</label>
-              <Input value={formClub} onChange={(e) => setFormClub(e.target.value)} />
-            </div>
-            <div>
-              <label className="font-semibold text-white block mb-1">Primary Role / Position</label>
-              <Input value={formPosition} onChange={(e) => setFormPosition(e.target.value)} />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <label className="font-semibold text-white block mb-1">Report Type</label>
-              <Select value={formType} onChange={(e) => setFormType(e.target.value as any)}>
-                <option value="full_scouting">Full Player Scouting</option>
-                <option value="match_observation">Match Observation</option>
-                <option value="live_scouting">Live Scouting</option>
-                <option value="opposition_analysis">Opposition Analysis</option>
-                <option value="follow_up">Follow-up Evaluation</option>
-              </Select>
-            </div>
-            <div>
-              <label className="font-semibold text-white block mb-1">Observed Fixture</label>
-              <Input value={formMatch} onChange={(e) => setFormMatch(e.target.value)} />
-            </div>
-            <div>
-              <label className="font-semibold text-white block mb-1">Visibility Permission</label>
-              <Select value={formVisibility} onChange={(e) => setFormVisibility(e.target.value)}>
-                <option value="club_private">Club Private (All Club Scouts)</option>
-                <option value="author_private">Author Private (Confidential Draft)</option>
-              </Select>
-            </div>
-          </div>
-
-          {/* Tactical Context */}
-          <div>
-            <label className="font-semibold text-white block mb-1">Tactical Context</label>
-            <Input
-              value={formTacticalContext}
-              onChange={(e) => setFormTacticalContext(e.target.value)}
-              placeholder="e.g. Left interior in 4-3-3 against high-pressing back four"
-            />
-          </div>
-
-          {/* Ratings Dimension Matrix (0-10 or empty for Not Assessed) */}
-          <div className="p-3 rounded-md bg-navy-900 border border-border/80 space-y-2">
-            <span className="font-semibold text-white block">
-              Category Assessments (1.0 to 10.0 scale — Leave empty for &quot;Not Assessed&quot;)
-            </span>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <div>
-                <label className="text-[11px] text-muted-foreground block mb-0.5">Technical</label>
-                <Input
-                  value={formTechnical}
-                  onChange={(e) => setFormTechnical(e.target.value)}
-                  placeholder="e.g. 9.0"
-                />
-              </div>
-              <div>
-                <label className="text-[11px] text-muted-foreground block mb-0.5">Tactical</label>
-                <Input
-                  value={formTactical}
-                  onChange={(e) => setFormTactical(e.target.value)}
-                  placeholder="e.g. 8.5"
-                />
-              </div>
-              <div>
-                <label className="text-[11px] text-muted-foreground block mb-0.5">Physical</label>
-                <Input
-                  value={formPhysical}
-                  onChange={(e) => setFormPhysical(e.target.value)}
-                  placeholder="e.g. 7.5"
-                />
-              </div>
-              <div>
-                <label className="text-[11px] text-muted-foreground block mb-0.5">Psychological</label>
-                <Input
-                  value={formPsychological}
-                  onChange={(e) => setFormPsychological(e.target.value)}
-                  placeholder="N/A (empty)"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Strengths & Weaknesses */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="font-semibold text-white block mb-1">Strengths (Comma separated)</label>
-              <Input value={formStrengths} onChange={(e) => setFormStrengths(e.target.value)} />
-            </div>
-            <div>
-              <label className="font-semibold text-white block mb-1">Weaknesses (Comma separated)</label>
-              <Input value={formWeaknesses} onChange={(e) => setFormWeaknesses(e.target.value)} />
-            </div>
-          </div>
-
-          {/* Recommendation & Free Text */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="font-semibold text-white block mb-1">Final Recommendation</label>
-              <Select value={formRecommendation} onChange={(e) => setFormRecommendation(e.target.value)}>
-                <option value="sign_tier_a">Sign - Tier A (Priority Target)</option>
-                <option value="monitor_tier_b">Monitor - Tier B (Continued Observation)</option>
-                <option value="depth_tier_c">Squad Depth - Tier C</option>
-                <option value="pass">Pass (Not Recommended)</option>
-              </Select>
-            </div>
-            <div>
-              <label className="font-semibold text-white block mb-1">Author / Lead Scout</label>
-              <Input value={user.name} disabled />
-            </div>
-          </div>
-
-          <div>
-            <label className="font-semibold text-white block mb-1">Comprehensive Scout Notes</label>
-            <textarea
-              className="w-full h-20 rounded-md border border-input bg-navy-900/80 p-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-              value={formNotes}
-              onChange={(e) => setFormNotes(e.target.value)}
-            />
-          </div>
-        </div>
-      </Modal>
+        onSave={handleCreateReport}
+        allPlayers={allPlayersList}
+        onChangePlayer={() => {
+          setIsEditorOpen(false);
+          setIsPlayerSelectOpen(true);
+        }}
+        initialPlayer={initialModalPlayer}
+        currentUser={{
+          name: user.name,
+          role: userRole,
+          orgId: currentClub.id,
+        }}
+      />
     </div>
   );
 }

@@ -1450,7 +1450,12 @@ function Avatar({ p, size }: { p: any; size: number }) {
     >
       {p.photoUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={p.photoUrl} alt="" className="w-full h-full object-cover object-top" loading="lazy" />
+        <img
+          src={p.photoUrl}
+          alt=""
+          className="w-full h-full object-cover object-top scale-125"
+          loading="lazy"
+        />
       ) : (
         <span className="font-bold text-slate-500" style={{ fontSize: size * 0.42 }}>
           {(p.matchName || p.name || "?").slice(0, 1)}

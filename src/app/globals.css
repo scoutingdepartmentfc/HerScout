@@ -158,5 +158,72 @@ body {
   border: 2px solid var(--thumb, #94a3b8);
   cursor: grab;
 }
-.range-dual input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.2); cursor: grabbing; }
-.range-dual input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.35); }
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 10mm 12mm 12mm 12mm;
+  }
+
+  /* Force entire document background to clean crisp white */
+  html, body {
+    background: #ffffff !important;
+    color: #0f172a !important;
+    font-size: 11px !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Force background colors and borders to print properly */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Hide navigation, header, sidebar and action buttons */
+  nav, header, aside, .print\:hidden {
+    display: none !important;
+  }
+
+  /* Container adjustments for full portrait width */
+  .max-w-6xl, .max-w-7xl, .container, main {
+    max-width: 100% !important;
+    width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Print document cards and backgrounds: pure white background with subtle slate borders */
+  .print-document {
+    background: #ffffff !important;
+    color: #0f172a !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+  }
+
+  .print-section {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    color: #0f172a !important;
+  }
+
+  .print-highlight {
+    background: #f8fafc !important;
+    border: 1px solid #cbd5e1 !important;
+    color: #0f172a !important;
+  }
+
+  .print-text-dark {
+    color: #0f172a !important;
+  }
+
+  .print-text-muted {
+    color: #475569 !important;
+  }
+
+  /* Prevent awkward page breaks inside cards */
+  .p-6, .rounded-2xl, .rounded-xl, .grid, .print-card {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}

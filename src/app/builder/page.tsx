@@ -698,6 +698,29 @@ function BuilderContent() {
   const f = scopes[activeScope];
   const scopeColor = activeScope === "all" ? "#10b981" : GROUP_BY_ID[activeScope].color;
 
+  // Opciones filtradas dinámicamente: si hay ligas seleccionadas, los equipos se limitan a esas ligas (y viceversa)
+  const filteredTeamOpts = useMemo(() => {
+    if (!f.leagues || f.leagues.length === 0) return teamOpts;
+    const allowedTeams = new Set<string>();
+    allPlayers.forEach((p) => {
+      if (p.leagueName && f.leagues.includes(p.leagueName) && p.teamName) {
+        allowedTeams.add(p.teamName.toLowerCase());
+      }
+    });
+    return teamOpts.filter((t) => allowedTeams.has(t.name.toLowerCase()));
+  }, [teamOpts, f.leagues, allPlayers]);
+
+  const filteredLeagueOpts = useMemo(() => {
+    if (!f.teams || f.teams.length === 0) return leagueOpts;
+    const allowedLeagues = new Set<string>();
+    allPlayers.forEach((p) => {
+      if (p.teamName && f.teams.includes(p.teamName) && p.leagueName) {
+        allowedLeagues.add(p.leagueName.toLowerCase());
+      }
+    });
+    return leagueOpts.filter((l) => allowedLeagues.has(l.name.toLowerCase()));
+  }, [leagueOpts, f.teams, allPlayers]);
+
   // Chips de filtros activos (todas las pestañas)
   const chips = SCOPES.flatMap((s) => {
     const fs = scopes[s];
@@ -794,8 +817,8 @@ function BuilderContent() {
 
         <Section title="Competition & profile">
           <div className="grid grid-cols-1 gap-2">
-            <MultiSelectFilter label="Leagues" placeholder="All leagues" options={leagueOpts} selectedIds={f.leagues} onChange={(v) => updateScope(activeScope, { leagues: v })} showFlag />
-            <MultiSelectFilter label="Teams" placeholder="All teams" options={teamOpts} selectedIds={f.teams} onChange={(v) => updateScope(activeScope, { teams: v })} />
+            <MultiSelectFilter label="Leagues" placeholder="All leagues" options={filteredLeagueOpts} selectedIds={f.leagues} onChange={(v) => updateScope(activeScope, { leagues: v })} showFlag />
+            <MultiSelectFilter label="Teams" placeholder="All teams" options={filteredTeamOpts} selectedIds={f.teams} onChange={(v) => updateScope(activeScope, { teams: v })} />
             <MultiSelectFilter label="Nationality" placeholder="All nations" options={countryOpts} selectedIds={f.countries} onChange={(v) => updateScope(activeScope, { countries: v })} showFlag />
             <div>
               <span className="text-[10px] font-semibold text-slate-300 uppercase tracking-wider block mb-1">Preferred foot</span>

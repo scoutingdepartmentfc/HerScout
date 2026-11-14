@@ -50,6 +50,7 @@ interface SpondaReportEditorProps {
     club?: string;
     position?: string;
   };
+  existingReport?: any; // When editing an existing report
   currentUser: {
     name: string;
     role: string;
@@ -64,6 +65,7 @@ export const SpondaReportEditorModal: React.FC<SpondaReportEditorProps> = ({
   onChangePlayer,
   allPlayers = [],
   initialPlayer,
+  existingReport,
   currentUser,
 }) => {
   // Player info
@@ -89,29 +91,25 @@ export const SpondaReportEditorModal: React.FC<SpondaReportEditorProps> = ({
   const [manualDate, setManualDate] = useState(new Date().toISOString().split("T")[0]);
   const [manualCompetition, setManualCompetition] = useState("Official League");
 
-  // SPONDA Form Fields
+  // SPONDA Form Fields: empty by default unless editing an existing report or passed
   const [ratingStars, setRatingStars] = useState<number>(3.5);
   const [bestPosition, setBestPosition] = useState<string[]>(
-    initialPlayer?.position ? [initialPlayer.position] : ["Central Midfielder (CM)"]
+    initialPlayer?.position ? [initialPlayer.position] : []
   );
   const [secondaryPositions, setSecondaryPositions] = useState<string[]>([]);
-  const [role, setRole] = useState(SPONDA_ROLES[1]); // Starter
-  const [reputation, setReputation] = useState(SPONDA_REPUTATION[1]); // National
-  const [reputationPotential, setReputationPotential] = useState(SPONDA_REPUTATION[0]); // Global
-  const [developmentPotential, setDevelopmentPotential] = useState(SPONDA_DEVELOPMENT_POTENTIAL[0]); // High
-  const [scoutingStatus, setScoutingStatus] = useState(SPONDA_SCOUTING_STATUS[0]); // Priority
-  const [typeOfPlayer, setTypeOfPlayer] = useState(SPONDA_TYPE_OF_PLAYER[4]); // Creative Player
-  const [positionalProfile, setPositionalProfile] = useState("Controler");
-  const [tecTacTags, setTecTacTags] = useState<string[]>([
-    "Line-Breaking Pass",
-    "Oriented Reception",
-    "Game Vision",
-  ]);
-  const [debilities, setDebilities] = useState<string[]>(["Aerial Balls"]);
-  const [transferRisk, setTransferRisk] = useState(SPONDA_TRANSFER_RISK[0]); // Low
-  const [scoutDecision, setScoutDecision] = useState(SPONDA_SCOUT_DECISION[0]); // To Sign
-  const [specialities, setSpecialities] = useState<string[]>(["Final Pass", "Metronome"]);
-  const [clubsStatus, setClubsStatus] = useState(SPONDA_CLUBS_STATUS[1]); // TOP 3
+  const [role, setRole] = useState<string>("");
+  const [reputation, setReputation] = useState<string>("");
+  const [reputationPotential, setReputationPotential] = useState<string>("");
+  const [developmentPotential, setDevelopmentPotential] = useState<string>("");
+  const [scoutingStatus, setScoutingStatus] = useState<string>("");
+  const [typeOfPlayer, setTypeOfPlayer] = useState<string>("");
+  const [positionalProfile, setPositionalProfile] = useState<string>("");
+  const [tecTacTags, setTecTacTags] = useState<string[]>([]);
+  const [debilities, setDebilities] = useState<string[]>([]);
+  const [transferRisk, setTransferRisk] = useState<string>("");
+  const [scoutDecision, setScoutDecision] = useState<string>("");
+  const [specialities, setSpecialities] = useState<string[]>([]);
+  const [clubsStatus, setClubsStatus] = useState<string>("");
   const [pros, setPros] = useState("");
   const [cons, setCons] = useState("");
   const [scoutOpinion, setScoutOpinion] = useState("");
@@ -121,15 +119,48 @@ export const SpondaReportEditorModal: React.FC<SpondaReportEditorProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState<"general" | "tactical" | "evaluation" | "media">("general");
 
-  // Sync initialPlayer changes
+  // Sync initialPlayer or existingReport changes
   useEffect(() => {
-    if (initialPlayer) {
+    if (existingReport) {
+      if (existingReport.playerId) setPlayerId(existingReport.playerId);
+      if (existingReport.playerName) setPlayerName(existingReport.playerName);
+      if (existingReport.playerClub) setPlayerClub(existingReport.playerClub);
+      if (existingReport.scoutName || existingReport.authorName) setScoutName(existingReport.scoutName || existingReport.authorName);
+      if (existingReport.matchFixture) setManualFixture(existingReport.matchFixture);
+      if (existingReport.observationDate) setManualDate(existingReport.observationDate);
+      if (existingReport.competition) setManualCompetition(existingReport.competition);
+      if (existingReport.visibility) setVisibility(existingReport.visibility);
+
+      const sp = existingReport.spondaData;
+      if (sp) {
+        if (sp.ratingStars) setRatingStars(sp.ratingStars);
+        if (sp.bestPosition) setBestPosition(sp.bestPosition);
+        if (sp.secondaryPositions) setSecondaryPositions(sp.secondaryPositions);
+        if (sp.role) setRole(sp.role);
+        if (sp.reputation) setReputation(sp.reputation);
+        if (sp.reputationPotential) setReputationPotential(sp.reputationPotential);
+        if (sp.developmentPotential) setDevelopmentPotential(sp.developmentPotential);
+        if (sp.scoutingStatus) setScoutingStatus(sp.scoutingStatus);
+        if (sp.typeOfPlayer) setTypeOfPlayer(sp.typeOfPlayer);
+        if (sp.positionalProfile) setPositionalProfile(sp.positionalProfile);
+        if (sp.tecTacTags) setTecTacTags(sp.tecTacTags);
+        if (sp.debilities) setDebilities(sp.debilities);
+        if (sp.transferRisk) setTransferRisk(sp.transferRisk);
+        if (sp.scoutDecision) setScoutDecision(sp.scoutDecision);
+        if (sp.specialities) setSpecialities(sp.specialities);
+        if (sp.clubsStatus) setClubsStatus(sp.clubsStatus);
+        if (sp.pros) setPros(sp.pros);
+        if (sp.cons) setCons(sp.cons);
+        if (sp.scoutOpinion) setScoutOpinion(sp.scoutOpinion);
+        if (sp.videoUrl) setVideoUrl(sp.videoUrl);
+      }
+    } else if (initialPlayer) {
       if (initialPlayer.id) setPlayerId(initialPlayer.id);
       if (initialPlayer.name) setPlayerName(initialPlayer.name);
       if (initialPlayer.club) setPlayerClub(initialPlayer.club);
       if (initialPlayer.position) setBestPosition([initialPlayer.position]);
     }
-  }, [initialPlayer]);
+  }, [initialPlayer, existingReport, isOpen]);
 
   // Search matches from database: prioritized to player's matches and player's club matches
   useEffect(() => {
@@ -269,8 +300,8 @@ export const SpondaReportEditorModal: React.FC<SpondaReportEditorProps> = ({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="SPONDA Professional Scouting Report"
-      description="Compile structured tactical, positional, and scouting dossier directly aligned with the official SPONDA criteria."
+      title={existingReport ? "Edit SPONDA Scouting Report" : "SPONDA Professional Scouting Report"}
+      description={existingReport ? `Updating dossier #${existingReport.id} for ${playerName || "player"}` : "Compile structured tactical, positional, and scouting dossier directly aligned with the official SPONDA criteria."}
       size="xl"
       footer={
         <div className="flex items-center justify-between w-full">
@@ -288,7 +319,7 @@ export const SpondaReportEditorModal: React.FC<SpondaReportEditorProps> = ({
               isLoading={isSubmitting}
               leftIcon={<Sparkles className="w-3.5 h-3.5 text-amber-400" />}
             >
-              Commit &amp; File Dossier
+              {existingReport ? "Save Changes" : "Commit & File Dossier"}
             </Button>
           </div>
         </div>
@@ -851,6 +882,7 @@ export const SpondaReportEditorModal: React.FC<SpondaReportEditorProps> = ({
                   onChange={(e) => setRole(e.target.value)}
                   className="w-full py-1.5 px-2 rounded-lg bg-navy-950 border border-white/15 text-xs text-white"
                 >
+                  <option value="">-- Select Role --</option>
                   {SPONDA_ROLES.map((r) => (
                     <option key={r} value={r}>
                       {r}
@@ -866,6 +898,7 @@ export const SpondaReportEditorModal: React.FC<SpondaReportEditorProps> = ({
                   onChange={(e) => setReputation(e.target.value)}
                   className="w-full py-1.5 px-2 rounded-lg bg-navy-950 border border-white/15 text-xs text-white"
                 >
+                  <option value="">-- Select Reputation --</option>
                   {SPONDA_REPUTATION.map((r) => (
                     <option key={r} value={r}>
                       {r}
@@ -881,6 +914,7 @@ export const SpondaReportEditorModal: React.FC<SpondaReportEditorProps> = ({
                   onChange={(e) => setReputationPotential(e.target.value)}
                   className="w-full py-1.5 px-2 rounded-lg bg-navy-950 border border-white/15 text-xs text-white"
                 >
+                  <option value="">-- Select Projected Potential --</option>
                   {SPONDA_REPUTATION.map((r) => (
                     <option key={r} value={r}>
                       {r}
@@ -899,6 +933,7 @@ export const SpondaReportEditorModal: React.FC<SpondaReportEditorProps> = ({
                   onChange={(e) => setDevelopmentPotential(e.target.value)}
                   className="w-full py-1.5 px-2 rounded-lg bg-navy-950 border border-white/15 text-xs text-white"
                 >
+                  <option value="">-- Select Potential --</option>
                   {SPONDA_DEVELOPMENT_POTENTIAL.map((d) => (
                     <option key={d} value={d}>
                       {d}
@@ -914,6 +949,7 @@ export const SpondaReportEditorModal: React.FC<SpondaReportEditorProps> = ({
                   onChange={(e) => setScoutingStatus(e.target.value)}
                   className="w-full py-1.5 px-2 rounded-lg bg-navy-950 border border-white/15 text-xs text-white"
                 >
+                  <option value="">-- Select Status --</option>
                   {SPONDA_SCOUTING_STATUS.map((s) => (
                     <option key={s} value={s}>
                       {s}
@@ -929,6 +965,7 @@ export const SpondaReportEditorModal: React.FC<SpondaReportEditorProps> = ({
                   onChange={(e) => setTypeOfPlayer(e.target.value)}
                   className="w-full py-1.5 px-2 rounded-lg bg-navy-950 border border-white/15 text-xs text-white"
                 >
+                  <option value="">-- Select Player Type --</option>
                   {SPONDA_TYPE_OF_PLAYER.map((t) => (
                     <option key={t} value={t}>
                       {t}
@@ -947,6 +984,7 @@ export const SpondaReportEditorModal: React.FC<SpondaReportEditorProps> = ({
                   onChange={(e) => setPositionalProfile(e.target.value)}
                   className="w-full py-1.5 px-2 rounded-lg bg-navy-950 border border-white/15 text-xs text-white"
                 >
+                  <option value="">-- Select Positional Profile --</option>
                   {SPONDA_POSITIONAL_PROFILES.map((group) => (
                     <optgroup key={group.group} label={group.group}>
                       {group.options.map((opt) => (
@@ -966,6 +1004,7 @@ export const SpondaReportEditorModal: React.FC<SpondaReportEditorProps> = ({
                   onChange={(e) => setClubsStatus(e.target.value)}
                   className="w-full py-1.5 px-2 rounded-lg bg-navy-950 border border-white/15 text-xs text-white"
                 >
+                  <option value="">-- Select Club Tier Target --</option>
                   {SPONDA_CLUBS_STATUS.map((c) => (
                     <option key={c} value={c}>
                       {c}
@@ -1090,6 +1129,7 @@ export const SpondaReportEditorModal: React.FC<SpondaReportEditorProps> = ({
                     onChange={(e) => setTransferRisk(e.target.value)}
                     className="w-full py-1.5 px-2 rounded-lg bg-navy-950 border border-white/15 text-xs text-white"
                   >
+                    <option value="">-- Select Risk Level --</option>
                     {SPONDA_TRANSFER_RISK.map((r) => (
                       <option key={r} value={r}>
                         {r}
@@ -1104,6 +1144,7 @@ export const SpondaReportEditorModal: React.FC<SpondaReportEditorProps> = ({
                     onChange={(e) => setScoutDecision(e.target.value)}
                     className="w-full py-1.5 px-2 rounded-lg bg-navy-950 border border-white/15 text-xs text-white font-bold"
                   >
+                    <option value="">-- Select Decision --</option>
                     {SPONDA_SCOUT_DECISION.map((d) => (
                       <option key={d} value={d}>
                         {d}

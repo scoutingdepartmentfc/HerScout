@@ -593,6 +593,10 @@ class SoccerdonnaSync:
         """`solo_fichas`: busca las jugadoras sin ficha de Soccerdonna, sin sincronizar escudos ni logos."""
         comps = competiciones_objetivo(self.store)
         comp_ids = {c["id"] for c in comps if not comp_id or c["id"] == comp_id}
+        # Ligas que van por ceroacero (Brasil, Argentina...): Soccerdonna no las tiene, no se buscan aquí
+        from .cz_ligas import ligas_ceroacero
+        cz_codigos, cz_comps = ligas_ceroacero(self.store)
+        comp_ids -= cz_comps
         equipos = {t["id"]: t["name"] for t in self.store.select_all("teams", "id,name,competition_id")
                    if t.get("competition_id") in comp_ids}
         # Sin equipo actual (ya no están en la plantilla): el club de su última temporada
@@ -605,7 +609,9 @@ class SoccerdonnaSync:
         jugadoras = []
         for p in self.store.select_all(
                 "players", "id,name,first_name,last_name,match_name,birth_date,height,preferred_foot,"
-                           "place_of_birth,photo_url,current_team_id,sd_updated_at,sd_id"):
+                           "place_of_birth,photo_url,current_team_id,sd_updated_at,sd_id,sd_league_code"):
+            if p.get("sd_league_code") in cz_codigos:
+                continue
             p["shirt_number"] = dorsales.get(p["id"])
             self.nombres[p["id"]] = p["name"]
             if p.get("sd_id"):

@@ -162,8 +162,9 @@ function VenueBackdrop({ venue, known }: { venue?: string | null; known?: string
         }}
         className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-105 opacity-80 group-hover:opacity-95"
       />
-      <div className="absolute inset-0 bg-gradient-to-r from-card/90 via-card/50 to-transparent" />
-      <div className="absolute inset-0 bg-gradient-to-t from-card/90 via-card/10 to-card/30" />
+      {/* Soft gradient letting the stadium shine vividly while subtly preserving text legibility */}
+      <div className="absolute inset-0 bg-gradient-to-r from-navy-950/90 via-navy-950/45 to-transparent" />
+      <div className="absolute inset-0 bg-gradient-to-t from-navy-950/90 via-transparent to-navy-950/30" />
     </div>
   );
 }
@@ -1186,7 +1187,7 @@ export default function MatchesPage() {
                         >
                           <VenueBackdrop venue={m.venue} known={m.venueImage} />
                           <CardContent className="relative p-3">
-                            <div className="flex items-center justify-between text-[11px] text-muted-foreground mb-2">
+                            <div className="flex items-center justify-between text-[11px] mb-2">
                               <LeagueHeaderBadge
                                 competition={m.competition}
                                 competitionId={m.competitionId}
@@ -1195,19 +1196,19 @@ export default function MatchesPage() {
                               />
                               <div className="flex items-center gap-2">
                                 {canOpen(m) && (
-                                  <span title="Lineups available" className="text-emerald-300">
+                                  <span title="Lineups available" className="text-emerald-300 bg-emerald-950/60 border border-emerald-500/30 px-1.5 py-0.5 rounded">
                                     <Users className="h-3.5 w-3.5" />
                                   </span>
                                 )}
                                 {timeLabel && (
-                                  <span className="font-mono text-primary font-bold">{timeLabel}</span>
+                                  <span className="font-mono text-white bg-black/40 border border-white/10 px-1.5 py-0.5 rounded font-bold">{timeLabel}</span>
                                 )}
                                 <button
                                   onClick={(e) => toggleAgendaMatch(m, e)}
                                   className={`p-1 rounded-md transition-colors ${
                                     isBookmarked
                                       ? "text-amber-400 bg-amber-400/20"
-                                      : "text-slate-400 hover:text-amber-400 hover:bg-white/10"
+                                      : "text-slate-300 hover:text-amber-400 hover:bg-white/15 bg-black/40 border border-white/10"
                                   }`}
                                   title={isBookmarked ? "Remove from Scouting Agenda" : "Add to Scouting Agenda"}
                                 >
@@ -1222,12 +1223,12 @@ export default function MatchesPage() {
 
                             <div className="space-y-1.5 py-1">
                               {[m.home, m.away].map((side, i) => (
-                                <div key={i} className="flex items-center justify-between text-xs font-semibold text-white">
+                                <div key={i} className="flex items-center justify-between text-xs font-bold text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]">
                                   <span className="flex items-center gap-2 min-w-0">
                                     <EscudoEquipo teamId={side.id} badgeUrl={side.badgeUrl} name={side.name} size={18} />
                                     <span className="truncate">{side.name}</span>
                                   </span>
-                                  <span className={played(m) ? "font-mono font-bold" : "text-slate-500 font-mono"}>
+                                  <span className={played(m) ? "font-mono font-black text-white text-sm drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]" : "text-slate-300 font-mono drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]"}>
                                     {played(m) ? side.score ?? 0 : "-"}
                                   </span>
                                 </div>
@@ -1235,9 +1236,9 @@ export default function MatchesPage() {
                             </div>
 
                             {m.venue && (
-                              <div className="mt-2 pt-2 border-t border-white/10 flex items-center gap-1 text-[10px] text-slate-300 truncate">
-                                <MapPin className="w-3 h-3 shrink-0 text-slate-400" />
-                                <span className="truncate">{m.venue}</span>
+                              <div className="mt-2 pt-2 border-t border-white/20 flex items-center gap-1.5 text-[10px] text-slate-100 truncate">
+                                <MapPin className="w-3 h-3 shrink-0 text-slate-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]" />
+                                <span className="truncate font-medium drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">{m.venue}</span>
                               </div>
                             )}
                           </CardContent>
@@ -1355,12 +1356,12 @@ export default function MatchesPage() {
                         {/* Teams */}
                         <div className="space-y-2 py-2">
                           {[m.home, m.away].map((side, i) => (
-                            <div key={i} className="flex items-center justify-between font-semibold text-sm text-white">
+                            <div key={i} className="flex items-center justify-between font-bold text-sm text-white drop-shadow-sm">
                               <span className="flex items-center gap-2 min-w-0">
                                 <EscudoEquipo teamId={side.id} badgeUrl={side.badgeUrl} name={side.name} size={20} />
                                 <span className="truncate">{side.name}</span>
                               </span>
-                              <span className={played(m) ? "font-mono font-bold" : "text-muted-foreground"}>
+                              <span className={played(m) ? "font-mono font-black text-white text-base" : "text-slate-400 font-mono"}>
                                 {played(m) ? side.score ?? 0 : "-"}
                               </span>
                             </div>
@@ -1368,27 +1369,27 @@ export default function MatchesPage() {
                         </div>
 
                         {/* Date & Location */}
-                        <div className="mt-3 pt-3 border-t border-border/50 flex items-center justify-between text-xs text-muted-foreground">
-                          <div className="flex items-center gap-1 min-w-0">
-                            <Clock className="w-3.5 h-3.5 shrink-0" />
-                            <span className="truncate">
+                        <div className="mt-3 pt-3 border-t border-white/15 flex items-center justify-between text-xs text-slate-200">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <Clock className="w-3.5 h-3.5 shrink-0 text-slate-300" />
+                            <span className="truncate font-medium text-slate-200">
                               {dateLabel}
                               {timeLabel && (
-                                <span className="text-white font-medium ml-1.5">· {timeLabel}</span>
+                                <span className="text-white font-bold ml-1.5">· {timeLabel}</span>
                               )}
                             </span>
                           </div>
                           {played(m) ? (
-                            <Badge variant="secondary" size="sm">Final</Badge>
+                            <Badge variant="secondary" size="sm" className="font-bold text-white bg-white/15 border-white/20">Final</Badge>
                           ) : (
-                            <Badge variant="outline" size="sm">{m.status === "Fixture" ? "Scheduled" : m.status}</Badge>
+                            <Badge variant="outline" size="sm" className="font-semibold text-slate-200 border-white/20 bg-black/40">{m.status === "Fixture" ? "Scheduled" : m.status}</Badge>
                           )}
                         </div>
 
                         {m.venue && (
-                          <div className="mt-1.5 flex items-center gap-1 text-[11px] text-muted-foreground truncate">
-                            <MapPin className="w-3 h-3 shrink-0" />
-                            <span className="truncate">{m.venue}</span>
+                          <div className="mt-2 flex items-center gap-1.5 text-[11px] text-slate-300 truncate">
+                            <MapPin className="w-3.5 h-3.5 shrink-0 text-slate-400" />
+                            <span className="truncate font-medium">{m.venue}</span>
                           </div>
                         )}
                       </div>
@@ -1454,7 +1455,7 @@ export default function MatchesPage() {
                   >
                     <VenueBackdrop venue={m.venue} known={m.venueImage} />
                     <CardContent className="relative p-4">
-                      <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground mb-3">
+                      <div className="flex items-center justify-between gap-2 text-[11px] mb-3">
                         <LeagueHeaderBadge
                           competition={m.competition}
                           competitionId={m.competitionId}
@@ -1462,13 +1463,13 @@ export default function MatchesPage() {
                           competitionLogoUrl={m.competitionLogoUrl}
                         />
                         <div className="flex items-center gap-2">
-                          {m.week && <span className="shrink-0 text-slate-400">Matchday {m.week}</span>}
+                          {m.week && <span className="shrink-0 font-semibold text-slate-200 bg-black/40 border border-white/10 px-2 py-0.5 rounded-md">Matchday {m.week}</span>}
                           <button
                             onClick={(e) => toggleAgendaMatch(m, e)}
                             className={`p-1 rounded-md transition-colors ${
                               isBookmarked
                                 ? "text-amber-400 bg-amber-400/20"
-                                : "text-slate-400 hover:text-amber-400 hover:bg-white/10"
+                                : "text-slate-300 hover:text-amber-400 hover:bg-white/15 bg-black/40 border border-white/10"
                             }`}
                             title={isBookmarked ? "Remove from Scouting Agenda" : "Add to Scouting Agenda"}
                           >
@@ -1483,25 +1484,25 @@ export default function MatchesPage() {
 
                       <div className="space-y-2 py-2">
                         {[m.home, m.away].map((side, i) => (
-                          <div key={i} className="flex items-center justify-between font-semibold text-sm text-white">
+                          <div key={i} className="flex items-center justify-between font-bold text-sm text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]">
                             <span className="flex items-center gap-2 min-w-0">
                               <EscudoEquipo teamId={side.id} badgeUrl={side.badgeUrl} name={side.name} size={20} />
                               <span className="truncate">{side.name}</span>
                             </span>
-                            <span className={played(m) ? "font-mono font-bold" : "text-muted-foreground font-mono"}>
+                            <span className={played(m) ? "font-mono font-black text-white text-base drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]" : "text-slate-300 font-mono drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]"}>
                               {played(m) ? side.score ?? 0 : "-"}
                             </span>
                           </div>
                         ))}
                       </div>
 
-                      <div className="mt-4 pt-3 border-t border-border/50 flex items-center justify-between gap-2 text-xs text-muted-foreground">
-                        <div className="flex items-center gap-1 min-w-0">
-                          <Clock className="w-3.5 h-3.5 shrink-0" />
-                          <span className="truncate">
+                      <div className="mt-4 pt-3 border-t border-white/20 flex items-center justify-between gap-2 text-xs text-slate-100">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <Clock className="w-3.5 h-3.5 shrink-0 text-slate-200 drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]" />
+                          <span className="truncate font-semibold text-slate-100 drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">
                             {dateLabel}
                             {timeLabel && (
-                              <span className="text-white font-medium ml-1.5">
+                              <span className="text-white font-bold ml-1.5 drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">
                                 · {timeLabel}
                               </span>
                             )}
@@ -1509,21 +1510,21 @@ export default function MatchesPage() {
                         </div>
                         <div className="flex items-center gap-1.5 shrink-0">
                           {canOpen(m) && (
-                            <span className="inline-flex items-center gap-1 rounded border border-emerald-500/40 bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-300 group-hover:bg-emerald-500/25">
+                            <span className="inline-flex items-center gap-1 rounded border border-emerald-400/50 bg-emerald-500/25 px-2 py-0.5 text-[10.5px] font-extrabold uppercase tracking-wide text-emerald-300 group-hover:bg-emerald-500/35 shadow-xs">
                               <Users className="h-3 w-3" /> Lineups
                             </span>
                           )}
                           {played(m) ? (
-                            <Badge variant="secondary" size="sm">Final</Badge>
+                            <Badge variant="secondary" size="sm" className="font-bold text-white bg-white/20 border-white/30 backdrop-blur-xs">Final</Badge>
                           ) : (
-                            <Badge variant="outline" size="sm">{m.status === "Fixture" ? "Scheduled" : m.status}</Badge>
+                            <Badge variant="outline" size="sm" className="font-bold text-slate-100 border-white/25 bg-black/50 backdrop-blur-xs">{m.status === "Fixture" ? "Scheduled" : m.status}</Badge>
                           )}
                         </div>
                       </div>
                       {m.venue && (
-                        <div className="mt-2 flex items-center gap-1 text-[11px] text-muted-foreground truncate">
-                          <MapPin className="w-3 h-3 shrink-0" />
-                          <span className="truncate">{m.venue}</span>
+                        <div className="mt-2.5 flex items-center gap-1.5 text-[11px] text-slate-200 truncate">
+                          <MapPin className="w-3.5 h-3.5 shrink-0 text-slate-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]" />
+                          <span className="truncate font-medium drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">{m.venue}</span>
                         </div>
                       )}
                     </CardContent>

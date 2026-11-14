@@ -25,6 +25,8 @@ type BaseData = {
   allPlayers: any[];
   // Players without a current club: club of their latest match, only if played in the last 3 months
   recentTeamByPlayer: Map<string, { id: string; name: string; badge_url: string | null }>;
+  // Teams master from teams table for unambiguous team -> league mapping
+  teamsMaster: { id: string; name: string; badgeUrl?: string | null; leagueName?: string }[];
 };
 
 const RECENT_CLUB_MONTHS = 3;
@@ -189,11 +191,12 @@ async function loadBaseData(db: any): Promise<BaseData> {
       }
     };
 
-    const [statsCountRes, sdLRes, trendByPlayer, allPlayers] = await Promise.all([
+    const [statsCountRes, sdLRes, trendByPlayer, allPlayers, teamsRes] = await Promise.all([
       statsCountPromise,
       db.from("sd_leagues").select("code, name, country"),
       fetchTrends(db).catch(() => new Map()),
       fetchAllPlayers(),
+      db.from("teams").select("id, name, badge_url, league_name").not("league_name", "is", null),
     ]);
 
     const totalStats = Math.max(statsCountRes?.count || 0, PAGE);
@@ -227,7 +230,14 @@ async function loadBaseData(db: any): Promise<BaseData> {
       allPlayers.filter((p: any) => !p.fm_team_name && !p.teams).map((p: any) => p.id)
     );
 
-    const data: BaseData = { rows, leagueCountryByCode, leagueCountryByName, trendByPlayer, allPlayers, recentTeamByPlayer };
+    const teamsMaster = (teamsRes?.data || []).map((t: any) => ({
+      id: t.id,
+      name: t.name,
+      badgeUrl: t.badge_url || null,
+      leagueName: t.league_name || null,
+    }));
+
+    const data: BaseData = { rows, leagueCountryByCode, leagueCountryByName, trendByPlayer, allPlayers, recentTeamByPlayer, teamsMaster };
     baseCache = { timestamp: Date.now(), data };
     processedCache.clear();
     return data;
@@ -284,7 +294,7 @@ export async function GET(req: NextRequest) {
     if (cachedProcessed && cachedProcessed.timestamp === baseCache?.timestamp) {
       processed = cachedProcessed.value;
     } else {
-    const { rows, leagueCountryByCode, leagueCountryByName, trendByPlayer, allPlayers, recentTeamByPlayer } = base;
+    const { rows, leagueCountryByCode, leagueCountryByName, trendByPlayer, allPlayers, recentTeamByPlayer, teamsMaster } = base;
 
     // Extract available season names from all rows for the filter dropdown
     const availableSeasons = Array.from(
@@ -487,9 +497,23 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // Available filter options extracted from all data
+    // Available filter options extracted from all data and master teams
     const teamsMap = new Map<string, { name: string; teamId?: string | null; badgeUrl?: string | null; leagueName?: string }>();
     const leaguesMap = new Map<string, { name: string; logoUrl?: string | null; country?: string | null }>();
+
+    // Seed master teams to guarantee canonical team -> league mapping
+    if (teamsMaster && teamsMaster.length) {
+      for (const tm of teamsMaster) {
+        if (tm.name && !teamsMap.has(tm.name)) {
+          teamsMap.set(tm.name, {
+            name: tm.name,
+            teamId: tm.id,
+            badgeUrl: tm.badgeUrl || null,
+            leagueName: tm.leagueName,
+          });
+        }
+      }
+    }
 
     for (const p of list) {
       if (p.teamName && !teamsMap.has(p.teamName)) {

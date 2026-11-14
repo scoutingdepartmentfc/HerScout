@@ -70,6 +70,12 @@ export interface ScoutingReport {
   playerName: string;
   playerClub: string;
   playerCountry?: string;
+  playerPhotoUrl?: string | null;
+  playerClubBadgeUrl?: string | null;
+  playerClubId?: string | null;
+  playerDemarcacion?: string | null;
+  playerAge?: number | null;
+  playerBirthDate?: string | null;
   primaryPosition: string;
   matchId?: string | null;
   matchFixture?: string | null;

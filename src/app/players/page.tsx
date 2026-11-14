@@ -346,7 +346,7 @@ function MultiSelectDropdown<T extends { id: string; name: string; badgeUrl?: st
 // and full reloads within the tab (sessionStorage), so revisits render instantly.
 type PlayersResponse = { players: PlayerRow[]; evaluatedPeriod?: string; filters?: any };
 // Bump the version whenever the response shape changes, so stale cached rows are not shown
-const PLAYERS_CACHE_KEY = "players_data_v2_";
+const PLAYERS_CACHE_KEY = "players_data_v4_";
 const memoryPlayersCache = new Map<string, PlayersResponse>();
 
 function readPlayersCache(season: string): PlayersResponse | null {
@@ -456,9 +456,17 @@ function PlayersDirectoryContent() {
     }
     if (json.filters) {
       if (json.filters.teamsDetailed?.length) {
-        setAvailableTeams(json.filters.teamsDetailed.map((t: any) => ({ id: t.name, name: t.name, teamId: t.teamId, badgeUrl: t.badgeUrl })));
+        setAvailableTeams(
+          json.filters.teamsDetailed.map((t: any) => ({
+            id: t.name,
+            name: t.name,
+            teamId: t.teamId,
+            badgeUrl: t.badgeUrl,
+            leagueName: t.leagueName || null,
+          }))
+        );
       } else if (json.filters.teams?.length) {
-        setAvailableTeams(json.filters.teams.map((t: string) => ({ id: t, name: t })));
+        setAvailableTeams(json.filters.teams.map((t: string) => ({ id: t, name: t, leagueName: null })));
       }
 
       if (json.filters.leaguesDetailed?.length) {
@@ -628,6 +636,97 @@ function PlayersDirectoryContent() {
     }
     return sorted;
   }, [allPlayers, deferredSearch, positionFilter, selectedTeams, selectedLeagues, minAge, maxAge, minRatingFilter, sortBy, sortOrder]);
+
+  // Dynamically adapt available teams based on selected leagues, and available leagues based on selected teams
+  const filteredAvailableTeams = useMemo(() => {
+    if (selectedLeagues.length === 0) return availableTeams;
+    const leaguesNorm = selectedLeagues.map(normLeague);
+
+    // 1. Calculate each team's definitive league:
+    // If availableTeams has a leagueName for the team (from teams table or API), use that.
+    // Otherwise, calculate the majority league among players of that team to avoid transfer anomalies.
+    const teamLeagueCounts = new Map<string, Map<string, number>>();
+    allPlayers.forEach((p) => {
+      if (!p.teamName || !p.leagueName) return;
+      const tKey = p.teamName.toLowerCase();
+      let m = teamLeagueCounts.get(tKey);
+      if (!m) {
+        m = new Map<string, number>();
+        teamLeagueCounts.set(tKey, m);
+      }
+      const lNorm = normLeague(p.leagueName);
+      m.set(lNorm, (m.get(lNorm) || 0) + 1);
+    });
+
+    const getTeamLeague = (teamName: string, explicitLeague?: string | null): string | null => {
+      if (explicitLeague) return normLeague(explicitLeague);
+      const m = teamLeagueCounts.get(teamName.toLowerCase());
+      if (!m || m.size === 0) return null;
+      let bestLeague = "";
+      let maxCount = -1;
+      m.forEach((count, l) => {
+        if (count > maxCount) {
+          maxCount = count;
+          bestLeague = l;
+        }
+      });
+      return bestLeague || null;
+    };
+
+    return availableTeams.filter((t) => {
+      const tLeague = getTeamLeague(t.name, (t as any).leagueName);
+      return tLeague != null && leaguesNorm.includes(tLeague);
+    });
+  }, [availableTeams, selectedLeagues, allPlayers]);
+
+  const filteredAvailableLeagues = useMemo(() => {
+    if (selectedTeams.length === 0) return availableLeagues;
+    const teamsNorm = selectedTeams.map((t) => t.toLowerCase());
+
+    // Find the primary league belonging to the selected teams
+    const leaguesOfSelectedTeams = new Set<string>();
+
+    // Map each team in availableTeams to its league
+    const teamToLeague = new Map<string, string>();
+    availableTeams.forEach((t) => {
+      if ((t as any).leagueName) {
+        teamToLeague.set(t.name.toLowerCase(), normLeague((t as any).leagueName));
+      }
+    });
+
+    // Check player distribution for teams without explicit leagueName
+    const teamLeagueCounts = new Map<string, Map<string, number>>();
+    allPlayers.forEach((p) => {
+      if (!p.teamName || !p.leagueName) return;
+      const tKey = p.teamName.toLowerCase();
+      let m = teamLeagueCounts.get(tKey);
+      if (!m) {
+        m = new Map<string, number>();
+        teamLeagueCounts.set(tKey, m);
+      }
+      const lNorm = normLeague(p.leagueName);
+      m.set(lNorm, (m.get(lNorm) || 0) + 1);
+    });
+
+    teamsNorm.forEach((tKey) => {
+      let l = teamToLeague.get(tKey);
+      if (!l) {
+        const m = teamLeagueCounts.get(tKey);
+        if (m && m.size > 0) {
+          let maxCount = -1;
+          m.forEach((count, league) => {
+            if (count > maxCount) {
+              maxCount = count;
+              l = league;
+            }
+          });
+        }
+      }
+      if (l) leaguesOfSelectedTeams.add(l);
+    });
+
+    return availableLeagues.filter((l) => leaguesOfSelectedTeams.has(normLeague(l.name)));
+  }, [availableLeagues, selectedTeams, availableTeams, allPlayers]);
 
   // Progressive rendering: reset window on filter change, grow on scroll
   useEffect(() => {
@@ -849,31 +948,11 @@ function PlayersDirectoryContent() {
                 </Select>
               </div>
 
-              {/* Club / Team (Multi-select with Badge) */}
-              <div>
-                <MultiSelectDropdown
-                  label="Clubs / Teams"
-                  options={availableTeams}
-                  selectedIds={selectedTeams}
-                  onChange={setSelectedTeams}
-                  placeholder="All teams"
-                  renderIcon={(opt) => (
-                    <EscudoEquipo
-                      teamId={opt.teamId}
-                      badgeUrl={opt.badgeUrl}
-                      name={opt.name}
-                      size={18}
-                      className="shrink-0"
-                    />
-                  )}
-                />
-              </div>
-
               {/* Competition / League (Multi-select with Flag/Logo) */}
               <div>
                 <MultiSelectDropdown
                   label="Leagues / Competitions"
-                  options={availableLeagues}
+                  options={filteredAvailableLeagues}
                   selectedIds={selectedLeagues}
                   onChange={setSelectedLeagues}
                   placeholder="All leagues"
@@ -885,6 +964,26 @@ function PlayersDirectoryContent() {
                         <span className="text-[10px]">🏆</span>
                       )}
                     </div>
+                  )}
+                />
+              </div>
+
+              {/* Club / Team (Multi-select with Badge) */}
+              <div>
+                <MultiSelectDropdown
+                  label="Clubs / Teams"
+                  options={filteredAvailableTeams}
+                  selectedIds={selectedTeams}
+                  onChange={setSelectedTeams}
+                  placeholder="All teams"
+                  renderIcon={(opt) => (
+                    <EscudoEquipo
+                      teamId={opt.teamId}
+                      badgeUrl={opt.badgeUrl}
+                      name={opt.name}
+                      size={18}
+                      className="shrink-0"
+                    />
                   )}
                 />
               </div>

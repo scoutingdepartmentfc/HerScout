@@ -185,12 +185,31 @@ def foto_fotmob(store: Store, fotmob: FotMobClient, p: Dict[str, Any], club: str
     return f"{url}?v={int(time.time())}" if url else None
 
 
+def catalogo_logo(store: Store, code: str) -> Dict[str, Any]:
+    fila = store.select_all("sd_leagues", "logo_url", code=code)
+    return {"logo_url": fila[0].get("logo_url")} if fila else {}
+
+
 def descargar(store: Store, sd: SDClient, liga_code: Optional[str], limit: Optional[int],
               refresco_dias: int = REFRESCO_DIAS):
     ligas = [l for l in store.select_all("sd_leagues", "code,name,country,url,enabled")
              if (l["code"] == liga_code if liga_code else l["enabled"])]
     if not ligas:
         raise SystemExit("No hay ligas de Soccerdonna marcadas en /admin")
+    # Ligas solo de Opta (sin página en Soccerdonna, p. ej. Brasil y Argentina): sus jugadoras salen de las
+    # plantillas Opta en el paso opta() y aquí no hay nada que leer
+    for l in [l for l in ligas if not l.get("url")]:
+        logger.info(f"▶ {l['name']} ({l['country']}): solo Opta, sin Soccerdonna")
+    # Ligas que Soccerdonna no tiene, leídas de ceroacero.es (url de la competición allí): mismo formato "sd-"
+    from .cz_ligas import descargar_liga as descargar_ceroacero, es_ceroacero
+    for l in [l for l in ligas if es_ceroacero(l)]:
+        try:
+            descargar_ceroacero(store, {**l, **catalogo_logo(store, l["code"])}, limit, refresco_dias)
+        except Exception as e:  # una web caída no tumba las demás ligas
+            logger.warning(f"▶ {l['name']}: fallo en ceroacero ({e})")
+    ligas = [l for l in ligas if l.get("url") and not es_ceroacero(l)]
+    if not ligas:
+        return
     fotmob = FotMobClient()
     fotmob.cargar_asignados(store)
     tot = {"jugadoras": 0, "nuevas": 0, "al_dia": 0, "fotos": 0, "sin_ficha": 0}
@@ -596,7 +615,12 @@ def _unir(store: Store, s_: Dict[str, Any], mejor: Dict[str, Any], club_de_socce
                                                                       or (k not in club and not mejor.get(k)))}
     if club_de_soccerdonna and s_.get("current_team_id"):
         datos["current_team_id"] = s_["current_team_id"]
-    store.update("players", {"sd_id": None}, id=s_["id"])  # sd_id es único: se libera antes de moverlo
+    # Ficha que vino de ceroacero (ligas sin Soccerdonna): su id pasa a la fila Opta (el coche escoba ya no la busca)
+    cz = (store.select_all("players", "cz_id,cz_url,cz_updated_at,weight,country", id=s_["id"]) or [{}])[0]
+    if cz.get("cz_id"):
+        datos.update({k: cz[k] for k in ("cz_id", "cz_url", "cz_updated_at")})
+        datos.update({k: cz[k] for k in ("weight", "country") if cz.get(k) and not mejor.get(k)})
+    store.update("players", {"sd_id": None, "cz_id": None}, id=s_["id"])  # únicos: se liberan antes de moverlos
     store.update("players", {**datos, "opta_id": mejor["id"]}, id=mejor["id"])
     # La fila Opta puede tener ya algunas de estas filas (de una unión anterior): se mueven con upsert por la
     # clave primaria (gana la de Soccerdonna, la más reciente) en vez de un UPDATE que chocaría con ella
@@ -672,9 +696,12 @@ def marcar_retiradas(store: Store, sd: SDClient, refresco_dias: int = REFRESCO_D
     equipos = {t["id"]: t["name"] for t in store.select_all("teams", "id,name")}
     clubes = {r["player_id"]: equipos.get(r["team_id"]) for r in store.select_all("player_season_stats", "player_id,team_id")}
     limite = (datetime.now(timezone.utc) - timedelta(days=refresco_dias)).isoformat()
+    from .cz_ligas import ligas_ceroacero
+    cz_codigos = ligas_ceroacero(store)[0]  # Brasil, Argentina...: Soccerdonna no las tiene
     jugadoras = [p for p in store.select_all("players", "id,name,first_name,last_name,match_name,birth_date,sd_url,"
-                                                         "sd_updated_at,fm_team_name")
-                 if p["id"] in clubes and (p.get("fm_team_name") == en.RETIRADA or (p.get("sd_updated_at") or "") < limite)]
+                                                         "sd_updated_at,fm_team_name,sd_league_code")
+                 if p["id"] in clubes and (p.get("fm_team_name") == en.RETIRADA or (p.get("sd_updated_at") or "") < limite)
+                 and p.get("sd_league_code") not in cz_codigos]
     logger.info(f"Retiradas: {len(jugadoras)} jugadoras por revisar")
     cambios = 0
     for n, p in enumerate(jugadoras, 1):
@@ -867,6 +894,12 @@ def flujo(store: Store, sd: SDClient, liga_code: Optional[str], limit: Optional[
     vincular(store, liga_code)
     completar(store, limit=limit)
     corregir_clubes(store)
+    # Demarcación de las que no tienen partidos Opta: Soccerdonna/ceroacero → FotMob → genérica
+    try:
+        from .demarcaciones import rellenar as demarcaciones
+        demarcaciones(store)
+    except Exception as e:  # extra: no tumba la descarga
+        logger.warning(f"Demarcaciones: {e}")
     if retiradas:
         marcar_retiradas(store, sd, refresco_dias)
     for code in (escudos_ligas if escudos_ligas is not None else [liga_code]):

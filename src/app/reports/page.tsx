@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useThemeContext } from "@/context/ThemeContext";
@@ -30,7 +30,7 @@ import {
   Star,
 } from "lucide-react";
 
-export default function ReportsListPage() {
+function ReportsListContent() {
   const { currentClub, user, userRole } = useThemeContext();
   const searchParams = useSearchParams();
   const [reports, setReports] = useState<ScoutingReport[]>([]);
@@ -408,5 +408,13 @@ export default function ReportsListPage() {
         }}
       />
     </div>
+  );
+}
+
+export default function ReportsListPage() {
+  return (
+    <Suspense fallback={<LoadingState message="Loading scouting reports..." />}>
+      <ReportsListContent />
+    </Suspense>
   );
 }

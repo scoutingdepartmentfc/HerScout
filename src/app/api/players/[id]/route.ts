@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { requireAdmin } from "@/lib/adminGuard";
-import { reportsStore } from "@/lib/reportsStore";
-import { NO_CLUB_DATA, preferOptaClub } from "@/lib/playerClub";
 
 // Fields that can be edited by hand from the profile (stored in players.manual_overrides)
 const EDITABLE: Record<string, "text" | "number" | "date" | "list"> = {
@@ -126,7 +124,7 @@ export async function GET(
       return NextResponse.json({ error: "Player not found" }, { status: 404 });
     }
 
-    const p = preferOptaClub(playerRes.data);
+    const p = playerRes.data;
 
     // 2. Player Season Stats with raw metric breakdown
     const statsRes = await (supabaseAdmin as any)
@@ -149,7 +147,7 @@ export async function GET(
           matches ( home_score, away_score, home_team_id, away_team_id, has_events, has_stats,
             home_team:teams!home_team_id ( id, name, badge_url ),
             away_team:teams!away_team_id ( id, name, badge_url ),
-            competitions ( id, name, logo_url ) )
+            competitions ( name ) )
         `)
         .eq("player_id", playerId)
         .order("match_date", { ascending: false })
@@ -179,24 +177,17 @@ export async function GET(
     // Fetch league averages for metrics (cached in memory or queried from player_season_stats)
     const leagueAverages = await getLeagueAverages(db);
 
-    // Fetch reports for this player (from memory store and/or supabase)
-    const playerReports = reportsStore.filter((r) => r.playerId === playerId);
-    const reportsByMatch = new Set(playerReports.map((r) => r.matchId).filter(Boolean));
-
     const matchLog = (matchStats.data || []).map((r: any) => {
       const m = r.matches || {};
       const isHome = m.home_team_id === r.team_id;
       const opponent = isHome ? m.away_team : m.home_team;
       const sc = scoreByMatch.get(r.match_id);
-      const hasReport = reportsByMatch.has(r.match_id);
       return {
         matchId: r.match_id,
         seasonId: r.season_id,
-        competitionId: r.competition_id || m.competitions?.id,
-        competitionLogoUrl: m.competitions?.logo_url || null,
+        competitionId: r.competition_id,
         hasEvents: !!m.has_events,
         hasStats: m.has_stats !== false,
-        hasReport,
         date: r.match_date,
         competition: m.competitions?.name,
         isHome,
@@ -326,35 +317,35 @@ export async function GET(
     const hasClub = !!(p.fm_team_name || p.teams || fallbackTeam);
 
     const scraped = {
-        id: p.id,
-        name: p.name,
-        matchName: p.match_name || p.name,
-        country: p.country,
-        birthDate: p.birth_date,
-        photoUrl: p.photoUrl || p.photo_url,
-        primaryPosition: scrapedPrimary,
-        playedPositions: sortedPlayedPositions,
-        positionsMap: posCounts,
-        grupoDemarcacion: p.grupo_demarcacion,
-        shirtNumber: p.shirt_number,
-        height: p.height,
-        weight: p.weight,
-        preferredFoot: p.preferred_foot,
-        placeOfBirth: p.place_of_birth,
-        marketValue: p.market_value,
-        contractUntil: p.contract_expires,
-        joinedOn: p.joined_on,
-        sdUrl: p.sd_url,
-        otherPositions: qualifyingSecondaryPositions,
-        sdPosition: p.tm_position_main,
-        citizenship: p.citizenship || [],
-        teamId: p.teams?.id || fallbackTeam?.id,
-        // Club actual y su liga según Soccerdonna; si no, el equipo Opta
-        teamName: p.fm_team_name || p.teams?.name || fallbackTeam?.name || NO_CLUB_DATA,
-        badgeUrl: (p.fm_team_name ? p.fm_team_badge_url : null) || p.teams?.badge_url || fallbackTeam?.badge_url,
-        // Without a current club (and no match in the last 3 months) the league of an old season is not shown either
-        leagueName: p.current_league_name || p.teams?.league_name || (hasClub ? seasonRow?.competitions?.name || seasonRow?.teams?.league_name : null),
-        leagueLogoUrl: p.current_league_logo_url || p.teams?.league_logo_url || (hasClub ? seasonRow?.competitions?.logo_url || seasonRow?.teams?.league_logo_url : null),
+      id: p.id,
+      name: p.name,
+      matchName: p.match_name || p.name,
+      country: p.country,
+      birthDate: p.birth_date,
+      photoUrl: p.photoUrl || p.photo_url,
+      primaryPosition: scrapedPrimary,
+      playedPositions: sortedPlayedPositions,
+      positionsMap: posCounts,
+      grupoDemarcacion: p.grupo_demarcacion,
+      shirtNumber: p.shirt_number,
+      height: p.height,
+      weight: p.weight,
+      preferredFoot: p.preferred_foot,
+      placeOfBirth: p.place_of_birth,
+      marketValue: p.market_value,
+      contractUntil: p.contract_expires,
+      joinedOn: p.joined_on,
+      sdUrl: p.sd_url,
+      otherPositions: qualifyingSecondaryPositions,
+      sdPosition: p.tm_position_main,
+      citizenship: p.citizenship || [],
+      teamId: p.teams?.id || fallbackTeam?.id,
+      // Club actual y su liga según Soccerdonna; si no, el equipo Opta
+      teamName: p.fm_team_name || p.teams?.name || fallbackTeam?.name || "Unattached",
+      badgeUrl: (p.fm_team_name ? p.fm_team_badge_url : null) || p.teams?.badge_url || fallbackTeam?.badge_url,
+      // Without a current club (and no match in the last 3 months) the league of an old season is not shown either
+      leagueName: p.current_league_name || p.teams?.league_name || (hasClub ? seasonRow?.competitions?.name || seasonRow?.teams?.league_name : null),
+      leagueLogoUrl: p.current_league_logo_url || p.teams?.league_logo_url || (hasClub ? seasonRow?.competitions?.logo_url || seasonRow?.teams?.league_logo_url : null),
     };
 
     return NextResponse.json({
@@ -370,7 +361,6 @@ export async function GET(
       injuries: injuries.data || [],
       physical: physical.error ? null : physical.data || null,
       eaRatings: eaRatings.error ? null : eaRatings.data || null,
-      reports: playerReports,
       metricas: metricasMap,
       leagueAverages,
     });
@@ -409,21 +399,6 @@ function agregarTemporadas(seasons: any[]) {
     const v = media(e.v);
     const n = media(e.n);
     if (v != null && n != null) metricas[k] = [Math.round(v * 1000) / 1000, Math.round(n * 100) / 100];
-  }
-
-  // Ensure category notes in metricas match aggregated season scores
-  const catKeyMap: Record<string, string> = {
-    _cat_ataque: "nota_ataque",
-    _cat_construccion: "nota_construccion",
-    _cat_defensa: "nota_defensa",
-    _cat_balon_parado: "nota_balon_parado",
-    _cat_disponibilidad: "nota_disponibilidad",
-  };
-  for (const [catKey, noteKey] of Object.entries(catKeyMap)) {
-    if (notas[noteKey] != null) {
-      const val = Number(notas[noteKey]);
-      metricas[catKey] = [Math.round(val * 10) / 10, Math.round(val) / 10];
-    }
   }
 
   const coverage = { matches: 0, minutes: 0, withEvents: 0, withStats: 0 };

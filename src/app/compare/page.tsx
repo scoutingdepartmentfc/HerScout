@@ -232,35 +232,47 @@ export default function PlayerComparisonPage() {
         )
       : null;
 
-    const newItem: ComparePlayerItem = {
-      id: raw.id,
-      name: raw.name,
-      matchName: raw.matchName || raw.match_name,
-      photoUrl: raw.photoUrl || raw.photo_url,
-      position: raw.position || raw.primary_position,
-      teamName: raw.teamName || raw.teams?.name,
-      badgeUrl: raw.badgeUrl || raw.teams?.badge_url,
-      leagueName: raw.leagueName || raw.teams?.league_name,
-      leagueLogoUrl: raw.leagueLogoUrl || raw.teams?.league_logo_url,
-      color: PLAYER_COLORS[slotIdx % PLAYER_COLORS.length],
-      rating: raw.notaGlobal ?? raw.rating ?? null,
-      age,
-      minutesPlayed: raw.minutesPlayed ?? raw.minutes_played,
-    };
-
     setSelectedPlayers((prev) => {
       const copy = [...prev];
+      const newItem: ComparePlayerItem = {
+        id: raw.id,
+        name: raw.name,
+        matchName: raw.matchName || raw.match_name,
+        photoUrl: raw.photoUrl || raw.photo_url,
+        position: raw.position || raw.primary_position,
+        teamName: raw.teamName || raw.teams?.name,
+        badgeUrl: raw.badgeUrl || raw.teams?.badge_url,
+        leagueName: raw.leagueName || raw.teams?.league_name,
+        leagueLogoUrl: raw.leagueLogoUrl || raw.teams?.league_logo_url,
+        color: PLAYER_COLORS[0], // Will be assigned by index in computed players
+        rating: raw.notaGlobal ?? raw.rating ?? null,
+        age,
+        minutesPlayed: raw.minutesPlayed ?? raw.minutes_played,
+      };
+
       if (slotIdx < copy.length) {
         copy[slotIdx] = newItem;
       } else {
         copy.push(newItem);
       }
-      return copy;
+
+      // Re-assign distinct colors by current index so no two players ever collide
+      return copy.map((p, idx) => ({
+        ...p,
+        color: PLAYER_COLORS[idx % PLAYER_COLORS.length],
+      }));
     });
   };
 
   const handleRemovePlayer = (slotIdx: number) => {
-    setSelectedPlayers((prev) => prev.filter((_, idx) => idx !== slotIdx));
+    setSelectedPlayers((prev) =>
+      prev
+        .filter((_, idx) => idx !== slotIdx)
+        .map((p, idx) => ({
+          ...p,
+          color: PLAYER_COLORS[idx % PLAYER_COLORS.length],
+        }))
+    );
   };
 
   // Build dictionary of metric definitions across hierarchies

@@ -27,6 +27,7 @@ import { LoadingState, ErrorState } from "@/components/ui/StatusStates";
 import { ArrowLeft, Bookmark, FileText, Calendar, Plus, ExternalLink, Shield, Pencil, Trophy, ChevronDown, Check } from "lucide-react";
 import { EditPlayerModal } from "@/components/scouting/EditPlayerModal";
 import { computeRatingTrend } from "@/lib/ratingTrend";
+import { PositionRadar } from "@/components/scouting/PositionRadar";
 
 // Position English translation and coordinates helper
 const translatePosition = (pos?: string | null) => {
@@ -615,6 +616,14 @@ export default function PlayerProfilePage() {
           />
         </Card>
       </section>
+
+      {/* Position radar: department key metrics vs. league average (+ another league) and league / overall ranking */}
+      <PositionRadar
+        playerId={playerId}
+        competitionId={selected && !selected.esTotal && !selected.sinNotas ? selected.competition_id : null}
+        seasonId={selected && !selected.esTotal && !selected.sinNotas ? selected.season_id : null}
+        position={p.primaryPosition}
+      />
 
       {/* Match-by-match ratings (FotMob-like scale: average 6.5, vs. same position group; pipeline/scoring.py) */}
       <Card className="bg-[#0b1329] border-border/60 shadow-xl overflow-hidden">

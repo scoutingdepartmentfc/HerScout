@@ -57,6 +57,18 @@ export default function ReportDetailPage() {
 
   const reportId = params?.id as string;
 
+  // Player data (latest season stats, match log, positions) for the PDF export
+  const [playerData, setPlayerData] = useState<any>(null);
+  useEffect(() => {
+    if (!report?.playerId) return;
+    let cancel = false;
+    fetch(`/api/players/${report.playerId}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { if (!cancel) setPlayerData(j); })
+      .catch(() => {});
+    return () => { cancel = true; };
+  }, [report?.playerId]);
+
   const fetchReport = async () => {
     setIsLoading(true);
     setError(null);
@@ -128,7 +140,7 @@ export default function ReportDetailPage() {
 
   return (
     <>
-    <ReportPrint report={report} clubName={currentClub?.name} />
+    <ReportPrint report={report} clubName={currentClub?.name} player={playerData} />
     <div className="space-y-6 max-w-5xl mx-auto print:hidden">
       {/* Top Action Bar (Hidden when printing to PDF) */}
       <div className="flex items-center justify-between print:hidden">

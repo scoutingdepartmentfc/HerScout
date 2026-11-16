@@ -144,8 +144,9 @@ export function SoccerdonnaLeagues() {
   const filtered = useMemo(() => {
     const text = query.trim().toLowerCase();
     return leagues.filter((l) => {
+      // Exclude already selected leagues from the main table so they don't duplicate
+      if (l.enabled) return false;
       // Tab filter
-      if (tab === "selected" && !l.enabled) return false;
       if (tab === "tier1" && l.level !== "Tier 1") return false;
       if (tab === "cups" && !((l.level || "").toLowerCase().includes("pokal") || (l.level || "").toLowerCase().includes("cup"))) {
         return false;
@@ -424,7 +425,65 @@ export function SoccerdonnaLeagues() {
         </div>
       </CardHeader>
 
-      <CardContent className="pt-4">
+      <CardContent className="pt-4 space-y-4">
+        {/* Selected Leagues Progress Bar */}
+        {leagues.some((l) => l.enabled) && (
+          <div className="rounded-xl border border-emerald-500/30 bg-emerald-950/10 p-3 space-y-2">
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-emerald-300">
+              Ligas seleccionadas ({leagues.filter((l) => l.enabled).length})
+            </div>
+            <div className="space-y-1.5">
+              {leagues
+                .filter((l) => l.enabled)
+                .map((l) => {
+                  const count = downloaded[l.code] || 0;
+                  const total = l.players || 0;
+                  const pct = l.last_download_at
+                    ? 100
+                    : count > 0 && total > 0
+                    ? Math.min(99, Math.round((count / total) * 100))
+                    : 0;
+                  const seasonNames = (l.opta_competition_id ? optaSeasons[l.opta_competition_id] || [] : [])
+                    .filter((s: any) => (l.opta_season_ids || []).includes(s.season_id))
+                    .map((s: any) => s.season_name)
+                    .join(", ");
+                  return (
+                    <div key={l.code} className="flex flex-wrap items-center gap-3 text-xs">
+                      <div className="flex items-center gap-1.5 min-w-[220px] shrink-0">
+                        <Bandera country={l.country} size="sm" />
+                        <span className="font-medium text-white">{l.name}</span>
+                        <span className="text-[10px] font-mono text-slate-400">({l.code})</span>
+                        {seasonNames && (
+                          <span className="text-[10px] text-sky-300 bg-sky-950/50 border border-sky-500/30 rounded px-1.5 py-0.5">
+                            {seasonNames}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex-1 h-2 rounded-full bg-navy-950 border border-border/60 overflow-hidden">
+                        <div
+                          className={`h-full transition-all duration-300 ${
+                            pct === 100 ? "bg-emerald-500" : "bg-sky-500/50"
+                          }`}
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                      <div className="w-28 text-right text-[11px] shrink-0">
+                        <span className={pct === 100 ? "text-emerald-300 font-semibold" : "text-muted-foreground"}>
+                          {pct}% {count > 0 ? `(${count} jug.)` : ""}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+            {error && (
+              <div className="text-[11px] text-rose-400 bg-rose-950/30 border border-rose-500/30 rounded-lg px-2.5 py-1.5">
+                Error: {error}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Interactive League Table */}
         <div className="overflow-x-auto rounded-xl border border-border/60">
           <table className="w-full text-left border-collapse text-xs">

@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
     // are all covered even if GitHub replaces a pending run.
     if (body.enabled === true && before && !before.enabled && !before.last_download_at) {
       try {
-        await dispatchPipeline({ modo: "opta" });
+        await dispatchPipeline({ competition_id: String(body.code || "") });
         return NextResponse.json({ ok: true, started: true });
       } catch (err: any) {
         return NextResponse.json({ ok: true, started: false, warning: err.message });
@@ -69,12 +69,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   }
   if (body.action === "run") {
-    // Manual: "opta" (latest season + fixtures), "soccerdonna" (profiles) or "todo" (both, every season)
-    const modo = ["opta", "soccerdonna", "todo"].includes(body.modo) ? body.modo : "todo";
-    const inputs: Record<string, string> = { modo };
+    const inputs: Record<string, string> = {};
     if (body.code) inputs.competition_id = String(body.code);
-    if (body.limit) inputs.limite = String(Number(body.limit));
-    if (modo === "soccerdonna") inputs.refresco_dias = "0"; // manual: re-read every profile
     try {
       await dispatchPipeline(inputs);
     } catch (err: any) {

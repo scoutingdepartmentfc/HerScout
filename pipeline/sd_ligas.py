@@ -233,7 +233,7 @@ def descargar(store: Store, sd: SDClient, liga_code: Optional[str], limit: Optio
             "badge_url": imagen_sd(store, sd, SD_MEDIUM.format(id=c["sd_id"]), f"sd/{c['sd_id']}.jpg"),
             "updated_at": now_iso(),
         } for c in clubes]
-        store.upsert("raw_soccerdonna_teams", [{k: v for k, v in r.items() if v is not None} for r in raw_sd_teams])
+    # raw_soccerdonna_teams removed in clean_start_schema
         store.upsert("teams", [{"id": r["id"], "name": r["name"], "country": r["country"],
                                 "badge_url": r["badge_url"],
                                 "sd_league_code": liga["code"], "league_name": liga["name"], "league_logo_url": logo,
@@ -317,7 +317,7 @@ def descargar(store: Store, sd: SDClient, liga_code: Optional[str], limit: Optio
                     raw_row["id"] = sd_pid
                     raw_sd_players.append(raw_row)
                 if raw_sd_players:
-                    store.upsert("raw_soccerdonna_players", raw_sd_players)
+                    # raw_soccerdonna_players removed in clean_start_schema
                 store.upsert("players", limpios)
             for tabla, pk in PK:
                 claves = pk.split(",")

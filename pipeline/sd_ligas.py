@@ -341,8 +341,7 @@ def opta(store: Store, liga_code: Optional[str], max_matches: Optional[int], sol
     ligas = ligas_opta(store, liga_code)
     comp_ids = {l["opta_competition_id"] for l in ligas}
     # Competiciones internacionales activadas en /admin (Champions...): entran en la descarga general
-    intl = set() if liga_code else {t["competition_id"] for t in store.select_all("ingestion_targets", "competition_id,enabled")
-                                     if t["enabled"] and t["competition_id"] in COMPETICIONES_INTERNACIONALES}
+    intl = set()
     if not comp_ids and not intl:
         logger.info("Opta: ninguna liga elegida tiene competición Opta enlazada")
         return

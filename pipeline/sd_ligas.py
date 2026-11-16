@@ -316,8 +316,7 @@ def descargar(store: Store, sd: SDClient, liga_code: Optional[str], limit: Optio
                     }
                     raw_row["id"] = sd_pid
                     raw_sd_players.append(raw_row)
-                if raw_sd_players:
-                    # raw_soccerdonna_players removed in clean_start_schema
+                # raw_soccerdonna_players removed in clean_start_schema
                 store.upsert("players", limpios)
             for tabla, pk in PK:
                 claves = pk.split(",")

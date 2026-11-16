@@ -342,6 +342,14 @@ class IngestionPipeline:
         logger.info(f"  Nivel por club (internacional): desplazamiento medio {delta.mean():+.1f}")
         return df_temp
 
+    def _ids_jugadoras(self):
+        """Ids de public.players (una vez por ejecución). Sin conexión → None (no se filtra)."""
+        if not self.store.online:
+            return None
+        if getattr(self, '_ids_players', None) is None:
+            self._ids_players = {r['id'] for r in self.store.select_all('players', 'id')}
+        return self._ids_players
+
     def recalcular_temporada(self, comp: Dict[str, Any], cache: pd.DataFrame, perfiles: Dict[str, Dict[str, Any]],
                              actualizar_jugadoras: bool = True):
         """Ratings por partido y tabla de temporada desde la caché. Sin `actualizar_jugadoras` no se tocan las
@@ -372,9 +380,19 @@ class IngestionPipeline:
             'match_date': fechas.get((r.match_id, r.player_id)),
             **{sc: float(getattr(r, sc)) for sc in SCORE_COLS},
         } for r in df_sp.itertuples()]
+        season_rows = filas_season_stats(df_temp, cid, sid, ts)
+        if not actualizar_jugadoras:
+            # Sin crear fichas: fuera las jugadoras de la caché que ya no están en players (fusionadas o borradas),
+            # que romperían la clave foránea. Siguen contando como referencia en el cálculo de la liga.
+            existentes = self._ids_jugadoras()
+            if existentes is not None:
+                faltan = {r['player_id'] for r in score_rows + season_rows} - existentes
+                if faltan:
+                    logger.warning(f"  {len(faltan)} jugadoras de la caché no están en players: no se guardan")
+                    score_rows = [r for r in score_rows if r['player_id'] in existentes]
+                    season_rows = [r for r in season_rows if r['player_id'] in existentes]
         self.store.upsert('player_match_scores', score_rows, on_conflict='match_id,player_id')
 
-        season_rows = filas_season_stats(df_temp, cid, sid, ts)
         # Una fila por jugador (antes una por demarcación): se borran las de versiones anteriores
         self.store.delete('player_season_stats', competition_id=cid, season_id=sid)
         self.store.upsert('player_season_stats', season_rows, on_conflict='player_id,season_id,demarcacion', batch=200)

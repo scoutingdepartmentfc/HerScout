@@ -12,14 +12,13 @@ export async function GET(req: NextRequest) {
   const denied = await requireAdmin(req);
   if (denied) return denied;
   const db = supabaseAdmin as any;
-  const [leagues, opta, players, targets] = await Promise.all([
+  const [leagues, opta, players] = await Promise.all([
     db.from("sd_leagues").select("*").order("country").order("code"),
     db.from("opta_catalog")
       .select("season_id, competition_id, competition_name, country, season_name, start_date, has_eventing, played_matches")
       .like("data_level", "jugadora%")
       .limit(5000),
     db.from("players").select("sd_league_code").not("sd_league_code", "is", null).limit(100000),
-    db.from("ingestion_targets").select("season_id"),
   ]);
   if (leagues.error) return NextResponse.json({ error: leagues.error.message }, { status: 500 });
   // One entry per Opta competition with its latest season that has per-player stats
@@ -38,7 +37,7 @@ export async function GET(req: NextRequest) {
     leagues: leagues.data,
     optaCompetitions: Array.from(competitions.values()),
     optaSeasons,
-    selectedSeasons: (targets.data || []).map((t: any) => t.season_id),
+    selectedSeasons: [],
     downloaded,
   });
 }
@@ -52,6 +51,7 @@ export async function POST(req: NextRequest) {
     const changes: Record<string, any> = { updated_at: new Date().toISOString() };
     if (typeof body.enabled === "boolean") changes.enabled = body.enabled;
     if (body.optaCompetitionId !== undefined) changes.opta_competition_id = body.optaCompetitionId || null;
+    if (Array.isArray(body.optaSeasonIds)) changes.opta_season_ids = body.optaSeasonIds;
     const { data: before } = await db.from("sd_leagues").select("enabled, last_download_at").eq("code", body.code).single();
     const { error } = await db.from("sd_leagues").update(changes).eq("code", body.code);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });

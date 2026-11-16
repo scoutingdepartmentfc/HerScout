@@ -27,39 +27,43 @@ JERARQUIA: Jerarquia = [
             'of_goles_p90', 'of_goles_dentro_area_p90', 'of_goles_fuera_area_p90', 'of_xG_p90', 'of_tiros_p90',
             'of_tiros_dentro_pct', 'of_disparos_fuera_area_p90', 'of_grandes_ocasiones_p90', 'of_1vs1_portero_p90',
             'of_remates_primeras_p90', 'of_remates_primeras_1er_palo_p90', 'of_remates_primeras_2o_palo_p90',
-            'of_remates_centro_p90', 'of_goles_remate_centro_p90']),
+            'of_remates_centro_p90', 'of_goles_remate_centro_p90', 'of_toques_area_rival_p90',
+            'of_remates_cabeza_p90', 'of_goles_cabeza_p90']),
         ('creacion', 'Creación', [
             'of_asistencias_p90', 'of_asistencia_gol_p90', 'of_xA_p90', 'of_xCA_p90', 'of_pases_con_ventaja_p90',
-            'of_pase_filtrado_avanzado_p90', 'of_pase_largo_finalizacion_p90', 'of_pases_dentro_area_p90',
-            'of_centros_buenos_p90', 'of_centros_buenos_pct', 'of_llegadas_area_pase_remate_p90']),
+            'of_pases_filtrados_p90', 'of_pases_filtrados_pct', 'of_pase_largo_finalizacion_p90',
+            'of_entradas_area_p90', 'of_entradas_area_pct', 'of_grandes_ocasiones_creadas_p90',
+            'of_centros_buenos_p90', 'of_centros_buenos_pct']),
     ]),
     ('construccion', 'Construcción', [
         ('pase', 'Pase', [
             'of_pases_buenos_p90', 'of_pases_pct', 'of_pases_propios_buenos_p90', 'of_pases_propios_pct',
             'of_pases_rival_buenos_p90', 'of_pases_rival_pct', 'of_pases_largos_p90', 'of_pases_largos_pct',
             'of_pases_horizontales_propios_p90', 'of_pases_horizontales_propios_pct',
-            'of_pases_horizontales_rival_p90', 'of_pases_horizontales_rival_pct', 'of_participacion_pct',
-            'of_participacion_pos_pct', 'of_ambidiestro_pct', 'of_descarga_primeras_p90']),
+            'of_pases_horizontales_rival_p90', 'of_pases_horizontales_rival_pct', 'of_toques_p90',
+            'of_perdidas_p90', 'of_ambidiestro_pct', 'of_descarga_primeras_p90']),
         ('progresion', 'Progresión', [
             'of_progresivos_p90', 'of_progresivos_pct', 'of_prog_cen_p90', 'of_prog_cen_pct', 'of_cambios_ori_p90',
-            'of_cambios_ori_pct', 'of_conduccion_pase_p90', 'of_pases_recibidos_carril_central_p90',
-            'of_aparecer_campo_rival_p90', 'of_doblar_campo_rival_p90']),
+            'of_cambios_ori_pct', 'of_conducciones_progresivas_p90', 'of_pases_ultimo_tercio_p90',
+            'of_pases_ultimo_tercio_pct', 'of_toques_ultimo_tercio_p90', 'of_pases_recibidos_carril_central_p90',
+            'of_aparecer_campo_rival_p90']),
         ('regate', 'Regate', [
             'of_regates_p90', 'of_regates_pct', 'of_regates_z4_p90', 'of_regates_hacia_porteria_p90',
-            'of_jugadas_indiv_gol_p90', 'of_jugadas_indiv_tiro_p90']),
+            'of_jugadas_indiv_gol_p90', 'of_jugadas_indiv_tiro_p90', 'of_faltas_recibidas_p90']),
     ]),
     ('defensa', 'Defensa', [
         ('recuperacion', 'Recuperación', [
-            'def_recuperaciones_p90', 'def_recup_propio_p90', 'def_recup_rival_p90', 'def_recup_z4_p90',
-            'def_recup_area_prop_p90', 'def_intercepciones_p90', 'def_intercep_propio_p90', 'def_intercep_rival_p90',
+            'def_recuperaciones_p90', 'def_recup_tercio_propio_p90', 'def_recup_tercio_medio_p90',
+            'def_recup_tercio_rival_p90', 'def_recup_area_prop_p90', 'def_intercepciones_p90', 'def_intercep_propio_p90', 'def_intercep_rival_p90',
             'def_intercep_z4_p90', 'def_intercep_area_prop_p90', 'def_centros_bloqueados_p90']),
         ('duelos', 'Duelos', [
+            'def_duelos_ganados_p90', 'def_duelos_ganados_pct', 'def_bloqueos_p90',
             'def_entradas_p90', 'def_entradas_pct', 'def_entradas_propio_p90', 'def_entradas_propio_pct',
             'def_entradas_rival_p90', 'def_entradas_rival_pct', 'def_entradas_z4_p90', 'def_entradas_z4_pct',
             'def_entradas_area_prop_p90', 'def_entradas_area_prop_pct', 'def_1v1_ganados_propio_p90',
             'def_1v1_ganados_rival_p90', 'def_1v1_ganados_area_prop_p90']),
         ('aereo', 'Juego aéreo', [
-            'def_aereos_ganados_p90', 'def_aereos_ganados_pct', 'def_aereos_continuidad_p90',
+            'def_aereos_ganados_p90', 'def_aereos_ganados_pct', 'def_aereos_continuidad_p90', 'def_despejes_p90',
             'def_aereos_ganados_propio_p90', 'def_aereos_ganados_propio_pct', 'def_aereos_ganados_propio_cont_p90',
             'def_aereos_ganados_rival_p90', 'def_aereos_ganados_rival_pct', 'def_aereos_ganados_rival_cont_p90',
             'def_aereos_ganados_area_prop_p90', 'def_aereos_ganados_area_prop_pct', 'def_aereos_ganados_area_riv_p90',
@@ -92,7 +96,7 @@ JERARQUIA_PORTEROS: Jerarquia = [
         ('juego_pie', 'Juego con el pie', [
             'of_pases_buenos_p90', 'of_pases_pct', 'of_pases_largos_p90', 'of_pases_largos_pct',
             'of_saques_puerta_pct', 'of_envios_largos_p90', 'of_envios_largos_pct', 'of_progresivos_p90',
-            'of_participacion_pct']),
+            'of_toques_p90']),
         ('juego_mano', 'Juego con la mano', ['of_saques_mano_p90', 'of_saques_mano_pct']),
     ]),
     DISPONIBILIDAD,
@@ -117,7 +121,8 @@ PESOS_GRUPO: Dict[str, Dict[str, float]] = {
 }
 
 # Métricas en las que menos es mejor
-MALUS = {'comp_disciplina_malus', 'def_goles_encajados_p90', 'def_errores_p90', 'def_centros_no_blocados_p90'}
+MALUS = {'comp_disciplina_malus', 'def_goles_encajados_p90', 'def_errores_p90', 'def_centros_no_blocados_p90',
+         'of_perdidas_p90'}
 # Métricas de volumen o contexto que NO se corrigen por minutos (ya miden cuánto juega o son de temporada)
 SIN_CORRECCION = {'disp_partidos', 'comp_minutos', 'disp_minutos_equipo_pct', 'comp_titular_pct',
                   'comp_capitan', 'comp_regularidad', 'comp_polivalencia_demarcacion', 'of_saque_banda_largo_max'}
@@ -133,19 +138,20 @@ PLANTILLAS_POSICION: Dict[str, Dict[str, float]] = {
     'GK': {'def_paradas_pct': .2, 'def_paradas_ocasiones_claras_p90': .2, 'def_porteria_cero_pct': .1,
            'def_salidas_libero_p90': .1, 'of_pases_pct': .2, 'of_pases_largos_pct': .1, 'of_progresivos_p90': .1},
     'CB': {'def_entradas_p90': .1, 'def_entradas_pct': .2, 'def_aereos_ganados_pct': .1, 'def_intercepciones_p90': .1,
-           'def_despejes_area_prop_p90': .1, 'of_pases_pct': .2, 'of_progresivos_p90': .2},
+           'def_bloqueos_p90': .1, 'of_pases_pct': .2, 'of_pases_ultimo_tercio_p90': .2},
     'FB': {'def_recuperaciones_p90': .1, 'def_entradas_pct': .2, 'of_centros_buenos_p90': .1,
-           'of_centros_buenos_pct': .2, 'of_conduccion_pase_p90': .1, 'of_progresivos_p90': .2, 'of_regates_p90': .1},
-    'DMF': {'def_recuperaciones_p90': .1, 'def_intercepciones_p90': .1, 'def_entradas_pct': .2, 'of_pases_pct': .2,
-            'of_progresivos_pct': .2, 'of_progresivos_p90': .1, 'of_participacion_pct': .1},
-    'CMF': {'of_pases_buenos_p90': .12, 'of_pases_pct': .2, 'of_xA_p90': .12, 'of_pases_rival_buenos_p90': .2,
-            'of_asistencias_p90': .12, 'def_entradas_pct': .12, 'of_progresivos_p90': .12},
-    'AMF': {'of_xA_p90': .2, 'of_xG_p90': .1, 'of_asistencias_p90': .1, 'of_llegadas_area_pase_remate_p90': .2,
-            'of_goles_p90': .1, 'of_pases_recibidos_carril_central_p90': .1, 'of_pases_dentro_area_p90': .2},
+           'of_centros_buenos_pct': .2, 'of_conducciones_progresivas_p90': .1, 'of_pases_ultimo_tercio_p90': .2,
+           'of_regates_p90': .1},
+    'DMF': {'def_recuperaciones_p90': .1, 'def_intercepciones_p90': .1, 'def_duelos_ganados_pct': .2, 'of_pases_pct': .2,
+            'of_progresivos_pct': .2, 'of_progresivos_p90': .1, 'of_toques_p90': .1},
+    'CMF': {'of_pases_buenos_p90': .12, 'of_pases_pct': .2, 'of_xA_p90': .12, 'of_pases_ultimo_tercio_p90': .2,
+            'of_asistencias_p90': .12, 'def_duelos_ganados_pct': .12, 'of_progresivos_p90': .12},
+    'AMF': {'of_xA_p90': .2, 'of_xG_p90': .1, 'of_asistencias_p90': .1, 'of_toques_area_rival_p90': .2,
+            'of_goles_p90': .1, 'of_pases_recibidos_carril_central_p90': .1, 'of_entradas_area_p90': .2},
     'W': {'of_regates_p90': .2, 'of_regates_pct': .1, 'of_centros_buenos_p90': .1, 'of_centros_buenos_pct': .2,
           'of_xA_p90': .1, 'of_tiros_p90': .1, 'of_xG_p90': .2},
     'CF': {'of_goles_p90': .1, 'of_xG_p90': .2, 'goal_conversion_pct': .2, 'of_tiros_p90': .1,
-           'of_llegadas_area_pase_remate_p90': .1, 'of_regates_pct': .1, 'of_tiros_dentro_pct': .2},
+           'of_toques_area_rival_p90': .1, 'of_regates_pct': .1, 'of_tiros_dentro_pct': .2},
 }
 _PLANTILLA_GRUPO = {'Porteros': 'GK', 'Centrales': 'CB', 'Laterales': 'FB', 'Medios': 'CMF',
                     'Mediapuntas': 'AMF', 'Extremos': 'W', 'Delanteros': 'CF'}

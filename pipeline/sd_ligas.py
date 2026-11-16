@@ -224,10 +224,20 @@ def descargar(store: Store, sd: SDClient, liga_code: Optional[str], limit: Optio
         logger.info(f"▶ {liga['name']} ({liga['country']}): {len(clubes)} clubes")
         logo = imagen_sd(store, sd, SD_MEDIUM.format(id=liga["code"].lower()), f"ligas/sd-{liga['code']}.jpg")
         store.update("sd_leagues", {"logo_url": logo}, code=liga["code"])
-        store.upsert("teams", [{"id": f"sd-{c['sd_id']}", "name": c["name"], "country": liga["country"],
-                                "badge_url": imagen_sd(store, sd, SD_MEDIUM.format(id=c["sd_id"]), f"sd/{c['sd_id']}.jpg"),
+        raw_sd_teams = [{
+            "id": f"sd-{c['sd_id']}",
+            "name": c["name"],
+            "league_code": liga["code"],
+            "country": liga["country"],
+            "sd_url": c.get("url"),
+            "badge_url": imagen_sd(store, sd, SD_MEDIUM.format(id=c["sd_id"]), f"sd/{c['sd_id']}.jpg"),
+            "updated_at": now_iso(),
+        } for c in clubes]
+        store.upsert("raw_soccerdonna_teams", [{k: v for k, v in r.items() if v is not None} for r in raw_sd_teams])
+        store.upsert("teams", [{"id": r["id"], "name": r["name"], "country": r["country"],
+                                "badge_url": r["badge_url"],
                                 "sd_league_code": liga["code"], "league_name": liga["name"], "league_logo_url": logo,
-                                "updated_at": now_iso()} for c in clubes])
+                                "updated_at": r["updated_at"]} for r in raw_sd_teams])
         hechas = 0
         for club in clubes:
             pendiente: Dict[str, List[Dict[str, Any]]] = {}
@@ -287,7 +297,28 @@ def descargar(store: Store, sd: SDClient, liga_code: Optional[str], limit: Optio
                 tot["jugadoras"] += 1
                 tot["nuevas"] += 0 if previa else 1
             for grupo in _homogeneo(pendiente.pop("players", [])):
-                store.upsert("players", [{k: v for k, v in r.items() if v is not None} for r in grupo])
+                limpios = [{k: v for k, v in r.items() if v is not None} for r in grupo]
+                raw_sd_players = []
+                for r in limpios:
+                    sd_pid = r.get("id")
+                    if r.get("sd_url"):
+                        m_sd = re.search(r"/spieler/(\d+)", str(r["sd_url"]))
+                        if m_sd:
+                            sd_pid = f"sd_{m_sd.group(1)}"
+                    if not sd_pid:
+                        continue
+                    raw_row = {
+                        k: r[k] for k in (
+                            "name", "country", "birth_date", "place_of_birth",
+                            "height", "preferred_foot", "current_team_id", "sd_url",
+                            "market_value", "photo_url", "updated_at",
+                        ) if k in r
+                    }
+                    raw_row["id"] = sd_pid
+                    raw_sd_players.append(raw_row)
+                if raw_sd_players:
+                    store.upsert("raw_soccerdonna_players", raw_sd_players)
+                store.upsert("players", limpios)
             for tabla, pk in PK:
                 claves = pk.split(",")
                 filas_t = list({tuple(r.get(c) for c in claves): r for r in pendiente.get(tabla, [])}.values())
@@ -305,7 +336,7 @@ def ligas_opta(store: Store, liga_code: Optional[str]) -> List[Dict[str, Any]]:
             if l.get("opta_competition_id") and (l["code"] == liga_code if liga_code else l["enabled"])]
 
 
-def opta(store: Store, liga_code: Optional[str], max_matches: Optional[int], solo_ultima: bool = False):
+def opta(store: Store, liga_code: Optional[str], max_matches: Optional[int], solo_ultima: bool = False, modo: str = "todo"):
     """Temporadas Opta elegidas en /admin de cada competición enlazada (o la última con datos) → pipeline.
     `solo_ultima`: de cada competición solo su temporada más reciente (y las elegidas que nunca se descargaron)."""
     from .ingest import IngestionPipeline
@@ -345,8 +376,22 @@ def opta(store: Store, liga_code: Optional[str], max_matches: Optional[int], sol
         comps = temporadas_semanales(store, comps)
     pipe = IngestionPipeline(skip_photos=True, max_matches_per_comp=max_matches)
     for comp in comps:
-        logger.info(f"▶ Opta {comp['name']} {comp['season_id']}")
-        pipe.procesar_competicion(comp)
+        logger.info(f"▶ Opta ({modo}) {comp['name']} {comp['season_id']}")
+        if modo == "todo":
+            pipe.procesar_competicion(comp)
+        elif modo == "jugadoras":
+            perfiles = pipe.sync_squads(comp)
+            cache = pipe.store.load_match_cache(comp["season_id"])
+            pipe.guardar_plantilla(comp, cache)
+            if not cache.empty:
+                pipe.procesar_temporada(comp, perfiles, cache)
+        elif modo == "partidos":
+            perfiles = pipe.sync_squads(comp)
+            cache = pipe.store.load_match_cache(comp["season_id"])
+            hechos = set(cache["match_id"].unique()) if not cache.empty else set()
+            fixtures = pipe.adapter.get_fixtures(comp["season_id"])
+            pipe.guardar_calendario(comp, fixtures, hechos)
+            pipe.procesar_partidos(comp, fixtures, hechos, perfiles, cache)
     if pipe.totales["matches"]:
         try:  # extra: si falla, los datos de la liga ya están guardados y la descarga sigue
             pipe.actualizar_similares()
@@ -815,7 +860,8 @@ def fotos(store: Store, liga_code: Optional[str], limit: Optional[int] = None):
 
 def main():
     parser = argparse.ArgumentParser(description="Jugadoras desde las ligas de Soccerdonna elegidas en /admin")
-    parser.add_argument("accion", choices=["catalogo", "descargar", "opta", "vincular", "escudos", "fotos", "todo",
+    parser.add_argument("accion", choices=["catalogo", "descargar", "opta", "opta-jugadoras", "opta-partidos",
+                                           "vincular", "escudos", "fotos", "todo",
                                            "actualizar-opta", "actualizar-soccerdonna", "recalcular", "retiradas", "completar",
                                            "corregir-clubes"])
     parser.add_argument("--prueba", action="store_true", help="corregir-clubes: solo mostrar los cambios")
@@ -857,8 +903,13 @@ def main():
     # Pasos sueltos
     if args.accion == "descargar":
         descargar(store, sd, args.liga, args.limit, args.refresco_dias)
+        fotos(store, args.liga, args.limit)
     if args.accion == "opta":
-        opta(store, args.liga, args.max_matches)
+        opta(store, args.liga, args.max_matches, modo="todo")
+    if args.accion == "opta-jugadoras":
+        opta(store, args.liga, args.max_matches, modo="jugadoras")
+    if args.accion == "opta-partidos":
+        opta(store, args.liga, args.max_matches, modo="partidos")
     if args.accion == "vincular":
         vincular(store, args.liga)
         corregir_clubes(store)

@@ -2,7 +2,7 @@
 pipeline/metrics_engine.py
 Motor de métricas por demarcación partido a partido.
 Port de Debrecen_app/calcular_metricas_demarcacion.py: mismas fórmulas (xCA, regularidad por
-tramos, polivalencia, conducción-pase, continuidad de aéreos, pases con ventaja, x2 por rol...)
+tramos, polivalencia, continuidad de aéreos, pases con ventaja, x2 por rol...)
 aplicadas a un único partido, sin ponderar por rol: todas las métricas para todos los jugadores. La agregación de temporada y la escala 0-9.9 están en scoring.py.
 
 Correcciones respecto al original:
@@ -234,58 +234,12 @@ def calcular_regularidad_min90(grp):
     return float(np.mean(scores) / (1 + np.std(scores)))
 
 
-def build_conducciones_map(df):
-    """Secuencias Pase/Recuperación -> Conducción -> Pase -> Pase: el mérito es de quien conduce."""
-    es_valido = ((df["Event Name"] == "Pass") & (df["outcome"] == 1)) | df["Event Name"].isin(["Ball recovery", "Interception"])
-    valid = df[es_valido]
-    idx = valid.index.to_numpy()
-    ev = valid["Event Name"].to_numpy()
-    team = valid["Team ID"].to_numpy()
-    player = valid["playerId"].to_numpy()
-    period = valid["periodId"].to_numpy()
-    xs = valid["x"].to_numpy(dtype=float)
-    ys = valid["y"].to_numpy(dtype=float)
-    pex = valid["Pass End X"].to_numpy(dtype=float)
-    pey = valid["Pass End Y"].to_numpy(dtype=float)
-    length = to_num(valid, "Length").to_numpy(dtype=float)
-    tsec = (valid["timeMin"] * 60 + valid["timeSec"]).to_numpy(dtype=float)
-
-    counts = Counter()
-    for i in range(len(valid) - 2):
-        j, k = i + 1, i + 2
-        if idx[j] != idx[i] + 1 or idx[k] != idx[j] + 1:
-            continue
-        if ev[j] != "Pass" or ev[k] != "Pass":
-            continue
-        if team[i] != team[j] or team[j] != team[k] or period[i] != period[j]:
-            continue
-
-        if ev[i] == "Pass":
-            pex_i, pey_i = pex[i], pey[i]
-            length_pase1 = 0 if np.isnan(length[i]) else length[i]
-        else:
-            pex_i, pey_i = xs[i], ys[i]
-            length_pase1 = 0
-            if player[i] != player[j]:
-                continue
-
-        tiempo_minimo = 3 if length_pase1 < 15 else 6 + 5 + (((length_pase1 - 15) // 10) * 2)
-        if (tsec[j] - tsec[i]) < tiempo_minimo:
-            continue
-        if any(np.isnan(v) for v in [pex_i, pey_i, xs[j], ys[j], xs[k], pex[k]]):
-            continue
-        if (xs[j] - pex_i) <= 10:
-            continue
-        counts[player[j]] += 1
-    return counts
-
-
 # ──────────────────────────────────────────────────────────────
 # MÉTRICAS DE UN JUGADOR EN UN PARTIDO
 # ──────────────────────────────────────────────────────────────
 
 def calc_metricas_jugador(grp, df_events, pid, t_id, mins_played, titular_pct, veces_capitan,
-                          partidos, partidos_70m, dem, num_dems_jugadas, num_conducciones):
+                          partidos, partidos_70m, dem, num_dems_jugadas):
     ev_name = grp['Event Name']
     outcome = grp['outcome']
     x = grp['x']
@@ -313,7 +267,6 @@ def calc_metricas_jugador(grp, df_events, pid, t_id, mins_played, titular_pct, v
 
     # ─── 2. OFENSIVO (generales) ───────────────────────────────
     grp_of = grp[ev_name.isin(EVENTOS_OF)]
-    team_of = df_events[(df_events['Team ID'] == t_id) & df_events['Event Name'].isin(EVENTOS_OF)]
 
     goles = (ev_name == 'Goal').sum()
     assist_col = to_num(grp, 'Assist')
@@ -343,8 +296,6 @@ def calc_metricas_jugador(grp, df_events, pid, t_id, mins_played, titular_pct, v
     xa_sum = float(grp['Expected Assist'].sum()) if 'Expected Assist' in grp.columns else 0.0
 
     m_of_gen = {
-        'of_participacion_pct': pct_series(len(grp_of), len(team_of)),
-        'of_participacion_pos_pct': pct_series((grp_of['outcome'] == 1).sum(), (team_of['outcome'] == 1).sum()),
         'of_polivalencia': calcular_polivalencia(grp_of),
         'of_goles_p90': p90(goles, mins_played),
         'of_asistencias_p90': p90(asistencias, mins_played),
@@ -363,7 +314,6 @@ def calc_metricas_jugador(grp, df_events, pid, t_id, mins_played, titular_pct, v
         'of_tiros_dentro_pct': pct_series(tiros_dentro, len(tiros)),
         'of_regular_polivalencia': calcular_regular_polivalencia(grp_of),
         'of_xCA_p90': p90(calc_xca(grp), mins_played),
-        'of_conduccion_pase_p90': p90(num_conducciones, mins_played),
         'of_ambidiestro_pct': ambidiestro_pct,
         'of_xG_p90': p90(xg_sum, mins_played),
         'of_xA_p90': p90(xa_sum, mins_played),
@@ -428,7 +378,6 @@ def calc_metricas_jugador(grp, df_events, pid, t_id, mins_played, titular_pct, v
     m_esp['of_centros_buenos_p90'] = p90((crosses['outcome'] == 1).sum(), mins_played)
     m_esp['of_centros_buenos_pct'] = pct_series((crosses['outcome'] == 1).sum(), len(crosses))
     m_esp['of_aparecer_campo_rival_p90'] = p90(mask_aparecer.sum(), mins_played)
-    m_esp['of_doblar_campo_rival_p90'] = p90(mask_aparecer.sum(), mins_played)
 
     throwins = grp[es_si(grp, 'Throw in')]
     m_esp['of_saque_banda_efectivo_p90'] = p90((throwins['outcome'] == 1).sum(), mins_played)
@@ -480,9 +429,6 @@ def calc_metricas_jugador(grp, df_events, pid, t_id, mins_played, titular_pct, v
                          grp['prev_Pass End Y'].between(21, 78) & (grp['prev_outcome'] == 1)]
     m_esp['of_pases_recibidos_carril_central_p90'] = p90(len(pass_recib_cen), mins_played)
 
-    p_dentro_area = passes[((x < 83) | ~y.between(21.1, 78.9)).loc[passes.index]]
-    p_dentro_area = p_dentro_area[(p_dentro_area['Pass End X'] > 83) & p_dentro_area['Pass End Y'].between(21.1, 78.9)]
-    m_esp['of_pases_dentro_area_p90'] = p90(len(p_dentro_area), mins_played)
 
     remates_c = tiros[(tiros['prev_Team ID'] == t_id) & (tiros['prev_Event Name'] == 'Pass') &
                       (tiros['prev_outcome'] == 1) & (tiros['prev_Cross'] == True)]  # noqa: E712
@@ -511,17 +457,11 @@ def calc_metricas_jugador(grp, df_events, pid, t_id, mins_played, titular_pct, v
     m_esp['of_1vs1_portero_p90'] = p90(es_si(grp, '1 on 1').sum(), mins_played)
     m_esp['of_goles_dentro_area_p90'] = p90(((ev_name == 'Goal') & mask_area_riv).sum(), mins_played)
 
-    pases_filtrados = passes[(pass_y_end.between(21, 78) & (outcome == 1) & (pass_x_end > 66)).loc[passes.index]]
-    m_esp['of_pase_filtrado_avanzado_p90'] = p90(len(pases_filtrados), mins_played)
     regates_port = grp[(ev_name == 'Take On') & es_si(grp, 'Take on overtake') & (outcome == 1)]
     m_esp['of_regates_hacia_porteria_p90'] = p90(len(regates_port), mins_played)
     pases_largos_z4 = passes[((to_num(grp, 'Length') > 30) & (pass_x_end > 75) & (outcome == 1)).loc[passes.index]]
     m_esp['of_pase_largo_finalizacion_p90'] = p90(len(pases_largos_z4), mins_played)
 
-    llegadas = grp[ev_name.isin(['Pass'] + EVENTOS_TIRO) & mask_area_riv]
-    llegadas_ok = llegadas[(llegadas['prev_Team ID'] == t_id) & (llegadas['prev_Event Name'] == 'Pass') &
-                           ((llegadas['prev_x'] < 83) | ~llegadas['prev_y'].between(21.1, 78.9))]
-    m_esp['of_llegadas_area_pase_remate_p90'] = p90(len(llegadas_ok), mins_played)
 
     # Defensivas — duelos 1v1 en coordenadas del atacante (x > 50 = campo propio del defensor)
     x_1v1 = df_1v1_ganados['x']
@@ -560,8 +500,9 @@ def calc_metricas_jugador(grp, df_events, pid, t_id, mins_played, titular_pct, v
 
     recups = grp[ev_name == 'Ball recovery']
     interceps = grp[ev_name == 'Interception']
+    # Recuperaciones por tercio: possWonDef3rd/Mid3rd/Att3rd de matchstats. Del eventing solo el área propia.
+    m_esp['def_recup_area_prop_p90'] = p90(mask_area_prop.loc[recups.index].sum(), mins_played)
     for sufijo, mask in [('propio', mask_cpropio), ('area_prop', mask_area_prop), ('rival', mask_crival), ('z4', mask_z4)]:
-        m_esp[f'def_recup_{sufijo}_p90'] = p90(mask.loc[recups.index].sum(), mins_played)
         m_esp[f'def_intercep_{sufijo}_p90'] = p90(mask.loc[interceps.index].sum(), mins_played)
 
     m_esp['def_centros_bloqueados_p90'] = p90(es_si(grp, 'Blocked pass').sum(), mins_played)
@@ -658,6 +599,39 @@ def metricas_matchstats(st: Dict[str, float], mins_played, titular_pct, veces_ca
         'abp_lanzador_corner_p90': p90(g('cornerTaken'), mins_played),
     }
 
+    # Estadísticas detalladas (matchstats con detailed=yes y cobertura alta). Opta omite los valores a 0, así que
+    # la marca de que el partido las trae es 'touches' (toda jugadora con minutos tiene toques). Sin ellas → no se
+    # añaden (quedan sin dato, no a 0). Sustituyen a las aproximaciones que antes se calculaban desde el eventing.
+    if 'touches' in st:
+        pct_nan = lambda num, den: float(num / den * 100) if den > 0 else np.nan
+        m.update({
+            'of_toques_p90': p90(g('touches'), mins_played),
+            'of_toques_area_rival_p90': p90(g('touchesInOppBox'), mins_played),
+            'of_toques_ultimo_tercio_p90': p90(g('touchesInFinalThird'), mins_played),
+            'of_pases_ultimo_tercio_p90': p90(g('successfulFinalThirdPasses'), mins_played),
+            'of_pases_ultimo_tercio_pct': pct_nan(g('successfulFinalThirdPasses'), g('totalFinalThirdPasses')),
+            'of_entradas_area_p90': p90(g('successfulPenAreaEntries'), mins_played),
+            'of_entradas_area_pct': pct_nan(g('successfulPenAreaEntries'), g('penAreaEntries')),
+            'of_conducciones_progresivas_p90': p90(g('progressiveCarries'), mins_played),
+            'of_pases_filtrados_p90': p90(g('accurateThroughBall'), mins_played),
+            'of_pases_filtrados_pct': pct_nan(g('accurateThroughBall'), g('totalThroughBall')),
+            'of_grandes_ocasiones_creadas_p90': p90(g('bigChanceCreated'), mins_played),
+            'of_perdidas_p90': p90(g('possLostAll'), mins_played),
+            'of_faltas_recibidas_p90': p90(g('wasFouled'), mins_played),
+            'of_remates_cabeza_p90': p90(g('attHdTotal'), mins_played),
+            'of_goles_cabeza_p90': p90(g('attHdGoal'), mins_played),
+            'of_descarga_primeras_p90': p90(g('accurateLayoffs') + g('accurateFlickOn'), mins_played),
+            'def_duelos_ganados_p90': p90(g('duelWon'), mins_played),
+            'def_duelos_ganados_pct': pct_nan(g('duelWon'), g('duelWon') + g('duelLost')),
+            'def_recup_tercio_propio_p90': p90(g('possWonDef3rd'), mins_played),
+            'def_recup_tercio_medio_p90': p90(g('possWonMid3rd'), mins_played),
+            'def_recup_tercio_rival_p90': p90(g('possWonAtt3rd'), mins_played),
+            'def_despejes_p90': p90(g('effectiveClearance'), mins_played),
+            'def_bloqueos_p90': p90(g('outfielderBlock'), mins_played),
+            'def_centros_bloqueados_p90': p90(g('blockedPass'), mins_played),
+            'abp_lanzador_corner_pct': pct_nan(g('accurateCornersIntobox'), g('totalCornersIntobox')),
+        })
+
     # Portería (específicas de portera, desde matchstats). Solo para porteras: Opta da goalsConceded y
     # cleanSheet a todas las jugadoras en el campo y no deben puntuar como portería a las de campo.
     if dem == 'Portero':
@@ -715,7 +689,6 @@ class MetricsEngine:
             return self._process_solo_matchstats(dems_temporada)
         lineups = build_lineups(self.match_stats, df_raw)
         df = prep_eventos_secuenciales(aplicar_xg_xa(df_raw))
-        conducciones = build_conducciones_map(df)
         df_pases = df[df['Event Name'] == 'Pass'].assign(
             pend_x=df['Pass End X'], pend_y=df['Pass End Y'], eq=df['Team ID'],
             eq_sig=df['Team ID'].shift(-1), pid_sig=df['playerId'].shift(-1))
@@ -733,7 +706,7 @@ class MetricsEngine:
                 100.0 if info['is_starter'] else 0.0,
                 1 if info['is_captain'] else 0,
                 1, 1 if mins >= 70 else 0,
-                dem, (dems_temporada or {}).get(pid, 1), conducciones.get(pid, 0),
+                dem, (dems_temporada or {}).get(pid, 1),
             )
             if st:
                 # Las que da Opta en matchstats mandan sobre el cálculo desde eventos

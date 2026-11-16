@@ -399,15 +399,15 @@ export async function GET(req: NextRequest) {
         };
 
         // No current club (Soccerdonna / current_team_id): club of her latest match, only if within the last 3 months
-        const fallbackTeam = !p.fm_team_name && !p.teams ? recentTeamByPlayer.get(p.id) || null : null;
-        const teamName = p.fm_team_name || p.teams?.name || fallbackTeam?.name || NO_CLUB_DATA;
-        const hasClub = !!(p.fm_team_name || p.teams || fallbackTeam);
+        const fallbackTeam = !p.teams && !p.fm_team_name ? recentTeamByPlayer.get(p.id) || null : null;
+        const teamName = p.teams?.name || fallbackTeam?.name || p.fm_team_name || NO_CLUB_DATA;
+        const hasClub = !!(p.teams || fallbackTeam || p.fm_team_name);
         const leagueName = p.current_league_name || p.teams?.league_name || (hasClub ? latestRow.competitions?.name : null) || null;
         const leagueCountry =
-          (p.sd_league_code ? leagueCountryByCode.get(p.sd_league_code) : null) ||
-          (p.current_league_name ? leagueCountryByName.get(p.current_league_name.toLowerCase()) : null) ||
+          (leagueName ? leagueCountryByName.get(leagueName.toLowerCase()) : null) ||
           (p.teams?.league_name ? leagueCountryByName.get(p.teams.league_name.toLowerCase()) : null) ||
           p.teams?.country ||
+          (p.sd_league_code ? leagueCountryByCode.get(p.sd_league_code) : null) ||
           null;
 
         list.push({
@@ -466,12 +466,12 @@ export async function GET(req: NextRequest) {
         ea?.pace != null && ea?.physicality != null
           ? Math.round(Number(ea.pace) * 0.45 + Number(ea.physicality) * 0.55)
           : ea?.pace != null ? Number(ea.pace) : ea?.physicality != null ? Number(ea.physicality) : null;
-      const teamName = p.fm_team_name || p.teams?.name || NO_CLUB_DATA;
+      const teamName = p.teams?.name || p.fm_team_name || NO_CLUB_DATA;
       const leagueName = p.current_league_name || p.teams?.league_name || null;
       const leagueCountry =
-        (p.sd_league_code ? leagueCountryByCode.get(p.sd_league_code) : null) ||
-        (p.current_league_name ? leagueCountryByName.get(p.current_league_name.toLowerCase()) : null) ||
+        (leagueName ? leagueCountryByName.get(leagueName.toLowerCase()) : null) ||
         (p.teams?.league_name ? leagueCountryByName.get(p.teams.league_name.toLowerCase()) : null) ||
+        (p.sd_league_code ? leagueCountryByCode.get(p.sd_league_code) : null) ||
         p.teams?.country ||
         null;
 

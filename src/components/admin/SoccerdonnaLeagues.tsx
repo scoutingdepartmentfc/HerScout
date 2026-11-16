@@ -18,6 +18,7 @@ interface SdLeague {
   players: number | null;
   enabled: boolean;
   opta_competition_id: string | null;
+  opta_season_ids: string[] | null;
   last_download_at: string | null;
 }
 
@@ -160,6 +161,15 @@ export function SoccerdonnaLeagues() {
       }
 
       return true;
+    }).sort((a, b) => {
+      const regions = new Set(["africa", "asia", "europe", "north america", "south america", "oceania", "world", "international", "internacional"]);
+      const isGroupA = !a.country || regions.has(a.country.toLowerCase()) || (a.level || "").toLowerCase().includes("national");
+      const isGroupB = !b.country || regions.has(b.country.toLowerCase()) || (b.level || "").toLowerCase().includes("national");
+      if (isGroupA !== isGroupB) return isGroupA ? 1 : -1;
+      const cA = (a.country || "zzz").toLowerCase();
+      const cB = (b.country || "zzz").toLowerCase();
+      if (cA !== cB) return cA.localeCompare(cB);
+      return a.name.localeCompare(b.name);
     });
   }, [leagues, query, countryFilter, tab]);
 
@@ -414,122 +424,114 @@ export function SoccerdonnaLeagues() {
         </div>
       </CardHeader>
 
-      <CardContent className="pt-6">
-        {/* Interactive League Cards Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {displayed.map((l) => {
-            const isSaving = saving === `en-${l.code}`;
-            const optaMatch = opta.find((c) => c.competition_id === l.opta_competition_id);
-            const optaOptions = optaFor(l.country);
+      <CardContent className="pt-4">
+        {/* Interactive League Table */}
+        <div className="overflow-x-auto rounded-xl border border-border/60">
+          <table className="w-full text-left border-collapse text-xs">
+            <thead>
+              <tr className="border-b border-border/60 bg-navy-950/80 text-[10px] uppercase tracking-wider text-muted-foreground">
+                <th className="py-2.5 px-3">Activa</th>
+                <th className="py-2.5 px-3">Liga Soccerdonna</th>
+                <th className="py-2.5 px-3 min-w-[260px]">Competición Opta</th>
+                <th className="py-2.5 px-3 min-w-[220px]">Temporadas Opta</th>
+                <th className="py-2.5 px-3 text-right">Estado / Acciones</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border/40">
+              {displayed.map((l) => {
+                const isSaving = saving === `en-${l.code}`;
+                const optaMatch = opta.find((c) => c.competition_id === l.opta_competition_id);
+                const optaOptions = optaFor(l.country);
 
-            return (
-              <div
-                key={l.code}
-                className={`relative rounded-xl border p-4 transition-all duration-200 flex flex-col justify-between group ${
-                  l.enabled
-                    ? "border-emerald-500/50 bg-gradient-to-b from-emerald-950/20 via-[#0a1829] to-[#070e1e] shadow-lg shadow-emerald-950/20"
-                    : "border-border/60 bg-navy-950/40 hover:border-border hover:bg-navy-950/80"
-                }`}
-              >
-                <div>
-                  {/* Top line: Flag + Country + Code + Selection Indicator */}
-                  <div className="flex items-center justify-between gap-2 mb-2.5">
-                    <div className="flex items-center gap-2">
-                      <Bandera country={l.country} size="sm" />
-                      <span className="text-[11px] font-semibold tracking-wide uppercase text-muted-foreground">
-                        {l.country || "Internacional"}
-                      </span>
-                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/5 text-slate-400 border border-white/10">
-                        {l.code}
-                      </span>
-                    </div>
+                return (
+                  <tr
+                    key={l.code}
+                    className={`transition-colors ${
+                      l.enabled
+                        ? "bg-emerald-950/15 hover:bg-emerald-950/25"
+                        : "bg-navy-950/30 hover:bg-navy-950/60"
+                    }`}
+                  >
+                    <td className="py-2.5 px-3 align-top">
+                      <Button
+                        size="xs"
+                        variant={l.enabled ? "outline" : "primary"}
+                        isLoading={isSaving}
+                        leftIcon={l.enabled ? <CheckCircle2 className="w-3 h-3 text-emerald-400" /> : <Check className="w-3 h-3" />}
+                        onClick={async () => {
+                          setNotice(null);
+                          await send(`en-${l.code}`, {
+                            action: "update",
+                            code: l.code,
+                            enabled: !l.enabled,
+                          });
+                        }}
+                      >
+                        {l.enabled ? "Activa" : "Activar"}
+                      </Button>
+                    </td>
 
-                    <div className="flex items-center gap-1.5">
-                      {l.enabled ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                          <Check className="w-3 h-3" /> Activa
+                    <td className="py-2.5 px-3 align-top">
+                      <div className="flex items-center gap-2">
+                        <Bandera country={l.country} size="sm" />
+                        <span className="font-medium text-white">{l.name}</span>
+                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/5 text-slate-400 border border-white/10">
+                          {l.code}
                         </span>
-                      ) : (
-                        <span className="text-[10px] text-slate-500 font-medium">Inactiva</span>
-                      )}
-                    </div>
-                  </div>
+                      </div>
+                      <div className="text-[10px] text-muted-foreground mt-0.5">
+                        {l.country || "Internacional"} {l.level ? `· ${l.level}` : ""}
+                      </div>
+                    </td>
 
-                  {/* League Name & Level */}
-                  <div className="mb-3">
-                    <h3 className="text-sm font-bold text-white group-hover:text-sky-300 transition-colors leading-snug">
-                      {l.name}
-                    </h3>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="text-[11px] font-medium text-slate-400">{l.level || "División"}</span>
-                      {l.level === "Tier 1" && (
-                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-400/10 text-amber-300 border border-amber-400/20 font-semibold">
-                          Top Tier
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Statistics Pills */}
-                  <div className="grid grid-cols-2 gap-2 p-2 rounded-lg bg-black/25 border border-white/5 text-[11px] mb-3">
-                    <div className="flex items-center gap-1.5">
-                      <Shield className="w-3.5 h-3.5 text-muted-foreground" />
-                      <span className="text-white font-semibold">{l.teams ?? "—"}</span>
-                      <span className="text-muted-foreground text-[10px]">equipos</span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <Users className="w-3.5 h-3.5 text-muted-foreground" />
-                      <span className="text-white font-semibold">{l.players ?? "—"}</span>
-                      <span className="text-muted-foreground text-[10px]">jugadoras</span>
-                    </div>
-                  </div>
-
-                  {/* Opta Link Dropdown */}
-                  <div className="space-y-1 mb-4">
-                    <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center justify-between">
-                      <span className="flex items-center gap-1.5">
-                        <OptaLogo variant="icon" size="xs" />
-                        <span>Métricas Opta vinculadas</span>
-                      </span>
+                    <td className="py-2.5 px-3 align-top">
+                      <select
+                        value={l.opta_competition_id || ""}
+                        onChange={(e) =>
+                          send(`opta-${l.code}`, {
+                            action: "update",
+                            code: l.code,
+                            optaCompetitionId: e.target.value,
+                          })
+                        }
+                        className="w-full h-8 text-[11px] rounded-lg border border-border/80 bg-navy-950 px-2 text-white focus:outline-none focus:ring-1 focus:ring-primary"
+                      >
+                        <option value="">Sin vinculación a Opta</option>
+                        {optaOptions.map((c) => (
+                          <option key={c.competition_id} value={c.competition_id}>
+                            [{c.competition_id}] {c.competition_name} ({c.season_name}
+                            {c.has_eventing ? " · Eventing" : ""})
+                          </option>
+                        ))}
+                      </select>
                       {optaMatch?.has_eventing && (
-                        <span className="text-amber-400 flex items-center gap-0.5 text-[9px] font-bold">
-                          <Sparkles className="w-2.5 h-2.5" /> Eventing
+                        <span className="mt-1 inline-flex items-center gap-0.5 text-[9px] font-bold text-amber-400">
+                          <Sparkles className="w-2.5 h-2.5" /> Eventing disponible
                         </span>
                       )}
-                    </label>
-                    <select
-                      value={l.opta_competition_id || ""}
-                      onChange={(e) =>
-                        send(`opta-${l.code}`, {
-                          action: "update",
-                          code: l.code,
-                          optaCompetitionId: e.target.value,
-                        })
-                      }
-                      className="w-full h-8 text-[11px] rounded-lg border border-border/80 bg-navy-950 px-2.5 text-white focus:outline-none focus:ring-1 focus:ring-primary truncate"
-                    >
-                      <option value="">Sin vinculación a Opta</option>
-                      {optaOptions.map((c) => (
-                        <option key={c.competition_id} value={c.competition_id}>
-                          {c.competition_name} ({c.season_name}
-                          {c.has_eventing ? " · Eventing" : ""})
-                        </option>
-                      ))}
-                    </select>
-                    {l.opta_competition_id && (optaSeasons[l.opta_competition_id] || []).length > 0 && (
-                      <div className="pt-2 space-y-1">
-                        <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                          Temporadas Opta a descargar
-                        </div>
+                    </td>
+
+                    <td className="py-2.5 px-3 align-top">
+                      {l.opta_competition_id && (optaSeasons[l.opta_competition_id] || []).length > 0 ? (
                         <div className="flex flex-wrap gap-1">
                           {(optaSeasons[l.opta_competition_id] || []).map((season: any) => {
-                            const on = selectedSeasons.has(season.season_id);
+                            const currentIds = l.opta_season_ids || [];
+                            const on = currentIds.includes(season.season_id);
                             return (
                               <button
                                 key={season.season_id}
                                 type="button"
-                                disabled={saving === `s-${season.season_id}`}
-                                onClick={() => toggleSeason(season.season_id)}
+                                disabled={saving === `s-${l.code}-${season.season_id}`}
+                                onClick={() => {
+                                  const next = on
+                                    ? currentIds.filter((id) => id !== season.season_id)
+                                    : [...currentIds, season.season_id];
+                                  send(`s-${l.code}-${season.season_id}`, {
+                                    action: "update",
+                                    code: l.code,
+                                    optaSeasonIds: next,
+                                  });
+                                }}
                                 title={`${season.played_matches} partidos jugados · ${season.has_eventing ? "eventing + matchstats" : "solo matchstats"}`}
                                 className={`rounded border px-1.5 py-0.5 text-[10px] transition-colors ${
                                   on
@@ -544,97 +546,59 @@ export function SoccerdonnaLeagues() {
                             );
                           })}
                         </div>
-                        <div className="text-[9px] text-muted-foreground">● eventing · sin marcar = solo la última</div>
+                      ) : (
+                        <span className="text-[10px] text-muted-foreground">—</span>
+                      )}
+                    </td>
+
+                    <td className="py-2.5 px-3 align-top text-right">
+                      <div className="flex flex-col items-end gap-1.5">
+                        <div className="text-[10px] text-muted-foreground">
+                          {downloaded[l.code] ? (
+                            <span className="text-sky-300 font-medium">✓ {downloaded[l.code]} jugadoras</span>
+                          ) : (
+                            <span>Pendiente</span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1">
+                          {l.enabled && (
+                            <Button
+                              size="xs"
+                              variant="outline"
+                              isLoading={saving === `upd-${l.code}`}
+                              leftIcon={<RefreshCw className="w-3 h-3" />}
+                              onClick={async () => {
+                                setNotice(null);
+                                if (await send(`upd-${l.code}`, { action: "run", modo: "todo", code: l.code }))
+                                  setNotice(`${l.name}: actualización iniciada en GitHub Actions.`);
+                              }}
+                            >
+                              Descargar
+                            </Button>
+                          )}
+                          {downloaded[l.code] ? (
+                            <Button
+                              size="xs"
+                              variant="outline"
+                              className="border-rose-500/40 text-rose-400 hover:bg-rose-500/10"
+                              onClick={() => {
+                                setDeleting(l);
+                                setRebuildAfter(false);
+                                setPassword("");
+                                setError(null);
+                              }}
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </Button>
+                          ) : null}
+                        </div>
                       </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Bottom Action Button */}
-                <div className="pt-3 border-t border-border/40 flex items-center justify-between gap-2">
-                  <div className="text-[10px] text-muted-foreground truncate">
-                    {downloaded[l.code] ? (
-                      <span className="inline-flex items-center gap-2">
-                        <span className="text-sky-300 font-medium">✓ {downloaded[l.code]} jugadoras en BD</span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setDeleting(l);
-                            setRebuildAfter(false);
-                            setPassword("");
-                            setError(null);
-                          }}
-                          className="text-rose-400 hover:text-rose-300 inline-flex items-center gap-0.5"
-                          title="Borrar los datos descargados de esta liga"
-                        >
-                          <Trash2 className="w-3 h-3" /> Borrar datos
-                        </button>
-                      </span>
-                    ) : (
-                      <span>Pendiente de descarga</span>
-                    )}
-                  </div>
-
-                  {l.enabled && (
-                    <div className="flex items-center gap-1 shrink-0">
-                      <Button
-                        size="xs"
-                        variant="outline"
-                        isLoading={saving === `upd-${l.code}`}
-                        leftIcon={<RefreshCw className="w-3 h-3" />}
-                        title="Descarga solo lo nuevo (partidos, fichas y fotos) de esta liga"
-                        onClick={async () => {
-                          setNotice(null);
-                          if (await send(`upd-${l.code}`, { action: "run", modo: "todo", code: l.code }))
-                            setNotice(`${l.name}: actualización iniciada en GitHub Actions.`);
-                        }}
-                      >
-                        Actualizar
-                      </Button>
-                      <Button
-                        size="xs"
-                        variant="outline"
-                        className="border-amber-500/40 text-amber-300 hover:bg-amber-500/10"
-                        title="Borra todo lo de esta liga y lo vuelve a descargar desde cero"
-                        onClick={() => {
-                          setDeleting(l);
-                          setRebuildAfter(true);
-                          setPassword("");
-                          setError(null);
-                        }}
-                      >
-                        De 0
-                      </Button>
-                    </div>
-                  )}
-
-                  <Button
-                    size="xs"
-                    variant={l.enabled ? "outline" : "primary"}
-                    isLoading={isSaving}
-                    leftIcon={l.enabled ? <X className="w-3 h-3" /> : <Check className="w-3 h-3" />}
-                    onClick={async () => {
-                      setNotice(null);
-                      const res = await send(`en-${l.code}`, {
-                        action: "update",
-                        code: l.code,
-                        enabled: !l.enabled,
-                      });
-                      if (res?.started) setNotice(`${l.name}: descarga de Soccerdonna y Opta iniciada en GitHub Actions.`);
-                      else if (res?.warning) setError(`${l.name} activada, pero no se pudo iniciar la descarga: ${res.warning}`);
-                    }}
-                    className={
-                      l.enabled
-                        ? "border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10 hover:border-rose-500/60 hover:text-rose-300"
-                        : "bg-primary hover:bg-primary/90 text-white"
-                    }
-                  >
-                    {l.enabled ? "Desactivar" : "Activar liga"}
-                  </Button>
-                </div>
-              </div>
-            );
-          })}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
 
         {/* Load More Button */}

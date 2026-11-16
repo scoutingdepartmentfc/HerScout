@@ -277,13 +277,10 @@ def descargar(store: Store, sd: SDClient, liga_code: Optional[str], limit: Optio
                     cat = catalogo_sd.get(cod)
                     if not cat or not (cat.get("level") or "").startswith("Tier"):
                         cat = liga
-                    row["current_league_name"] = cat["name"]
-                    cod = cat["code"]
-                    # La liga del club actual, no la que se está descargando (si fichó por otra liga, su
-                    # bandera y logo deben ser los de la nueva)
-                    row["sd_league_code"] = cod
-                    row["current_league_logo_url"] = (catalogo_sd.get(cod) or {}).get("logo_url") or \
-                        imagen_sd(store, sd, prof.get("liga_actual_logo"), f"ligas/sd-{cod}.jpg")
+                    row["current_league_name"] = liga["name"]
+                    row["sd_league_code"] = liga["code"]
+                    row["current_league_logo_url"] = (catalogo_sd.get(liga["code"]) or {}).get("logo_url") or \
+                        imagen_sd(store, sd, prof.get("liga_actual_logo"), f"ligas/sd-{liga['code']}.jpg")
                 if p["id"].startswith("sd-"):  # las unidas a Opta conservan el equipo Opta (estadísticas)
                     row["current_team_id"] = f"sd-{club['sd_id']}"
                 foto = None if previa and previa.get("photo_url") else \

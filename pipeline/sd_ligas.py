@@ -352,24 +352,29 @@ def opta(store: Store, liga_code: Optional[str], max_matches: Optional[int], sol
         if c["competition_id"] in comp_ids and (c.get("data_level") or "").startswith("jugadora"):
             if (c.get("start_date") or "") > (ultima.get(c["competition_id"], {}).get("start_date") or ""):
                 ultima[c["competition_id"]] = c
-    # Temporadas elegidas en /admin; la liga sin ninguna elegida descarga solo la última
-    targets = [t for t in store.select_all("ingestion_targets", "*") if t["enabled"]]
-    elegidas = {t["competition_id"] for t in targets}
-    nuevas = [c for cid, c in ultima.items() if cid not in elegidas]
-    if nuevas:
-        store.upsert("ingestion_targets", [{
-            "season_id": c["season_id"], "competition_id": c["competition_id"], "competition_name": c["competition_name"],
-            "country": c["country"], "season_name": c["season_name"], "is_active": True, "enabled": True,
-            "fuente": "eventing" if c.get("has_eventing") else "matchstats", "updated_at": now_iso()}
-            for c in nuevas], on_conflict="season_id")
-    if solo_ultima:  # martes: que ninguna liga activada se quede en la temporada pasada
-        temporada_nueva(store, catalogo, targets, comp_ids | intl)
-    # competiciones_objetivo ordena de antigua a actual: la temporada activa se procesa la última
-    comps = [c for c in competiciones_objetivo(store, solo_admin=True) if c["id"] in comp_ids]
-    # Internacionales al final: sus clubes y jugadoras ya existen desde sus ligas
-    comps += [c for c in competiciones_objetivo(store, solo_admin=True) if c["id"] in intl and c["id"] not in comp_ids]
-    if solo_ultima:
-        comps = temporadas_semanales(store, comps)
+    # Temporadas elegidas en /admin (sd_leagues.opta_season_ids); si no hay ninguna, la última de opta_catalog
+    cat_by_season = {c["season_id"]: c for c in catalogo}
+    elegidas_por_comp = {
+        l["opta_competition_id"]: list(l.get("opta_season_ids") or [])
+        for l in ligas
+        if l.get("opta_competition_id")
+    }
+    comps = []
+    for cid in list(comp_ids) + [c for c in intl if c not in comp_ids]:
+        sids = elegidas_por_comp.get(cid) or ([ultima[cid]["season_id"]] if cid in ultima else [])
+        if solo_ultima and cid in ultima:
+            sids = [ultima[cid]["season_id"]]
+        for sid in sids:
+            c = cat_by_season.get(sid)
+            if c:
+                comps.append({
+                    "id": c["competition_id"],
+                    "name": c["competition_name"],
+                    "season_id": c["season_id"],
+                    "season_name": c["season_name"],
+                    "country": c.get("country"),
+                    "has_eventing": bool(c.get("has_eventing")),
+                })
     pipe = IngestionPipeline(skip_photos=True, max_matches_per_comp=max_matches)
     for comp in comps:
         logger.info(f"▶ Opta ({modo}) {comp['name']} {comp['season_id']}")

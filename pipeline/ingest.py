@@ -391,6 +391,8 @@ class IngestionPipeline:
                     logger.warning(f"  {len(faltan)} jugadoras de la caché no están en players: no se guardan")
                     score_rows = [r for r in score_rows if r['player_id'] in existentes]
                     season_rows = [r for r in season_rows if r['player_id'] in existentes]
+        valid_matches = {m['id'] for m in self.store.select_all('matches', 'id', season_id=sid)}
+        score_rows = [r for r in score_rows if r['match_id'] in valid_matches]
         self.store.upsert('player_match_scores', score_rows, on_conflict='match_id,player_id')
 
         # Una fila por jugador (antes una por demarcación): se borran las de versiones anteriores

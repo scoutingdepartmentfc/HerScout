@@ -56,7 +56,8 @@ def main():
         s = df[c] if c in df else pd.Series(dtype=float)
         print(f"  {c:38s} {s.notna().mean() * 100:5.1f}%  {s.mean():.2f}")
     _, temp = calcular_temporada(df, NIVEL_LIGA.get(comp['id'], NIVEL_LIGA_DEFECTO))
-    temp = temp[~temp['_muestra_baja']] if '_muestra_baja' in temp else temp
+    temp = temp[~temp['_muestra_baja']].copy()
+    temp['player_name'] = temp['player_id'].map(df.drop_duplicates('player_id').set_index('player_id')['player_name'])
     print("\nTop 20 rating (0-100):")
     print(temp.sort_values('nota_global', ascending=False)[['player_name', 'grupo_demarcacion', 'minutes_played',
           'nota_global']].head(20).to_string(index=False))

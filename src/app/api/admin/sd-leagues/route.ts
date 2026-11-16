@@ -12,13 +12,14 @@ export async function GET(req: NextRequest) {
   const denied = await requireAdmin(req);
   if (denied) return denied;
   const db = supabaseAdmin as any;
-  const [leagues, opta, players] = await Promise.all([
+  const [leagues, opta, players, lastRun] = await Promise.all([
     db.from("sd_leagues").select("*").order("country").order("code"),
     db.from("opta_catalog")
       .select("season_id, competition_id, competition_name, country, season_name, start_date, has_eventing, played_matches")
       .like("data_level", "jugadora%")
       .limit(5000),
     db.from("players").select("sd_league_code").not("sd_league_code", "is", null).limit(100000),
+    db.from("ingestion_runs").select("status, error_message").order("started_at", { ascending: false }).limit(1).maybeSingle(),
   ]);
   if (leagues.error) return NextResponse.json({ error: leagues.error.message }, { status: 500 });
   // One entry per Opta competition with its latest season that has per-player stats
@@ -39,6 +40,7 @@ export async function GET(req: NextRequest) {
     optaSeasons,
     selectedSeasons: [],
     downloaded,
+    lastRunError: lastRun?.data?.status === "failed" ? lastRun.data.error_message : null,
   });
 }
 

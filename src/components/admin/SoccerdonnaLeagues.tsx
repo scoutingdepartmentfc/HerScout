@@ -82,7 +82,7 @@ export function SoccerdonnaLeagues() {
       setDownloaded(data.downloaded || {});
       setOptaSeasons(data.optaSeasons || {});
       setSelectedSeasons(new Set(data.selectedSeasons || []));
-      setError(null);
+      setError(data.lastRunError || null);
     } catch (err: any) {
       setError(err.message || "Could not load Soccerdonna leagues");
     }

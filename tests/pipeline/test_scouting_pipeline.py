@@ -314,10 +314,10 @@ class TestScoring(unittest.TestCase):
         sin_equipo = nota_partido_modelo(df.drop(columns='team_id'))
         self.assertGreater(sin_equipo[1], sin_equipo[0])
 
-    def test_juega_mas_puntua_mas(self):
-        """Mejor p90 en pocos minutos no supera a una jugadora buena con muchos minutos."""
+    def _liga_centrales(self, extra):
+        """5 centrales con 20 partidos (media 2 recuperaciones/90, titular a 4) + las filas de `extra`."""
         filas = []
-        def partido(m, p, mins, recup):
+        def partido(m, p, mins, recup, intercep=0.5):
             filas.append({'match_id': f'm{m}', 'player_id': p, 'team_id': 't', 'player_name': p,
                           'match_date': f'2026-10-{m + 10:02d}T16:00:00Z', 'demarcacion': 'Central Derecho',
                           'grupo_demarcacion': 'Centrales', 'minutes_played': mins, 'is_starter': mins > 45,
@@ -325,17 +325,32 @@ class TestScoring(unittest.TestCase):
                                             'progressive_passes', 'takeons_successful', 'takeons_total', 'tackles_won',
                                             'tackles_total', 'interceptions', 'recoveries', 'aerials_won',
                                             'aerials_total']},
-                          'def_recuperaciones_p90': recup, 'comp_minutos': float(mins)})
+                          'def_recuperaciones_p90': recup, 'def_intercepciones_p90': intercep, 'comp_minutos': float(mins)})
         for m in range(20):
-            partido(m, 'titular', 90, 4.0)              # 1800 min a 4 recuperaciones/90
+            partido(m, 'titular', 90, 4.0)
             for k in range(4):
-                partido(m, f'resto{k}', 90, 2.0)        # media del grupo
-        for m in range(2):
-            partido(m, 'suplente', 90, 6.0)             # 180 min a 6 recuperaciones/90
+                partido(m, f'resto{k}', 90, 2.0 + k / 10)
+        for args in extra:
+            partido(*args)
         _, t = calcular_temporada(pd.DataFrame(filas))
-        t = t.set_index('player_id')
-        self.assertGreater(t.at['titular', 'nota_defensa'], t.at['suplente', 'nota_defensa'])
-        self.assertGreater(t.at['titular', 'nota_global'], t.at['suplente', 'nota_global'])
+        return t.set_index('player_id')
+
+    def test_minutos_no_puntuan(self):
+        """La nota es p90: mejor rendimiento por 90 en pocos minutos puntúa más, pero queda como muestra baja,
+        sin top 10 y sin mover los percentiles de las demás."""
+        t = self._liga_centrales([(m, 'suplente', 90, 6.0) for m in range(2)])   # 180' a 6 recup./90
+        self.assertGreater(t.at['suplente', 'nota_defensa'], t.at['titular', 'nota_defensa'])
+        self.assertGreater(t.at['suplente', 'nota_global'], t.at['titular', 'nota_global'])
+        self.assertTrue(t.at['suplente', 'radar_data']['muestra_baja'])
+        self.assertFalse(t.at['titular', 'radar_data']['muestra_baja'])
+        self.assertEqual(t.at['suplente', 'radar_data']['top10'], {})
+        self.assertEqual(t.at['titular', 'radar_data']['top10'].get('def_recuperaciones_p90'), 1)
+
+    def test_cero_sin_informacion_no_penaliza(self):
+        """Un 0 en una acción rara (0.5/90) tras 100' no cuenta (se esperaba < 1); el mismo 0 en 1800', sí."""
+        t = self._liga_centrales([(m, 'corta', 50, 2.5, 0.0) for m in range(2)] +
+                                 [(m, 'larga', 90, 2.5, 0.0) for m in range(20)])
+        self.assertGreater(t.at['corta', 'nota_global'], t.at['larga', 'nota_global'])
 
     def _liga_sintetica(self):
         filas = []

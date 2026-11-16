@@ -3,6 +3,7 @@ import { BarChart3, LayoutGrid } from "lucide-react";
 import { notaClases } from "@/lib/notaColor";
 import { OptaLogo } from "@/components/scouting/OptaLogo";
 import { LogoLiga } from "@/components/scouting/LogoLiga";
+import { isLowSample, LOW_SAMPLE_LABEL } from "@/lib/sampleSize";
 
 export interface CoberturaOpta {
   matches: number;
@@ -243,8 +244,14 @@ export function TemporadasOpta({
                   {s.sinNotas ? (
                     <span className="text-[10px] text-muted-foreground" title="Too few minutes for a season rating">—</span>
                   ) : (
-                    <span className={`text-sm font-black tabular-nums ${notaClases(s.nota_global).text}`}>
+                    <span
+                      className={`text-sm font-black tabular-nums ${notaClases(s.nota_global).text}`}
+                      title={isLowSample(s.minutes_played, s.matches_played) ? LOW_SAMPLE_LABEL : undefined}
+                    >
                       {s.nota_global != null ? Math.round(s.nota_global) : "—"}
+                      {s.nota_global != null && isLowSample(s.minutes_played, s.matches_played) && (
+                        <span className="ml-0.5 align-super text-[9px] text-amber-400">*</span>
+                      )}
                     </span>
                   )}
                 </div>

@@ -1,6 +1,7 @@
 import React from "react";
 import { Metricas, hierarchyFor, subcategoryNote } from "@/lib/metricsHierarchy";
 import { notaClases } from "@/lib/notaColor";
+import { isLowSample, LOW_SAMPLE_LABEL } from "@/lib/sampleSize";
 
 const ARCO = "M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831";
 
@@ -102,6 +103,11 @@ export function NotasResumen({
         <div className="text-[11px] text-muted-foreground mt-0.5">
           Better than <span className="font-bold text-white">{stats?.percentile_general != null ? Math.round(stats.percentile_general) : "—"}%</span> of the league
         </div>
+        {stats && global != null && isLowSample(stats.minutes_played, stats.matches_played) && (
+          <div className="mt-1.5 rounded px-1.5 py-0.5 text-[10px] font-semibold text-amber-400 bg-amber-400/10" title={LOW_SAMPLE_LABEL}>
+            Low sample · {Math.round(Number(stats.minutes_played) || 0)}&apos;
+          </div>
+        )}
       </div>
 
       {hierarchy.map((cat) => {

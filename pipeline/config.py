@@ -31,9 +31,18 @@ LOCAL_CACHE_DIR = os.environ.get("SCOUTING_CACHE_DIR", os.path.join(os.path.dirn
 # Mínimo de minutos por (jugador, demarcación) para entrar en la tabla de temporada
 MIN_MINUTOS_TEMPORADA = 90
 
-# Corrección por minutos de las notas 0-100: cada métrica p90 se acerca a la media de su grupo de demarcación
-# como si la jugadora tuviera K minutos más jugados a ritmo medio. Más K = más castigo a quien juega poco.
-K_MINUTOS_CONFIANZA = int(os.environ.get("SCOUTING_K_MINUTOS", "900"))
+# Notas 0-100 de temporada: solo rendimiento p90, sin premiar ni castigar los minutos.
+# Cada métrica se compara (desviaciones típicas) con la media de su grupo de demarcación en la liga, calculada
+# con las jugadoras de >= MIN_MINUTOS_REFERENCIA (si hay al menos MIN_REFERENCIA_GRUPO; si no, con todas).
+MIN_MINUTOS_REFERENCIA = 450
+MIN_REFERENCIA_GRUPO = 8
+# Recorte de cada métrica a ±Z_RECORTE desviaciones: un gol en 30' no dispara la nota.
+Z_RECORTE = 2.5
+# Nota global = PESO_CLAVE * métricas clave de su posición (categorias.PLANTILLAS_POSICION) + resto categorías.
+PESO_CLAVE = 0.65
+# Muestra baja: con menos minutos o partidos la nota se muestra con aviso y no entra en rankings ni top 10.
+MIN_MINUTOS_NOTA = 270
+MIN_PARTIDOS_NOTA = 3
 # Escala de las notas 0-100 (métrica, subcategoría, categoría y global), comparable entre ligas:
 # nota = nivel de la liga + NOTA_DESVIACION * desviaciones típicas frente a su grupo de demarcación en la liga.
 # Por encima de NOTA_TECHO_INICIO la escala se comprime hacia NOTA_TECHO: un 90+ es excepcional.

@@ -103,9 +103,9 @@ def jerarquia_de(grupo: str) -> Jerarquia:
     return JERARQUIA_PORTEROS if grupo == 'Porteros' else JERARQUIA
 
 
-# Peso de cada categoría en la nota global. Disponibilidad pesa siempre lo mismo (premia jugar mucho);
-# el resto se reparte según lo que se le pide a cada grupo de demarcación.
-PESO_DISPONIBILIDAD = 0.20
+# Peso de cada categoría en la parte "categorías" de la nota global, según lo que se le pide a cada grupo de
+# demarcación. Disponibilidad (minutos, partidos, titularidad) NO entra en la nota: se valora el rendimiento
+# p90, no cuánto juega. nota_disponibilidad se sigue calculando como dato informativo.
 PESOS_GRUPO: Dict[str, Dict[str, float]] = {
     'Delanteros':  {'ataque': 0.50, 'construccion': 0.20, 'defensa': 0.15, 'balon_parado': 0.15},
     'Extremos':    {'ataque': 0.40, 'construccion': 0.35, 'defensa': 0.15, 'balon_parado': 0.10},
@@ -124,3 +124,35 @@ SIN_CORRECCION = {'disp_partidos', 'comp_minutos', 'disp_minutos_equipo_pct', 'c
 
 CATEGORIAS = [c for c, _, _ in JERARQUIA]
 METRICA_SUB = {m: (c, s) for jer in (JERARQUIA, JERARQUIA_PORTEROS) for c, _, subs in jer for s, _, ms in subs for m in ms}
+
+
+# Métricas clave por posición (departamento de scouting; réplica de src/lib/positionRadar.ts): clave → peso.
+# Son la parte principal de la nota global (PESO_CLAVE en config.py). 'goal_conversion_pct' se deriva
+# (goles / tiros) en scoring.py.
+PLANTILLAS_POSICION: Dict[str, Dict[str, float]] = {
+    'GK': {'def_paradas_pct': .2, 'def_paradas_ocasiones_claras_p90': .2, 'def_porteria_cero_pct': .1,
+           'def_salidas_libero_p90': .1, 'of_pases_pct': .2, 'of_pases_largos_pct': .1, 'of_progresivos_p90': .1},
+    'CB': {'def_entradas_p90': .1, 'def_entradas_pct': .2, 'def_aereos_ganados_pct': .1, 'def_intercepciones_p90': .1,
+           'def_despejes_area_prop_p90': .1, 'of_pases_pct': .2, 'of_progresivos_p90': .2},
+    'FB': {'def_recuperaciones_p90': .1, 'def_entradas_pct': .2, 'of_centros_buenos_p90': .1,
+           'of_centros_buenos_pct': .2, 'of_conduccion_pase_p90': .1, 'of_progresivos_p90': .2, 'of_regates_p90': .1},
+    'DMF': {'def_recuperaciones_p90': .1, 'def_intercepciones_p90': .1, 'def_entradas_pct': .2, 'of_pases_pct': .2,
+            'of_progresivos_pct': .2, 'of_progresivos_p90': .1, 'of_participacion_pct': .1},
+    'CMF': {'of_pases_buenos_p90': .12, 'of_pases_pct': .2, 'of_xA_p90': .12, 'of_pases_rival_buenos_p90': .2,
+            'of_asistencias_p90': .12, 'def_entradas_pct': .12, 'of_progresivos_p90': .12},
+    'AMF': {'of_xA_p90': .2, 'of_xG_p90': .1, 'of_asistencias_p90': .1, 'of_llegadas_area_pase_remate_p90': .2,
+            'of_goles_p90': .1, 'of_pases_recibidos_carril_central_p90': .1, 'of_pases_dentro_area_p90': .2},
+    'W': {'of_regates_p90': .2, 'of_regates_pct': .1, 'of_centros_buenos_p90': .1, 'of_centros_buenos_pct': .2,
+          'of_xA_p90': .1, 'of_tiros_p90': .1, 'of_xG_p90': .2},
+    'CF': {'of_goles_p90': .1, 'of_xG_p90': .2, 'goal_conversion_pct': .2, 'of_tiros_p90': .1,
+           'of_llegadas_area_pase_remate_p90': .1, 'of_regates_pct': .1, 'of_tiros_dentro_pct': .2},
+}
+_PLANTILLA_GRUPO = {'Porteros': 'GK', 'Centrales': 'CB', 'Laterales': 'FB', 'Medios': 'CMF',
+                    'Mediapuntas': 'AMF', 'Extremos': 'W', 'Delanteros': 'CF'}
+
+
+def plantilla_de(demarcacion: str, grupo: str) -> str:
+    """Plantilla de métricas clave según la demarcación principal (la de más minutos)."""
+    if 'defensivo' in str(demarcacion or '').lower():
+        return 'DMF'
+    return _PLANTILLA_GRUPO.get(grupo, 'CMF')

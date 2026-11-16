@@ -17,6 +17,7 @@ import { notaClases } from "@/lib/notaColor";
 import { getPositionBadge } from "@/lib/positions";
 import { OptaLogo } from "@/components/scouting/OptaLogo";
 import { guessLeagueCountry, sortLeaguesByCountryAndTier } from "@/lib/leagueCountry";
+import { LOW_SAMPLE_LABEL, lowSampleLast } from "@/lib/sampleSize";
 
 // Normaliza nombres de liga: minúsculas, apóstrofos tipográficos → rectos, espacios.
 const normLeague = (s: string) => s.toLowerCase().replace(/[\u2018\u2019\u00b4`]/g, "'").replace(/\s+/g, " ").trim();
@@ -51,6 +52,8 @@ interface PlayerRow {
   minutesPlayed?: number;
   matchesPlayed?: number;
   notaGlobal?: number | null;
+  /** Too few minutes/matches: per-90 rating shown with a warning and sorted after the rest */
+  lowSample?: boolean;
   notaAtaque?: number | null;
   notaConstruccion?: number | null;
   notaDefensa?: number | null;
@@ -627,7 +630,12 @@ function PlayersDirectoryContent() {
       });
     } else {
       const field = fieldMap[sortBy] || "notaGlobal";
+      const byRating = sortBy.startsWith("nota_") && sortBy !== "nota_fisico";
       sorted.sort((a, b) => {
+        if (byRating) {
+          const ls = lowSampleLast(a, b);
+          if (ls) return ls;
+        }
         const va = a[field] as number | null | undefined;
         const vb = b[field] as number | null | undefined;
         if (va == null || vb == null) return va == null ? (vb == null ? 0 : 1) : -1;
@@ -1391,7 +1399,12 @@ function PlayersDirectoryContent() {
 
                     {/* Scoring Columns */}
                     <TableCell className="text-center font-bold">
-                      {getScoreBadge(player.notaGlobal, true)}
+                      <div className="inline-flex flex-col items-center" title={player.lowSample ? LOW_SAMPLE_LABEL : undefined}>
+                        {getScoreBadge(player.notaGlobal, true)}
+                        {player.lowSample && player.notaGlobal != null && (
+                          <span className="mt-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-400/80">Low sample</span>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell className="text-center font-mono text-xs font-semibold text-amber-400 whitespace-nowrap">
                       {fmtMarketValue(player.marketValue)}

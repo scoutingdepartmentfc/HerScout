@@ -4,6 +4,7 @@ import { isRetired } from "@/lib/utils";
 import { INTERNATIONAL_IDS, INTERNATIONAL_REGIONS } from "@/lib/internationalCompetitions";
 import { computeRatingTrend, PlayerTrend } from "@/lib/ratingTrend";
 import { NO_CLUB_DATA, preferOptaClub } from "@/lib/playerClub";
+import { isLowSample, lowSampleLast } from "@/lib/sampleSize";
 
 /** Country shown for international competitions in the league filter (grouped apart from countries) */
 const INTERNATIONAL_COUNTRY = "Internacional";
@@ -79,29 +80,46 @@ async function fetchTrends(db: any): Promise<Map<string, "up" | "neutral" | "dow
     d.setMonth(d.getMonth() - 3);
     const trendFromDate = d.toISOString().split("T")[0];
 
-    const { data: scores, error } = await db
-      .from("player_match_scores")
-      .select("player_id, score_general, match_date")
-      .gte("match_date", trendFromDate)
-      .order("match_date", { ascending: true })
-      .limit(10000);
+    // Fetch in parallel chunks ordered by match_date descending so we cover all active players
+    const CHUNK_SIZE = 1000;
+    const NUM_CHUNKS = 25; // 25,000 most recent scores covers the last 7+ months of football
+    const offsets = Array.from({ length: NUM_CHUNKS }, (_, i) => i * CHUNK_SIZE);
 
-    if (error || !scores) return trendByPlayer;
+    const chunkResults = await Promise.all(
+      offsets.map((off) =>
+        db
+          .from("player_match_scores")
+          .select("player_id, score_general, match_date")
+          .order("match_date", { ascending: false })
+          .range(off, off + CHUNK_SIZE - 1)
+      )
+    );
 
     const playerMatchesMap = new Map<string, Array<{ date: string; score: number }>>();
-    for (const row of scores) {
-      if (row.score_general != null && !isNaN(Number(row.score_general))) {
-        const arr = playerMatchesMap.get(row.player_id) || [];
-        arr.push({ date: row.match_date, score: Number(row.score_general) });
-        playerMatchesMap.set(row.player_id, arr);
+    for (const res of chunkResults) {
+      if (res.error || !res.data) continue;
+      for (const row of res.data) {
+        if (row.score_general != null && !isNaN(Number(row.score_general)) && row.match_date) {
+          const arr = playerMatchesMap.get(row.player_id) || [];
+          arr.push({ date: row.match_date, score: Number(row.score_general) });
+          playerMatchesMap.set(row.player_id, arr);
+        }
       }
     }
 
+    // Exact replica of the player profile logic (/players/[id]/page.tsx):
+    // If player has matches in the last 3 months, use those; otherwise use her most recent up to 8 matches
     for (const [playerId, matches] of Array.from(playerMatchesMap.entries())) {
       if (matches.length === 0) continue;
       matches.sort((a, b) => String(a.date).localeCompare(String(b.date)));
-      const trend = computeRatingTrend(matches.map((m) => m.score));
-      if (trend) trendByPlayer.set(playerId, trend);
+
+      const recent3m = matches.filter((m) => m.date >= trendFromDate);
+      const targetMatches = recent3m.length > 0 ? recent3m : matches.slice(-8);
+
+      if (targetMatches.length > 0) {
+        const trend = computeRatingTrend(targetMatches.map((m) => m.score));
+        if (trend) trendByPlayer.set(playerId, trend);
+      }
     }
   } catch (trendErr) {
     console.warn("Could not compute player trends:", trendErr);
@@ -434,6 +452,7 @@ export async function GET(req: NextRequest) {
           notaDisponibilidad: getWeightedVal("nota_disponibilidad"),
           notaFisico,
           hasRatings: true,
+          lowSample: isLowSample(totalMins, totalMatches),
         });
       });
     }
@@ -644,6 +663,11 @@ export async function GET(req: NextRequest) {
         if (valA == null || valB == null) return valA == null ? (valB == null ? 0 : 1) : -1;
         // order 'desc' means highest age (oldest) first -> lowest birthDate
         return order === "desc" ? valA - valB : valB - valA;
+      }
+      // Ratings: low-sample players (few minutes, per-90 rating not reliable) after the rest
+      if (sortBy.startsWith("nota_") && sortBy !== "nota_fisico") {
+        const ls = lowSampleLast(a, b);
+        if (ls) return ls;
       }
       const valA = a[field];
       const valB = b[field];

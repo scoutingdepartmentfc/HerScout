@@ -9,7 +9,9 @@ _normalizar_y_guardar de Debrecen_app), aplicada por competición-temporada.
 - Scores de temporada: una fila por jugador; métricas p90 = media ponderada por minutos
   (equivale a total / minutos * 90), con >= MIN_MINUTOS_TEMPORADA, escaladas contra la liga.
 - comp_regularidad: regularidad y tendencia de los scores por partido (CV + pendiente).
-- Notas 0-100 comparables entre ligas: posición en su liga + nivel de la liga (NIVEL_LIGA), con techo suave.
+- Notas 0-100 comparables entre ligas, solo con rendimiento p90 (los minutos no puntúan): desviaciones frente a
+  su grupo de demarcación en la liga + nivel de la liga (NIVEL_LIGA), con techo suave. La global pesa sobre todo
+  las métricas clave de su posición (PLANTILLAS_POSICION). Con poca muestra, aviso (radar_data.muestra_baja).
 - Percentiles 0-99 dentro de la competición.
 - radar_data: {metricas: {col: [valor, nota]}, heatmap: {general, por_demarcacion: {dem: rejilla 8x12}},
   pases: {general, por_demarcacion: {zonas: [n, ok, dx, dy] x24, rel: [zona, dem, n, x0, y0, x1, y1],
@@ -19,17 +21,17 @@ _normalizar_y_guardar de Debrecen_app), aplicada por competición-temporada.
 
 import json
 from pathlib import Path
-from statistics import NormalDist
 from typing import Dict, List, Tuple
 
 import numpy as np
 import pandas as pd
 
-from .categorias import (CATEGORIAS, JERARQUIA, JERARQUIA_PORTEROS, MALUS, METRICA_SUB, PESO_DISPONIBILIDAD,
-                         PESOS_GRUPO, SIN_CORRECCION)
-from .config import (K_MINUTOS_CONFIANZA, K_MINUTOS_PARTIDO, MIN_ACTUACIONES_GRUPO, MIN_JUGADORAS_GRUPO,
-                     MIN_MINUTOS_TEMPORADA, NOTA_DESVIACION, NOTA_MEDIA_LIGA, NOTA_PARTIDO_DESVIACION,
-                     NOTA_PARTIDO_MEDIA, NOTA_PARTIDO_MIN, NOTA_TECHO, NOTA_TECHO_INICIO)
+from .categorias import (CATEGORIAS, JERARQUIA, JERARQUIA_PORTEROS, MALUS, METRICA_SUB, PESOS_GRUPO,
+                         PLANTILLAS_POSICION, plantilla_de)
+from .config import (K_MINUTOS_PARTIDO, MIN_ACTUACIONES_GRUPO, MIN_JUGADORAS_GRUPO, MIN_MINUTOS_NOTA,
+                     MIN_MINUTOS_REFERENCIA, MIN_MINUTOS_TEMPORADA, MIN_PARTIDOS_NOTA, MIN_REFERENCIA_GRUPO,
+                     NOTA_DESVIACION, NOTA_MEDIA_LIGA, NOTA_PARTIDO_DESVIACION, NOTA_PARTIDO_MEDIA,
+                     NOTA_PARTIDO_MIN, NOTA_TECHO, NOTA_TECHO_INICIO, PESO_CLAVE, Z_RECORTE)
 
 NOTA_COLS = ['nota_global'] + [f'nota_{c}' for c in CATEGORIAS]
 SCORE_COLS = ['score_general', 'score_ofensivo', 'score_defensivo', 'score_comportamiento', 'score_abp']
@@ -381,84 +383,105 @@ def _nota_desde_z(z, nivel: float):
     return nota.clip(upper=NOTA_TECHO_INICIO).clip(lower=1) + rango * (1 - np.exp(-exceso / rango))
 
 
-def _relativa_liga(serie: pd.Series, grupos: pd.Series, nivel: float = NOTA_MEDIA_LIGA) -> pd.Series:
-    """Nota 0-100 respecto al grupo en la liga, con la jugadora media en el nivel de la liga (_nota_desde_z).
-    Grupos de menos de 3 jugadoras (o sin varianza) quedan en la media. NaN sigue NaN."""
-    def escalar(g: pd.Series) -> pd.Series:
-        v = g.dropna()
-        if len(v) < 3 or v.std(ddof=0) < 1e-9:
-            return g.where(g.isna(), nivel)
-        return _nota_desde_z((g - v.mean()) / v.std(ddof=0), nivel)
-    return serie.groupby(grupos, group_keys=False).apply(escalar).reindex(serie.index)
+def _referencia(grupos: pd.Series, mins: pd.Series) -> pd.Series:
+    """Filas que fijan la media y la desviación de cada grupo: las de >= MIN_MINUTOS_REFERENCIA, si el grupo tiene
+    al menos MIN_REFERENCIA_GRUPO; si no, todas las del grupo. Es la vara de medir, no un filtro: se puntúa a todas."""
+    fiable = mins >= MIN_MINUTOS_REFERENCIA
+    n_fiables = fiable.groupby(grupos).transform('sum')
+    return fiable | (n_fiables < MIN_REFERENCIA_GRUPO)
 
 
-_INV_NORMAL = np.vectorize(NormalDist().inv_cdf)
+def _z_grupo(serie: pd.Series, grupos: pd.Series, ref: pd.Series) -> pd.Series:
+    """Desviaciones típicas de cada fila frente a la media de la referencia de su grupo. Menos de 3 valores de
+    referencia o sin varianza → 0 (la media). NaN sigue NaN."""
+    out = pd.Series(np.nan, index=serie.index)
+    for _, idx in serie.groupby(grupos).groups.items():
+        g = serie[idx]
+        r = g[ref[idx]].dropna()
+        sd = r.std(ddof=0) if len(r) >= 3 else 0.0
+        out[idx] = ((g - r.mean()) / sd) if sd > 1e-9 else g.where(g.isna(), 0.0)
+    return out
 
 
-def _percentil_a_nota(pct: pd.DataFrame, nivel: float = NOTA_MEDIA_LIGA) -> pd.DataFrame:
-    """Percentil 0-100 de una métrica → misma escala que las notas (la jugadora mediana = nivel de la liga)."""
-    p = (pct / 100).clip(0.01, 0.99)
-    z = pd.DataFrame(_INV_NORMAL(p.fillna(0.5).to_numpy(dtype=float)), index=pct.index, columns=pct.columns)
-    return _nota_desde_z(z, nivel).where(pct.notna())
+def _relativa_liga(serie: pd.Series, grupos: pd.Series, ref: pd.Series, nivel: float = NOTA_MEDIA_LIGA) -> pd.Series:
+    """Nota 0-100 respecto a la referencia de su grupo en la liga, con la jugadora media en el nivel de la liga."""
+    return _nota_desde_z(_z_grupo(serie, grupos, ref).clip(-3.5, 3.5), nivel)
+
+
+def _z_metricas(df: pd.DataFrame, cols: List[str], grupos: pd.Series, ref: pd.Series) -> pd.DataFrame:
+    """z p90 de cada métrica frente a la referencia de su grupo, recortado a ±Z_RECORTE (malus invertidas).
+    Un 0 que no informa no cuenta (NaN): en métricas de conteo, si con sus minutos la jugadora media de la
+    referencia habría hecho menos de 1 acción; en porcentajes, con menos de MIN_MINUTOS_NOTA."""
+    mins = df['minutes_played'].astype(float)
+    out = {}
+    for c in cols:
+        v = pd.to_numeric(df[c], errors='coerce').astype(float)
+        if not v.notna().any():
+            continue
+        if c.endswith('_p90'):
+            media_ref = v.where(ref).groupby(grupos).transform('mean').fillna(0)
+            v = v.mask((v == 0) & (media_ref * mins / 90 < 1))
+        elif c.endswith('_pct'):
+            v = v.mask((v == 0) & (mins < MIN_MINUTOS_NOTA))
+        z = _z_grupo(v, grupos, ref).clip(-Z_RECORTE, Z_RECORTE)
+        out[c] = -z if c in MALUS else z
+    return pd.DataFrame(out, index=df.index)
 
 
 def puntuar_categorias(df_temp: pd.DataFrame, nivel: float = NOTA_MEDIA_LIGA) -> pd.DataFrame:
     """
-    Notas 0-100 por métrica, subcategoría, categoría y global (ver pipeline/categorias.py).
-    1. Corrección por minutos: valor = (min * p90 + K * media_grupo) / (min + K). Quien juega poco queda
-       cerca de la media de su grupo; con muchos minutos manda su propio valor.
-    2. Percentil 0-100 frente a su grupo de demarcación en la liga-temporada (toda la liga si el grupo es pequeño).
-    3. Subcategoría = media de sus métricas; categoría = media de sus subcategorías; sin datos → NaN.
-       Las porteras usan su propia jerarquía (JERARQUIA_PORTEROS); el resto, JERARQUIA.
-    4. Global = media ponderada de categorías: Disponibilidad PESO_DISPONIBILIDAD y el resto según el grupo.
-    5. Subcategorías, categorías y global se expresan respecto a la media de su grupo en la liga, con la jugadora
-       media en `nivel` (ver NIVEL_LIGA y _relativa_liga). Las notas por métrica, igual desde su percentil.
+    Notas 0-100 por métrica, subcategoría, categoría y global (ver pipeline/categorias.py), solo con rendimiento
+    p90: los minutos no puntúan (Disponibilidad no entra en la global) ni se corrige hacia la media.
+    1. Cada métrica → desviaciones típicas frente a su grupo de demarcación en la liga-temporada (_z_metricas), con
+       la media de las jugadoras con minutos suficientes (_referencia). Los ceros que no informan no cuentan.
+    2. Subcategoría = media de sus métricas; categoría = media de sus subcategorías; sin datos → NaN.
+       Porteras con JERARQUIA_PORTEROS, el resto con JERARQUIA.
+    3. Global = PESO_CLAVE * métricas clave de su posición (PLANTILLAS_POSICION, demarcación principal)
+       + (1 - PESO_CLAVE) * categorías con los pesos de su grupo (PESOS_GRUPO). Si falta una parte, la otra.
+    4. Todo se expresa respecto a la referencia de su grupo con la jugadora media en `nivel` (_relativa_liga).
+    5. muestra_baja: < MIN_MINUTOS_NOTA minutos o < MIN_PARTIDOS_NOTA partidos (aviso, fuera de rankings).
     """
     df = df_temp.copy()
     mins = df['minutes_played'].astype(float)
     grupos = _grupos(df, MIN_JUGADORAS_GRUPO)
-    pcts = {}
-    for c in METRICA_SUB:
-        if c not in df.columns:
-            continue
-        v_orig = pd.to_numeric(df[c], errors='coerce').astype(float)
-        v = v_orig.copy()
-        if c not in SIN_CORRECCION:
-            media = v.groupby(grupos).transform('mean')
-            v = (mins * v + K_MINUTOS_CONFIANZA * media) / (mins + K_MINUTOS_CONFIANZA)
-            # En métricas positivas (no malus), si la jugadora tiene valor real 0.0, no inflar su valor
-            # con la media de grupo: se queda en 0.0 para que el empate a cero no otorgue notas altas.
-            if c not in MALUS:
-                v = v.where(v_orig > 0, 0.0)
+    ref = _referencia(grupos, mins)
+    if 'of_goles_p90' in df.columns and 'of_tiros_p90' in df.columns:
+        tiros = pd.to_numeric(df['of_tiros_p90'], errors='coerce')
+        df['_goal_conversion_pct'] = (pd.to_numeric(df['of_goles_p90'], errors='coerce') / tiros * 100).where(tiros > 0)
+    z = _z_metricas(df, [c for c in METRICA_SUB if c in df.columns], grupos, ref)
+    notas_met = _nota_desde_z(z, nivel).where(z.notna())
 
-        # Usar method='min' para empates a 0 en métricas positivas, evitando inflar percentiles a la media
-        is_malus = c in MALUS
-        pct = v.groupby(grupos, group_keys=False).apply(
-            lambda g: _percentil_0_100(g, invert=is_malus, rank_method='min' if not is_malus else 'average')
-        )
-        pcts[c] = pct
-    pcts = pd.DataFrame(pcts, index=df.index)
-    notas_met = _percentil_a_nota(pcts, nivel)
+    subs, cats = _categorias(z, df['grupo_demarcacion'])
 
-    subs, cats = _categorias(pcts, df['grupo_demarcacion'])
+    # Métricas clave de su posición
+    clave_cols = sorted({m for p in PLANTILLAS_POSICION.values() for m in p})
+    z_clave = z.reindex(columns=[c for c in clave_cols if c in z.columns])
+    if '_goal_conversion_pct' in df.columns:
+        z_clave['goal_conversion_pct'] = _z_metricas(df, ['_goal_conversion_pct'], grupos, ref).get('_goal_conversion_pct')
+    plantilla = [plantilla_de(d, g) for d, g in zip(df['demarcacion'], df['grupo_demarcacion'])]
+    clave = pd.Series(np.nan, index=df.index)
+    for i, t in zip(df.index, plantilla):
+        w = {k: p for k, p in PLANTILLAS_POSICION[t].items() if k in z_clave.columns and pd.notna(z_clave.at[i, k])}
+        if w:
+            clave[i] = sum(z_clave.at[i, k] * p for k, p in w.items()) / sum(w.values())
 
-    def nota_global(i):
-        pesos = {k: w * (1 - PESO_DISPONIBILIDAD) for k, w in PESOS_GRUPO.get(df.at[i, 'grupo_demarcacion'],
-                                                                               PESOS_GRUPO['Medios']).items()}
-        pesos['disponibilidad'] = PESO_DISPONIBILIDAD
-        validos = {k: w for k, w in pesos.items() if w > 0 and pd.notna(cats.at[i, k])}
+    def nota_cats(i):
+        pesos = PESOS_GRUPO.get(df.at[i, 'grupo_demarcacion'], PESOS_GRUPO['Medios'])
+        validos = {k: w for k, w in pesos.items() if w > 0 and k in cats.columns and pd.notna(cats.at[i, k])}
         total = sum(validos.values())
         return sum(cats.at[i, k] * w for k, w in validos.items()) / total if total else np.nan
 
-    glob = pd.Series([nota_global(i) for i in df.index], index=df.index, dtype=float)
-    df['nota_global'] = _relativa_liga(glob, grupos, nivel)
-    cats = cats.apply(lambda col: _relativa_liga(col, grupos, nivel))
-    subs = subs.apply(lambda col: _relativa_liga(col, grupos, nivel))
+    por_cats = pd.Series([nota_cats(i) for i in df.index], index=df.index, dtype=float)
+    glob = (PESO_CLAVE * clave.fillna(por_cats) + (1 - PESO_CLAVE) * por_cats.fillna(clave))
+    df['nota_global'] = _relativa_liga(glob, grupos, ref, nivel)
+    cats = cats.apply(lambda col: _relativa_liga(col, grupos, ref, nivel))
+    subs = subs.apply(lambda col: _relativa_liga(col, grupos, ref, nivel))
     for cat in CATEGORIAS:
         df[f'nota_{cat}'] = cats[cat]
-    df['_notas_met'] = [notas_met.loc[i].to_dict() for i in df.index]
+    df['_notas_met'] = [notas_met.loc[i].dropna().to_dict() for i in df.index]
     df['_notas_sub'] = [subs.loc[i].to_dict() for i in df.index]
-    return df
+    df['_muestra_baja'] = (mins < MIN_MINUTOS_NOTA) | (df['matches_played'] < MIN_PARTIDOS_NOTA)
+    return df.drop(columns=['_goal_conversion_pct'], errors='ignore')
 
 
 def puntuar_temporada(df_temp: pd.DataFrame, nivel: float = NOTA_MEDIA_LIGA) -> pd.DataFrame:
@@ -474,10 +497,19 @@ def puntuar_temporada(df_temp: pd.DataFrame, nivel: float = NOTA_MEDIA_LIGA) -> 
     df_temp['score_defensivo'] = a10(df_temp['nota_defensa'])
     df_temp['score_abp'] = a10(df_temp['nota_balon_parado'])
     df_temp['score_comportamiento'] = a10(df_temp['nota_disponibilidad'])
-    puntos = df_temp[SCORE_COLS]
+    # Percentiles en la liga frente a las jugadoras con muestra suficiente (las de muestra baja se sitúan
+    # respecto a ellas, pero no mueven el ranking de las demás)
+    fiables = ~df_temp['_muestra_baja']
+    if fiables.sum() < 2:
+        fiables = pd.Series(True, index=df_temp.index)
     for sc in SCORE_COLS:
-        pct = puntos[sc].rank(pct=True, method='average') * 99 if len(df_temp) > 1 else 50.0
-        df_temp[sc.replace('score_', 'percentile_')] = pct.round(2) if len(df_temp) > 1 else pct
+        ref_vals = np.sort(df_temp.loc[fiables, sc].to_numpy(dtype=float))
+        if len(ref_vals) > 1:
+            lo = np.searchsorted(ref_vals, df_temp[sc].to_numpy(dtype=float), side='left')
+            hi = np.searchsorted(ref_vals, df_temp[sc].to_numpy(dtype=float), side='right')
+            df_temp[sc.replace('score_', 'percentile_')] = np.round((lo + hi) / 2 / len(ref_vals) * 99, 2)
+        else:
+            df_temp[sc.replace('score_', 'percentile_')] = 50.0
     # Nota de cada métrica (0-10): la de su categoría (percentil corregido por minutos, en la escala de la liga)
     # o, si no está en la jerarquía, la escala clásica frente a la liga
     notas = pd.DataFrame({c: scale_0_10(df_temp[c], invert=c in MALUS_METRICS) for c in cols})
@@ -486,11 +518,14 @@ def puntuar_temporada(df_temp: pd.DataFrame, nivel: float = NOTA_MEDIA_LIGA) -> 
             if c in notas.columns and pd.notna(n):
                 notas.at[i, c] = round(n / 10, 2)
 
-    # Puesto en la liga por métrica (1 = mejor; en las de malus, menos es mejor). Solo se guarda el top 10
-    # y se ignoran valores 0 en las métricas positivas para no premiar empates a cero.
-    puestos = pd.DataFrame({c: df_temp[c].rank(ascending=c in MALUS_METRICS, method='min') for c in cols})
+    # Puesto en la liga por métrica (1 = mejor; en las de malus, menos es mejor). Solo se guarda el top 10,
+    # se ignoran valores 0 en las métricas positivas y las jugadoras con muestra baja no entran en el ranking.
+    puestos = pd.DataFrame({c: df_temp.loc[fiables, c].rank(ascending=c in MALUS_METRICS, method='min')
+                            for c in cols}).reindex(df_temp.index)
     def top10(i):
         out = {}
+        if df_temp.at[i, '_muestra_baja']:
+            return out
         for c in cols:
             v = float(df_temp.at[i, c])
             if pd.notna(v) and puestos.at[i, c] <= 10 and (c in MALUS_METRICS or v > 0):
@@ -506,7 +541,8 @@ def puntuar_temporada(df_temp: pd.DataFrame, nivel: float = NOTA_MEDIA_LIGA) -> 
                          for k in CATEGORIAS if pd.notna(df_temp.at[i, f'nota_{k}'])},
                       **{f'_sub_{k}': [round(float(v), 1), round(float(v) / 10, 2)]
                          for k, v in df_temp.at[i, '_notas_sub'].items() if pd.notna(v)}},
-         'top10': top10(i), 'jugadoras_liga': int(len(df_temp)),
+         'top10': top10(i), 'jugadoras_liga': int(fiables.sum()),
+         'muestra_baja': bool(df_temp.at[i, '_muestra_baja']),
          'heatmap': df_temp.at[i, '_heatmap'], 'pases': df_temp.at[i, '_pases'], 'demarcaciones': df_temp.at[i, '_demarcaciones']}
         for i in df_temp.index
     ]

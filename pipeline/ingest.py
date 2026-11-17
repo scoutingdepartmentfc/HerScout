@@ -427,6 +427,9 @@ class IngestionPipeline:
         self.store.upsert('player_match_scores', score_rows, on_conflict='match_id,player_id')
 
         # Una fila por jugador (antes una por demarcación): se borran las de versiones anteriores
+        existentes_recalc = {r['id'] for r in self.store.select_all('players', 'id')}
+        score_rows = [r for r in score_rows if r.get('player_id') in existentes_recalc]
+        season_rows = [r for r in season_rows if r.get('player_id') in existentes_recalc]
         self.store.delete('player_season_stats', competition_id=cid, season_id=sid)
         self.store.upsert('player_season_stats', season_rows, on_conflict='player_id,season_id,demarcacion', batch=200)
         self.totales['season_rows'] += len(season_rows)

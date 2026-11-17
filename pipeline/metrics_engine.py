@@ -588,6 +588,7 @@ def metricas_matchstats(st: Dict[str, float], mins_played, titular_pct, veces_ca
         'of_goles_fuera_area_p90': p90(g('attOboxGoal'), mins_played),
         'of_grandes_ocasiones_p90': p90(g('bigChanceScored') + g('bigChanceMissed'), mins_played),
         'of_1vs1_portero_p90': p90(g('attOneOnOne'), mins_played),
+        'of_tiros_puerta_area_p90': p90(g('attIboxTarget'), mins_played),
         # Defensivo
         'def_aereos_ganados_p90': p90(g('aerialWon'), mins_played),
         'def_aereos_ganados_pct': pct_series(g('aerialWon'), g('aerialWon') + g('aerialLost')),
@@ -608,6 +609,7 @@ def metricas_matchstats(st: Dict[str, float], mins_played, titular_pct, veces_ca
             'of_toques_p90': p90(g('touches'), mins_played),
             'of_toques_area_rival_p90': p90(g('touchesInOppBox'), mins_played),
             'of_toques_ultimo_tercio_p90': p90(g('touchesInFinalThird'), mins_played),
+            'of_entradas_ultimo_tercio_p90': p90(g('finalThirdEntries'), mins_played),
             'of_pases_ultimo_tercio_p90': p90(g('successfulFinalThirdPasses'), mins_played),
             'of_pases_ultimo_tercio_pct': pct_nan(g('successfulFinalThirdPasses'), g('totalFinalThirdPasses')),
             'of_entradas_area_p90': p90(g('successfulPenAreaEntries'), mins_played),
@@ -666,6 +668,17 @@ def metricas_matchstats(st: Dict[str, float], mins_played, titular_pct, veces_ca
     return {k: float(v) for k, v in m.items()}
 
 
+def metricas_xg_contra(df: pd.DataFrame, team_id: Any, mins_played: float, st: Dict[str, float]) -> Dict[str, float]:
+    """Portera: xG de los tiros del rival (modelo xG del eventing) y goles encajados − xG en contra (menos es
+    mejor: negativo = encaja menos de lo esperado). Con < 90' se reparte el xG rival por los minutos jugados."""
+    if 'Expected Goals' not in df.columns or not mins_played:
+        return {}
+    xgc = float(df.loc[df['Team ID'].astype(str) != str(team_id), 'Expected Goals'].fillna(0).sum())
+    xgc *= min(mins_played / 90.0, 1.0)
+    return {'def_xg_contra_p90': p90(xgc, mins_played),
+            'def_goles_menos_xgc_p90': p90(float(st.get('goalsConceded', 0.0)) - xgc, mins_played)}
+
+
 # ──────────────────────────────────────────────────────────────
 # MOTOR POR PARTIDO
 # ──────────────────────────────────────────────────────────────
@@ -713,6 +726,8 @@ class MetricsEngine:
                 metrics.update(metricas_matchstats(st, mins, 100.0 if info['is_starter'] else 0.0,
                                                    1 if info['is_captain'] else 0, 1 if mins >= 70 else 0,
                                                    (dems_temporada or {}).get(pid, 1), dem))
+            if dem == 'Portero':
+                metrics.update(metricas_xg_contra(df, info['team_id'], mins, st))
             passes = grp[grp['Event Name'] == 'Pass']
             loc = grp[(grp['x'] > 0) & (grp['y'] > 0)]
             heat = np.zeros((HM_ROWS, HM_COLS), dtype=int)

@@ -40,6 +40,14 @@ MIN_REFERENCIA_GRUPO = 8
 Z_RECORTE = 2.5
 # Nota global = PESO_CLAVE * métricas clave de su posición (categorias.PLANTILLAS_POSICION) + resto categorías.
 PESO_CLAVE = 0.65
+# Cada métrica se compara con tres medias de su demarcación (scoring._z_combinada): la de su liga-temporada, la de
+# sus compañeras de equipo en la misma demarcación y la general de todas las ligas descargadas (pipeline-cache
+# referencias/global.json). Si falta alguna (pocas jugadoras), se reparte su peso entre las demás.
+PESOS_REFERENCIA = {'liga': 0.5, 'equipo': 0.2, 'general': 0.3}
+MIN_REFERENCIA_GLOBAL = 20  # filas mínimas de una demarcación entre todas las ligas para usar la media general
+# Nota por partido: mezcla del modelo calibrado con FotMob y la escala propia (métricas clave de la posición +
+# categorías). 1.0 = solo el modelo; 0.0 = solo la escala propia.
+PESO_MODELO_PARTIDO = 0.5
 # Muestra baja: con menos minutos o partidos la nota se muestra con aviso y no entra en rankings ni top 10.
 MIN_MINUTOS_NOTA = 270
 MIN_PARTIDOS_NOTA = 3

@@ -34,96 +34,111 @@ export const DERIVED: Record<string, (m: Record<string, [number, number]>) => nu
   },
 };
 
-const FB: RadarStat[] = [
-  s("def_recuperaciones_p90", "Def. actions", "Successful defensive actions per 90", 0.1),
-  s("def_entradas_pct", "Def. duels won %", "Defensive duels won, %", 0.2, true),
-  s("of_centros_buenos_p90", "Crosses", "Crosses per 90", 0.1),
-  s("of_centros_buenos_pct", "Cross acc. %", "Accurate crosses, %", 0.2, true),
-  s("of_conduccion_pase_p90", "Progressive runs", "Progressive runs per 90", 0.1),
-  s("of_progresivos_p90", "Passes to final 3rd", "Passes to final third per 90", 0.2),
-  s("of_regates_p90", "Offensive duels", "Offensive duels per 90", 0.1),
+// Weights by priority (same as pipeline/categorias.py PLANTILLAS_POSICION): the 7 stats of each position in
+// order + extras (xG, goals and goals − xG for AMF/W/CF, xCA for DMF/CMF/AMF, goals − xG conceded for GK).
+const ORDER = [0.18, 0.16, 0.15, 0.14, 0.13, 0.12, 0.12];
+const EXTRA = 0.15;
+type Def = [key: string, label: string, ref: string];
+const tpl = (stats: Def[], extras: Def[] = []): RadarStat[] => [
+  ...stats.map(([k, l, r], i) => s(k, l, r, ORDER[i] ?? 0.12)),
+  ...extras.filter(([k]) => !stats.some(([x]) => x === k)).map(([k, l, r]) => s(k, l, r, EXTRA)),
 ];
-const DMF: RadarStat[] = [
-  s("def_recuperaciones_p90", "Def. actions", "Successful defensive actions per 90", 0.1),
-  s("def_intercepciones_p90", "Interceptions", "Interceptions per 90", 0.1),
-  s("def_entradas_pct", "Duels won %", "Duels won, %", 0.2, true),
-  s("of_pases_pct", "Pass acc. %", "Accurate passes, %", 0.2, true),
-  s("of_progresivos_pct", "Fwd pass acc. %", "Accurate forward passes, %", 0.2, true),
-  s("of_progresivos_p90", "Progressive passes", "Progressive passes per 90", 0.1),
-  s("of_participacion_pct", "Involvement", "Received passes per 90", 0.1, true),
-];
-const W: RadarStat[] = [
-  s("of_regates_p90", "Dribbles", "Dribbles per 90", 0.2),
-  s("of_regates_pct", "Dribble success %", "Successful dribbles, %", 0.1, true),
-  s("of_centros_buenos_p90", "Crosses", "Crosses per 90", 0.1),
-  s("of_centros_buenos_pct", "Cross acc. %", "Accurate crosses, %", 0.2, true),
-  s("of_xA_p90", "xA", "xA per 90", 0.1),
-  s("of_tiros_p90", "Shots", "Shots per 90", 0.1),
-  s("of_xG_p90", "xG", "xG per 90", 0.2),
-];
+const XG: Def = ["of_xG_p90", "xG", "expectedGoals"];
+const GOALS: Def = ["of_goles_p90", "Goals", "goals"];
+const G_XG: Def = ["of_goles_menos_xg_p90", "Goals − xG", "goals − expectedGoals"];
+const XCA: Def = ["of_xCA_p90", "xCA", "Expected chain value (passes)"];
 
 export const RADAR_TEMPLATES: Record<RadarTemplateId, RadarTemplate> = {
   GK: {
-    id: "GK", name: "Goalkeeper", grupo: "Porteros", stats: [
-      s("def_paradas_pct", "Save rate %", "Save rate, %", 0.2, true),
-      s("def_paradas_ocasiones_claras_p90", "Big-chance saves", "Prevented goals per 90", 0.2),
-      s("def_porteria_cero_pct", "Clean sheets %", "Clean sheets", 0.1, true),
-      s("def_salidas_libero_p90", "Exits", "Exits per 90", 0.1),
-      s("of_pases_pct", "Pass acc. %", "Accurate passes, %", 0.2, true),
-      s("of_pases_largos_pct", "Long pass acc. %", "Accurate long passes, %", 0.1, true),
-      s("of_progresivos_p90", "Forward passes", "Forward passes per 90", 0.1),
-    ],
+    id: "GK", name: "Goalkeeper", grupo: "Porteros", stats: tpl([
+      ["def_paradas_p90", "Saves", "saves"],
+      ["def_goles_encajados_p90", "Goals conceded", "goalsConceded"],
+      ["def_goles_menos_xgc_p90", "Goals − xG conceded", "goalsConceded − expectedGoalsConceded"],
+      ["of_pases_buenos_p90", "Accurate passes", "accuratePass"],
+      ["of_envios_largos_p90", "Accurate launches", "accurateLaunches"],
+      ["of_toques_p90", "Touches", "touches"],
+      ["def_salidas_libero_p90", "Sweeper actions", "accurateKeeperSweeper"],
+    ]),
   },
   CB: {
-    id: "CB", name: "Centre-Back", grupo: "Centrales", stats: [
-      s("def_entradas_p90", "Def. duels", "Defensive duels per 90", 0.1),
-      s("def_entradas_pct", "Def. duels won %", "Defensive duels won, %", 0.2, true),
-      s("def_aereos_ganados_pct", "Aerials won %", "Aerial duels won, %", 0.1, true),
-      s("def_intercepciones_p90", "Interceptions", "Interceptions per 90", 0.1),
-      s("def_despejes_area_prop_p90", "Box clearances", "Shots blocked per 90", 0.1),
-      s("of_pases_pct", "Pass acc. %", "Accurate passes, %", 0.2, true),
-      s("of_progresivos_p90", "Passes to final 3rd", "Passes to final third per 90", 0.2),
-    ],
+    id: "CB", name: "Centre-Back", grupo: "Centrales", stats: tpl([
+      ["def_duelos_ganados_p90", "Duels won", "duelWon"],
+      ["def_aereos_ganados_p90", "Aerials won", "aerialWon"],
+      ["def_intercepciones_p90", "Interceptions", "interception"],
+      ["def_despejes_p90", "Clearances", "effectiveClearance"],
+      ["of_pases_buenos_p90", "Accurate passes", "accuratePass"],
+      ["of_pases_rival_buenos_p90", "Passes opp. half", "accurateFwdZonePass"],
+      ["of_pases_largos_p90", "Long balls", "accurateLongBalls"],
+    ]),
   },
-  FB: { id: "FB", name: "Full-Back / Wing-Back", grupo: "Laterales", stats: FB },
-  DMF: { id: "DMF", name: "Defensive Midfielder", grupo: "Medios", stats: DMF },
+  FB: {
+    id: "FB", name: "Full-Back / Wing-Back", grupo: "Laterales", stats: tpl([
+      ["of_xA_p90", "xA", "expectedAssists"],
+      ["of_centros_buenos_p90", "Accurate crosses", "accurateCross"],
+      ["of_toques_area_rival_p90", "Touches opp. box", "touchesInOppBox"],
+      ["of_entradas_ultimo_tercio_p90", "Final third entries", "finalThirdEntries"],
+      ["of_pases_rival_buenos_p90", "Passes opp. half", "accurateFwdZonePass"],
+      ["def_duelos_ganados_p90", "Duels won", "duelWon"],
+      ["def_recuperaciones_p90", "Recoveries", "ballRecovery"],
+    ]),
+  },
+  DMF: {
+    id: "DMF", name: "Defensive Midfielder", grupo: "Medios", stats: tpl([
+      ["def_duelos_ganados_p90", "Duels won", "duelWon"],
+      ["def_aereos_ganados_p90", "Aerials won", "aerialWon"],
+      ["def_intercepciones_p90", "Interceptions", "interception"],
+      ["def_recuperaciones_p90", "Recoveries", "ballRecovery"],
+      ["of_toques_p90", "Touches", "touches"],
+      ["of_pases_buenos_p90", "Accurate passes", "accuratePass"],
+      ["of_pases_rival_buenos_p90", "Passes opp. half", "accurateFwdZonePass"],
+    ], [XCA]),
+  },
   CMF: {
-    id: "CMF", name: "Central Midfielder", grupo: "Medios", stats: [
-      s("of_pases_buenos_p90", "Passes", "Passes per 90", 0.12),
-      s("of_pases_pct", "Pass acc. %", "Accurate passes, %", 0.2, true),
-      s("of_xA_p90", "xA", "xA per 90", 0.12),
-      s("of_pases_rival_buenos_p90", "Passes final 3rd", "Passes to final third per 90", 0.2),
-      s("of_asistencias_p90", "Shot assists", "Shot assists per 90", 0.12),
-      s("def_entradas_pct", "Duels won %", "Duels won, %", 0.12, true),
-      s("of_progresivos_p90", "Progressive passes", "Progressive passes per 90", 0.12),
-    ],
+    id: "CMF", name: "Central Midfielder", grupo: "Medios", stats: tpl([
+      ["of_grandes_ocasiones_creadas_p90", "Big chances created", "bigChanceCreated"],
+      ["of_xA_p90", "xA", "expectedAssists"],
+      GOALS,
+      XG,
+      ["of_toques_area_rival_p90", "Touches opp. box", "touchesInOppBox"],
+      ["def_recuperaciones_p90", "Recoveries", "ballRecovery"],
+      ["def_aereos_ganados_p90", "Aerials won", "aerialWon"],
+    ], [XCA]),
   },
   AMF: {
-    id: "AMF", name: "Attacking Midfielder", grupo: "Mediapuntas", stats: [
-      s("of_xA_p90", "xA", "xA per 90", 0.2),
-      s("of_xG_p90", "xG", "xG per 90", 0.1),
-      s("of_asistencias_p90", "Shot assists", "Shot assists per 90", 0.1),
-      s("of_llegadas_area_pase_remate_p90", "Box arrivals", "Touches in box per 90", 0.2),
-      s("of_goles_p90", "Goals", "Goals per 90", 0.1),
-      s("of_pases_recibidos_carril_central_p90", "Received centrally", "Received passes per 90", 0.1),
-      s("of_pases_dentro_area_p90", "Passes into box", "Accurate passes to penalty area, %", 0.2),
-    ],
+    id: "AMF", name: "Attacking Midfielder", grupo: "Mediapuntas", stats: tpl([
+      ["of_toques_area_rival_p90", "Touches opp. box", "touchesInOppBox"],
+      ["of_toques_p90", "Touches", "touches"],
+      GOALS,
+      ["of_asistencia_gol_p90", "Assists", "goalAssist"],
+      XG,
+      ["of_grandes_ocasiones_creadas_p90", "Big chances created", "bigChanceCreated"],
+      ["of_regates_p90", "Dribbles won", "wonContest"],
+    ], [XCA, G_XG]),
   },
-  W: { id: "W", name: "Winger", grupo: "Extremos", stats: W },
+  W: {
+    id: "W", name: "Winger", grupo: "Extremos", stats: tpl([
+      ["of_regates_p90", "Dribbles won", "wonContest"],
+      ["of_centros_buenos_p90", "Accurate crosses", "accurateCross"],
+      GOALS,
+      ["of_asistencia_gol_p90", "Assists", "goalAssist"],
+      ["of_xA_p90", "xA", "expectedAssists"],
+      ["of_grandes_ocasiones_creadas_p90", "Big chances created", "bigChanceCreated"],
+      ["of_entradas_area_p90", "Box entries", "penAreaEntries"],
+    ], [XG, G_XG]),
+  },
   CF: {
-    id: "CF", name: "Centre-Forward", grupo: "Delanteros", stats: [
-      s("of_goles_p90", "Goals", "Non-penalty goals per 90", 0.1),
-      s("of_xG_p90", "xG", "xG per 90", 0.2),
-      s("goal_conversion_pct", "Conversion %", "Goal conversion, %", 0.2, true),
-      s("of_tiros_p90", "Shots", "Shots per 90", 0.1),
-      s("of_llegadas_area_pase_remate_p90", "Box arrivals", "Touches in box per 90", 0.1),
-      s("of_regates_pct", "Off. duels won %", "Offensive duels won, %", 0.1, true),
-      s("of_tiros_dentro_pct", "Shots on target %", "Shots on target, %", 0.2, true),
-    ],
+    id: "CF", name: "Centre-Forward", grupo: "Delanteros", stats: tpl([
+      GOALS,
+      XG,
+      ["of_asistencia_gol_p90", "Assists", "goalAssist"],
+      ["of_xA_p90", "xA", "expectedAssists"],
+      ["of_tiros_puerta_area_p90", "Box shots on target", "attIboxTarget"],
+      ["of_toques_area_rival_p90", "Touches opp. box", "touchesInOppBox"],
+      ["of_toques_p90", "Touches", "touches"],
+    ], [G_XG]),
   },
 };
 
-/** Player position (pipeline Spanish demarcación, English name or short code) → radar template */
 const POSITION_TEMPLATE: Record<string, RadarTemplateId> = {
   portero: "GK", portera: "GK", goalkeeper: "GK", gk: "GK",
   "central derecho": "CB", "central izquierdo": "CB", central: "CB", "centre-back": "CB", "center back": "CB",

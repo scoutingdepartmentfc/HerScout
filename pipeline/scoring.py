@@ -21,17 +21,21 @@ _normalizar_y_guardar de Debrecen_app), aplicada por competición-temporada.
 
 import json
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
 
-from .categorias import (CATEGORIAS, JERARQUIA, JERARQUIA_PORTEROS, MALUS, METRICA_SUB, PESOS_GRUPO,
+from .categorias import (CATEGORIAS, DIFERENCIAS, JERARQUIA, JERARQUIA_PORTEROS, MALUS, METRICA_SUB, PESOS_GRUPO,
                          PLANTILLAS_POSICION, plantilla_de)
 from .config import (K_MINUTOS_PARTIDO, MIN_ACTUACIONES_GRUPO, MIN_JUGADORAS_GRUPO, MIN_MINUTOS_NOTA,
-                     MIN_MINUTOS_REFERENCIA, MIN_MINUTOS_TEMPORADA, MIN_PARTIDOS_NOTA, MIN_REFERENCIA_GRUPO,
-                     NOTA_DESVIACION, NOTA_MEDIA_LIGA, NOTA_PARTIDO_DESVIACION, NOTA_PARTIDO_MEDIA,
-                     NOTA_PARTIDO_MIN, NOTA_TECHO, NOTA_TECHO_INICIO, PESO_CLAVE, Z_RECORTE)
+                     MIN_MINUTOS_REFERENCIA, MIN_MINUTOS_TEMPORADA, MIN_PARTIDOS_NOTA, MIN_REFERENCIA_GLOBAL,
+                     MIN_REFERENCIA_GRUPO, NOTA_DESVIACION, NOTA_MEDIA_LIGA, NOTA_PARTIDO_DESVIACION,
+                     NOTA_PARTIDO_MEDIA, NOTA_PARTIDO_MIN, NOTA_TECHO, NOTA_TECHO_INICIO, PESO_CLAVE,
+                     PESO_MODELO_PARTIDO, PESOS_REFERENCIA, Z_RECORTE)
+
+# Acumulados por demarcación para la media general entre ligas: {grupo: {métrica: [n, suma, suma_cuadrados]}}
+Acumulado = Dict[str, Dict[str, List[float]]]
 
 NOTA_COLS = ['nota_global'] + [f'nota_{c}' for c in CATEGORIAS]
 SCORE_COLS = ['score_general', 'score_ofensivo', 'score_defensivo', 'score_comportamiento', 'score_abp']
@@ -198,56 +202,58 @@ def nota_partido_modelo(df: pd.DataFrame) -> pd.Series:
     return out.where(f['_con_stats']).clip(NOTA_PARTIDO_MIN, 10.0).round(2)
 
 
-def scores_por_partido(df_partidos: pd.DataFrame, calibrada: bool = True) -> pd.DataFrame:
-    """Rating 0-10 de cada actuación (match_id, player_id) frente a las de su grupo de demarcación en la liga.
-    1. Cada métrica de la jerarquía (sin Disponibilidad: los minutos no puntúan en el partido) pasa a percentil
-       dentro del grupo (empates al rango medio: un 0 en goles, como casi todas, queda cerca de la mitad).
-       En balón parado el 0 es "no lanza": sin dato, así que solo suma a quien lo hace.
-    2. Subcategoría → categoría → global ponderado con PESOS_GRUPO de su grupo (+ disciplina 10%).
-    3. Global y bloques a la escala del partido (_nota_partido), que acerca a la media a quien jugó poco.
-    4. La nota general es la del modelo calibrado con FotMob (nota_partido_modelo) si está guardado y
-       `calibrada`; si no, la escala de percentiles (_nota_partido). Los
-       bloques (ofensivo, defensivo...) siguen siendo los percentiles de los pasos 1-3."""
+def scores_por_partido(df_partidos: pd.DataFrame, calibrada: bool = True, general: Optional[Acumulado] = None,
+                       acum: Optional[Acumulado] = None) -> pd.DataFrame:
+    """Rating 0-10 de cada actuación (match_id, player_id).
+    1. Cada métrica de la jerarquía (sin Disponibilidad: los minutos no puntúan en el partido) → desviaciones frente
+       a tres medias de su demarcación (_z_combinada): actuaciones de la liga, de su equipo y de todas las ligas
+       (`general`, acumulados de otras temporadas). En balón parado el 0 es "no lanza": sin dato, solo suma.
+    2. Global = PESO_CLAVE * métricas clave de su posición (PLANTILLAS_POSICION) + resto: categorías con los pesos
+       de su grupo (PESOS_GRUPO) y disciplina 10%.
+    3. Escala del partido (_nota_partido), que acerca a la media a quien jugó poco.
+    4. Nota general = PESO_MODELO_PARTIDO * modelo calibrado con FotMob + resto escala propia (si hay modelo y
+       `calibrada`). Bloques (ofensivo, defensivo...) con la escala propia.
+    `acum`: se rellena con los acumulados de estas actuaciones (para la media general de las próximas ligas)."""
     base = df_partidos[['match_id', 'player_id', 'demarcacion', 'grupo_demarcacion']].copy()
     if df_partidos.empty:
         return base.assign(**{c: pd.Series(dtype=float) for c in SCORE_COLS})
-    df = df_partidos
+    df = df_partidos.copy()
     mins = pd.to_numeric(df['minutes_played'], errors='coerce').fillna(0).clip(lower=1).astype(float)
     grupos = _grupos(df, MIN_ACTUACIONES_GRUPO)
-    pcts = {}
+    ref = pd.Series(True, index=df.index)  # todas las actuaciones fijan la media del partido
+    cols = []
     for c, (cat, _) in METRICA_SUB.items():
         if c not in df.columns or cat == 'disponibilidad':
             continue
-        v = pd.to_numeric(df[c], errors='coerce').astype(float)
         if cat == 'balon_parado':
-            v = v.where(v != 0)
-        if not v.notna().any():
-            continue
-        pcts[c] = v.groupby(grupos, group_keys=False).apply(lambda g, inv=c in MALUS: _percentil_0_100(g, invert=inv))
-    pcts = pd.DataFrame(pcts, index=df.index)
-    _, cats = _categorias(pcts, df['grupo_demarcacion'])
+            df[c] = pd.to_numeric(df[c], errors='coerce').where(lambda v: v != 0)
+        cols.append(c)
+    z = _z_metricas(df, cols, grupos, ref, general=general, acum=acum, ceros=False)
+    _, cats = _categorias(z, df['grupo_demarcacion'])
 
     # Disciplina (tarjetas y faltas) por partido: menos es mejor
     if 'comp_disciplina_malus' in df.columns:
-        d = pd.to_numeric(df['comp_disciplina_malus'], errors='coerce').astype(float)
-        disciplina = d.groupby(grupos, group_keys=False).apply(lambda g: _percentil_0_100(g, invert=True))
+        disciplina = -_z_grupo(pd.to_numeric(df['comp_disciplina_malus'], errors='coerce').astype(float), grupos, ref)
     else:
         disciplina = pd.Series(np.nan, index=df.index)
 
-    # Global: media ponderada de las categorías con datos, con los pesos de su grupo de demarcación
     num = pd.Series(0.0, index=df.index)
     den = pd.Series(0.0, index=df.index)
-    columnas = {**{k: cats[k] for k in cats.columns}, '_disciplina': disciplina}
-    for k, col in columnas.items():
+    for k, col in {**{k: cats[k] for k in cats.columns}, '_disciplina': disciplina}.items():
         w = df['grupo_demarcacion'].map(lambda g: 0.10 if k == '_disciplina' else
                                         PESOS_GRUPO.get(g, PESOS_GRUPO['Medios']).get(k, 0.0) * 0.90).astype(float)
         w = w.where(col.notna(), 0.0)
         num += col.fillna(0) * w
         den += w
-    glob = (num / den).where(den > 0)
+    por_cats = (num / den).where(den > 0)
+    clave = _nota_clave(z, df)
+    glob = PESO_CLAVE * clave.fillna(por_cats) + (1 - PESO_CLAVE) * por_cats.fillna(clave)
+    propia = _nota_partido(glob, grupos, mins)
 
     nota = nota_partido_modelo(df) if calibrada else None
-    base['score_general'] = nota if nota is not None else _nota_partido(glob, grupos, mins)
+    if nota is not None:
+        propia = (PESO_MODELO_PARTIDO * nota + (1 - PESO_MODELO_PARTIDO) * propia).where(nota.notna()).round(2)
+    base['score_general'] = propia
     base['score_ofensivo'] = _nota_partido(cats[['ataque', 'construccion']].mean(axis=1), grupos, mins)
     base['score_defensivo'] = _nota_partido(cats['defensa'], grupos, mins)
     base['score_abp'] = _nota_partido(cats['balon_parado'], grupos, mins)
@@ -408,32 +414,118 @@ def _relativa_liga(serie: pd.Series, grupos: pd.Series, ref: pd.Series, nivel: f
     return _nota_desde_z(_z_grupo(serie, grupos, ref).clip(-3.5, 3.5), nivel)
 
 
-def _z_metricas(df: pd.DataFrame, cols: List[str], grupos: pd.Series, ref: pd.Series) -> pd.DataFrame:
-    """z p90 de cada métrica frente a la referencia de su grupo, recortado a ±Z_RECORTE (malus invertidas).
-    Un 0 que no informa no cuenta (NaN): en métricas de conteo, si con sus minutos la jugadora media de la
-    referencia habría hecho menos de 1 acción; en porcentajes, con menos de MIN_MINUTOS_NOTA."""
+def derivar_metricas(df: pd.DataFrame) -> pd.DataFrame:
+    """Métricas derivadas de otras columnas (también para cachés antiguas): goles − xG (solo con eventing)."""
+    if 'of_goles_p90' in df.columns and 'of_xG_p90' in df.columns:
+        xg = pd.to_numeric(df['of_xG_p90'], errors='coerce')
+        df = df.assign(of_goles_menos_xg_p90=(pd.to_numeric(df['of_goles_p90'], errors='coerce') - xg).where(xg.notna()))
+    return df
+
+
+def sumar_acumulados(*acums: Optional[Acumulado]) -> Acumulado:
+    """Suma acumulados [n, suma, suma²] por demarcación y métrica (de varias temporadas)."""
+    out: Acumulado = {}
+    for a in acums:
+        for g, met in (a or {}).items():
+            for c, (n, s1, s2) in met.items():
+                t = out.setdefault(g, {}).setdefault(c, [0.0, 0.0, 0.0])
+                t[0] += n
+                t[1] += s1
+                t[2] += s2
+    return out
+
+
+def _acumular(v: pd.Series, grupos_dem: pd.Series, ref: pd.Series, col: str, acum: Acumulado):
+    r = v[ref & v.notna()]
+    for g, x in r.groupby(grupos_dem[r.index]):
+        acum.setdefault(str(g), {})[col] = [float(len(x)), float(x.sum()), float((x ** 2).sum())]
+
+
+def _z_combinada(v: pd.Series, grupos: pd.Series, grupos_dem: pd.Series, ref: pd.Series, equipos: Optional[pd.Series],
+                 general: Acumulado, col: str) -> pd.Series:
+    """Desviaciones típicas de cada fila frente a tres medias de su demarcación, ponderadas con PESOS_REFERENCIA:
+    liga (referencia de su grupo), equipo (compañeras del mismo grupo, sin contarla a ella; con la desviación de la
+    liga) y general (todas las ligas: `general`, ya con esta incluida). Sin alguna, su peso se reparte."""
+    z_liga = _z_grupo(v, grupos, ref)
+    vr = v.where(ref)
+    sd_liga = vr.groupby(grupos).transform(lambda x: x.std(ddof=0) if x.count() >= 3 else np.nan)
+    partes = {'liga': z_liga}
+    if equipos is not None:
+        clave = equipos.astype(str) + '|' + grupos.astype(str)
+        suma, n = vr.groupby(clave).transform('sum'), vr.groupby(clave).transform('count')
+        propia = vr.notna().astype(float)
+        media_eq = (suma - vr.fillna(0)) / (n - propia)  # compañeras, sin ella
+        partes['equipo'] = ((v - media_eq) / sd_liga).where((n - propia >= 1) & (sd_liga > 1e-9))
+    g_media, g_sd = {}, {}
+    for g, met in general.items():
+        t = met.get(col)
+        if t and t[0] >= MIN_REFERENCIA_GLOBAL:
+            m = t[1] / t[0]
+            g_media[g], g_sd[g] = m, np.sqrt(max(t[2] / t[0] - m * m, 0.0))
+    if g_media:
+        gm, gs = grupos_dem.astype(str).map(g_media), grupos_dem.astype(str).map(g_sd)
+        partes['general'] = ((v - gm) / gs).where(gs > 1e-9)
+    num = pd.Series(0.0, index=v.index)
+    den = pd.Series(0.0, index=v.index)
+    for k, z in partes.items():
+        ok = z.notna()
+        num += z.fillna(0) * PESOS_REFERENCIA[k] * ok
+        den += PESOS_REFERENCIA[k] * ok
+    return (num / den).where((den > 0) & v.notna())
+
+
+def _z_metricas(df: pd.DataFrame, cols: List[str], grupos: pd.Series, ref: pd.Series,
+                general: Optional[Acumulado] = None, acum: Optional[Acumulado] = None, ceros: bool = True) -> pd.DataFrame:
+    """z de cada métrica frente a liga, equipo y media general de su demarcación (_z_combinada), recortado a
+    ±Z_RECORTE (malus invertidas). Con `ceros`, un 0 que no informa no cuenta (NaN): en métricas de conteo, si con
+    sus minutos la jugadora media de la referencia habría hecho menos de 1 acción; en porcentajes, con menos de
+    MIN_MINUTOS_NOTA (las diferencias, como goles − xG, siempre cuentan).
+    `general`: acumulados de las demás temporadas; `acum`: se rellena con los de esta (y se suman a la general)."""
     mins = df['minutes_played'].astype(float)
-    out = {}
+    grupos_dem = df['grupo_demarcacion'].fillna('_sin')
+    equipos = df['team_id'] if 'team_id' in df.columns else None
+    valores, propio = {}, {}
     for c in cols:
         v = pd.to_numeric(df[c], errors='coerce').astype(float)
         if not v.notna().any():
             continue
-        if c.endswith('_p90'):
-            media_ref = v.where(ref).groupby(grupos).transform('mean').fillna(0)
-            v = v.mask((v == 0) & (media_ref * mins / 90 < 1))
-        elif c.endswith('_pct'):
-            v = v.mask((v == 0) & (mins < MIN_MINUTOS_NOTA))
-        z = _z_grupo(v, grupos, ref).clip(-Z_RECORTE, Z_RECORTE)
+        if ceros and c not in DIFERENCIAS:
+            if c.endswith('_p90'):
+                media_ref = v.where(ref).groupby(grupos).transform('mean').fillna(0)
+                v = v.mask((v == 0) & (media_ref * mins / 90 < 1))
+            elif c.endswith('_pct'):
+                v = v.mask((v == 0) & (mins < MIN_MINUTOS_NOTA))
+        valores[c] = v
+        _acumular(v, grupos_dem, ref, c, propio)
+    if acum is not None:
+        acum.update(propio)
+    total = sumar_acumulados(general, propio)
+    out = {}
+    for c, v in valores.items():
+        z = _z_combinada(v, grupos, grupos_dem, ref, equipos, total, c).clip(-Z_RECORTE, Z_RECORTE)
         out[c] = -z if c in MALUS else z
     return pd.DataFrame(out, index=df.index)
 
 
-def puntuar_categorias(df_temp: pd.DataFrame, nivel: float = NOTA_MEDIA_LIGA) -> pd.DataFrame:
+def _nota_clave(z: pd.DataFrame, df: pd.DataFrame) -> pd.Series:
+    """Media ponderada de las métricas clave de su posición (PLANTILLAS_POSICION, demarcación principal)."""
+    plantilla = [plantilla_de(d, g) for d, g in zip(df['demarcacion'], df['grupo_demarcacion'])]
+    clave = pd.Series(np.nan, index=df.index)
+    for i, t in zip(df.index, plantilla):
+        w = {k: p for k, p in PLANTILLAS_POSICION[t].items() if k in z.columns and pd.notna(z.at[i, k])}
+        if w:
+            clave[i] = sum(z.at[i, k] * p for k, p in w.items()) / sum(w.values())
+    return clave
+
+
+def puntuar_categorias(df_temp: pd.DataFrame, nivel: float = NOTA_MEDIA_LIGA, general: Optional[Acumulado] = None,
+                       acum: Optional[Acumulado] = None) -> pd.DataFrame:
     """
     Notas 0-100 por métrica, subcategoría, categoría y global (ver pipeline/categorias.py), solo con rendimiento
     p90: los minutos no puntúan (Disponibilidad no entra en la global) ni se corrige hacia la media.
-    1. Cada métrica → desviaciones típicas frente a su grupo de demarcación en la liga-temporada (_z_metricas), con
-       la media de las jugadoras con minutos suficientes (_referencia). Los ceros que no informan no cuentan.
+    1. Cada métrica → desviaciones típicas frente a tres medias de su demarcación (_z_metricas): su liga-temporada
+       (jugadoras con minutos suficientes, _referencia), sus compañeras de equipo y todas las ligas (`general`).
+       Los ceros que no informan no cuentan.
     2. Subcategoría = media de sus métricas; categoría = media de sus subcategorías; sin datos → NaN.
        Porteras con JERARQUIA_PORTEROS, el resto con JERARQUIA.
     3. Global = PESO_CLAVE * métricas clave de su posición (PLANTILLAS_POSICION, demarcación principal)
@@ -445,25 +537,11 @@ def puntuar_categorias(df_temp: pd.DataFrame, nivel: float = NOTA_MEDIA_LIGA) ->
     mins = df['minutes_played'].astype(float)
     grupos = _grupos(df, MIN_JUGADORAS_GRUPO)
     ref = _referencia(grupos, mins)
-    if 'of_goles_p90' in df.columns and 'of_tiros_p90' in df.columns:
-        tiros = pd.to_numeric(df['of_tiros_p90'], errors='coerce')
-        df['_goal_conversion_pct'] = (pd.to_numeric(df['of_goles_p90'], errors='coerce') / tiros * 100).where(tiros > 0)
-    z = _z_metricas(df, [c for c in METRICA_SUB if c in df.columns], grupos, ref)
+    z = _z_metricas(df, [c for c in METRICA_SUB if c in df.columns], grupos, ref, general=general, acum=acum)
     notas_met = _nota_desde_z(z, nivel).where(z.notna())
 
     subs, cats = _categorias(z, df['grupo_demarcacion'])
-
-    # Métricas clave de su posición
-    clave_cols = sorted({m for p in PLANTILLAS_POSICION.values() for m in p})
-    z_clave = z.reindex(columns=[c for c in clave_cols if c in z.columns])
-    if '_goal_conversion_pct' in df.columns:
-        z_clave['goal_conversion_pct'] = _z_metricas(df, ['_goal_conversion_pct'], grupos, ref).get('_goal_conversion_pct')
-    plantilla = [plantilla_de(d, g) for d, g in zip(df['demarcacion'], df['grupo_demarcacion'])]
-    clave = pd.Series(np.nan, index=df.index)
-    for i, t in zip(df.index, plantilla):
-        w = {k: p for k, p in PLANTILLAS_POSICION[t].items() if k in z_clave.columns and pd.notna(z_clave.at[i, k])}
-        if w:
-            clave[i] = sum(z_clave.at[i, k] * p for k, p in w.items()) / sum(w.values())
+    clave = _nota_clave(z, df)  # métricas clave de su posición
 
     def nota_cats(i):
         pesos = PESOS_GRUPO.get(df.at[i, 'grupo_demarcacion'], PESOS_GRUPO['Medios'])
@@ -481,14 +559,15 @@ def puntuar_categorias(df_temp: pd.DataFrame, nivel: float = NOTA_MEDIA_LIGA) ->
     df['_notas_met'] = [notas_met.loc[i].dropna().to_dict() for i in df.index]
     df['_notas_sub'] = [subs.loc[i].to_dict() for i in df.index]
     df['_muestra_baja'] = (mins < MIN_MINUTOS_NOTA) | (df['matches_played'] < MIN_PARTIDOS_NOTA)
-    return df.drop(columns=['_goal_conversion_pct'], errors='ignore')
+    return df
 
 
-def puntuar_temporada(df_temp: pd.DataFrame, nivel: float = NOTA_MEDIA_LIGA) -> pd.DataFrame:
+def puntuar_temporada(df_temp: pd.DataFrame, nivel: float = NOTA_MEDIA_LIGA, general: Optional[Acumulado] = None,
+                      acum: Optional[Acumulado] = None) -> pd.DataFrame:
     """Añade scores de bloque 0-10, percentiles y notas por métrica (radar) frente a toda la liga."""
     if df_temp.empty:
         return df_temp
-    df_temp = puntuar_categorias(df_temp, nivel)
+    df_temp = puntuar_categorias(df_temp, nivel, general, acum)
     cols = metric_columns(df_temp)
     # Columnas 0-10 de siempre (ranking y listados) a partir de las notas 0-100 por categoría
     a10 = lambda s: (s.fillna(nivel) / 10).round(2)
@@ -596,12 +675,20 @@ def filas_season_stats(df_temp: pd.DataFrame, competition_id: str, season_id: st
     return out
 
 
-def calcular_temporada(df_partidos: pd.DataFrame, nivel: float = NOTA_MEDIA_LIGA) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    """Punto de entrada: (scores por partido, tabla de temporada puntuada). `nivel`: el de la liga (NIVEL_LIGA)."""
+def calcular_temporada(df_partidos: pd.DataFrame, nivel: float = NOTA_MEDIA_LIGA,
+                       general: Optional[Dict[str, Acumulado]] = None,
+                       acum: Optional[Dict[str, Acumulado]] = None) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """Punto de entrada: (scores por partido, tabla de temporada puntuada). `nivel`: el de la liga (NIVEL_LIGA).
+    `general`: {'partido': acumulado, 'temporada': acumulado} de las DEMÁS temporadas (media general por demarcación
+    entre ligas); `acum`: se rellena con los de esta temporada, para guardarlos (ingest.referencia_general)."""
     if df_partidos.empty:
         return pd.DataFrame(), pd.DataFrame()
-    df_sp = scores_por_partido(df_partidos)
-    df_temp = puntuar_temporada(agregar_temporada(df_partidos, df_sp), nivel)
+    general, acum = general or {}, acum if acum is not None else {}
+    acum.setdefault('partido', {})
+    acum.setdefault('temporada', {})
+    df_partidos = derivar_metricas(df_partidos)
+    df_sp = scores_por_partido(df_partidos, general=general.get('partido'), acum=acum['partido'])
+    df_temp = puntuar_temporada(agregar_temporada(df_partidos, df_sp), nivel, general.get('temporada'), acum['temporada'])
     return df_sp, df_temp
 
 

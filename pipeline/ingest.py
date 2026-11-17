@@ -16,6 +16,7 @@ Por competición:
 """
 
 import argparse
+import json
 import logging
 import os
 import sys
@@ -42,14 +43,14 @@ except ImportError:
 import pandas as pd
 
 from .adapter import OptaSDAPIAdapter
-from .config import MAX_WORKERS_DESCARGA, NIVEL_LIGA, NIVEL_LIGA_DEFECTO, es_internacional, es_selecciones
+from .config import BUCKET_PIPELINE_CACHE, MAX_WORKERS_DESCARGA, NIVEL_LIGA, NIVEL_LIGA_DEFECTO, es_internacional, es_selecciones
 from .events import match_metadata
 from .metrics_engine import MetricsEngine
 from .fotos_jugadoras import sincronizar_fotos_jugadoras
 from .photos import FotMobClient, sincronizar_fotos
 from .ligas import sincronizar_ligas
 from .soccerdonna import SDClient
-from .scoring import SCORE_COLS, calcular_similares, calcular_temporada, filas_season_stats
+from .scoring import SCORE_COLS, calcular_similares, calcular_temporada, filas_season_stats, sumar_acumulados
 from .storage import Store, chunked, competiciones_objetivo, get_supabase_client
 
 logging.basicConfig(
@@ -350,6 +351,25 @@ class IngestionPipeline:
             self._ids_players = {r['id'] for r in self.store.select_all('players', 'id')}
         return self._ids_players
 
+    REF_GENERAL = 'referencias/global.json'
+
+    def referencia_general(self) -> Dict[str, Any]:
+        """{'partido': {season_id: acumulado}, 'temporada': {...}} guardado en pipeline-cache (scoring.Acumulado)."""
+        if getattr(self, '_ref_general', None) is None:
+            raw = self.store.download(BUCKET_PIPELINE_CACHE, self.REF_GENERAL) if self.store.online else None
+            try:
+                self._ref_general = json.loads(raw) if raw else {}
+            except ValueError:
+                self._ref_general = {}
+        return self._ref_general
+
+    def guardar_referencia_general(self, season_id: str, acum: Dict[str, Any]):
+        refs = self.referencia_general()
+        for k in ('partido', 'temporada'):
+            refs.setdefault(k, {})[season_id] = acum.get(k, {})
+        if self.store.online:
+            self.store.upload(BUCKET_PIPELINE_CACHE, self.REF_GENERAL, json.dumps(refs).encode(), 'application/json')
+
     def recalcular_temporada(self, comp: Dict[str, Any], cache: pd.DataFrame, perfiles: Dict[str, Dict[str, Any]],
                              actualizar_jugadoras: bool = True):
         """Ratings por partido y tabla de temporada desde la caché. Sin `actualizar_jugadoras` no se tocan las
@@ -358,7 +378,14 @@ class IngestionPipeline:
         if cid not in NIVEL_LIGA:
             logger.warning(f"  {comp['name']} sin nivel en NIVEL_LIGA: se usa {NIVEL_LIGA_DEFECTO}")
         nivel_comp = NIVEL_LIGA.get(cid, NIVEL_LIGA_DEFECTO)
-        df_sp, df_temp = calcular_temporada(cache, nivel_comp)
+        # Media general por demarcación: acumulados de las demás temporadas descargadas (todas las ligas)
+        refs = self.referencia_general()
+        otras = {k: sumar_acumulados(*(a for s_, a in refs.get(k, {}).items() if s_ != sid))
+                 for k in ('partido', 'temporada')}
+        acum: Dict[str, Any] = {}
+        df_sp, df_temp = calcular_temporada(cache, nivel_comp, otras, acum)
+        if not es_internacional(comp):  # las internacionales mezclan niveles: no fijan la media general
+            self.guardar_referencia_general(sid, acum)
         if es_internacional(comp) and not df_temp.empty:
             df_temp = self._nivel_por_club(df_temp, nivel_comp, selecciones=es_selecciones(comp))
         if df_temp.empty:

@@ -415,9 +415,9 @@ export async function GET(req: NextRequest) {
 
           // No current club (Soccerdonna / current_team_id): club of her latest match, only if within the last 3 months
           const fallbackTeam = !p.teams && !p.fm_team_name ? recentTeamByPlayer.get(p.id) || null : null;
-          const teamName = p.fm_team_name || p.teams?.name || fallbackTeam?.name || NO_CLUB_DATA;
-          const hasClub = !!(p.teams || fallbackTeam || p.fm_team_name);
-          const leagueName = p.current_league_name || p.teams?.league_name || (hasClub ? latestRow.competitions?.name : null) || null;
+          const teamName = p.fm_team_name || NO_CLUB_DATA;
+          const hasClub = !!(p.fm_team_name && p.fm_team_name !== NO_CLUB_DATA);
+          const leagueName = p.current_league_name || null;
           const leagueCountry =
             (leagueName ? leagueCountryByName.get(leagueName.toLowerCase()) : null) ||
             (p.teams?.league_name ? leagueCountryByName.get(p.teams.league_name.toLowerCase()) : null) ||
@@ -450,6 +450,7 @@ export async function GET(req: NextRequest) {
             ),
             teamId: p.teams?.id || fallbackTeam?.id,
             teamName,
+            isSdClub: !!p.fm_team_name,
             badgeUrl: (p.fm_team_name ? p.fm_team_badge_url : null) || p.teams?.badge_url || fallbackTeam?.badge_url,
             leagueName,
             leagueLogoUrl: p.current_league_logo_url || p.teams?.league_logo_url || (leagueName === latestRow.competitions?.name ? latestRow.competitions?.logo_url : null),
@@ -481,7 +482,7 @@ export async function GET(req: NextRequest) {
           ea?.pace != null && ea?.physicality != null
             ? Math.round(Number(ea.pace) * 0.45 + Number(ea.physicality) * 0.55)
             : ea?.pace != null ? Number(ea.pace) : ea?.physicality != null ? Number(ea.physicality) : null;
-        const teamName = p.teams?.name || p.fm_team_name || NO_CLUB_DATA;
+        const teamName = p.fm_team_name || p.teams?.name || NO_CLUB_DATA;
         const leagueName = p.current_league_name || p.teams?.league_name || null;
         const leagueCountry =
           (leagueName ? leagueCountryByName.get(leagueName.toLowerCase()) : null) ||
@@ -511,6 +512,7 @@ export async function GET(req: NextRequest) {
           recentGoals: null,
           teamId: p.teams?.id,
           teamName,
+          isSdClub: !!p.fm_team_name,
           badgeUrl: (p.fm_team_name ? p.fm_team_badge_url : null) || p.teams?.badge_url,
           leagueName,
           leagueLogoUrl: p.current_league_logo_url || p.teams?.league_logo_url,
@@ -535,22 +537,9 @@ export async function GET(req: NextRequest) {
       const teamsMap = new Map<string, { name: string; teamId?: string | null; badgeUrl?: string | null; leagueName?: string }>();
       const leaguesMap = new Map<string, { name: string; logoUrl?: string | null; country?: string | null }>();
 
-      // Seed master teams to guarantee canonical team -> league mapping
-      if (teamsMaster && teamsMaster.length) {
-        for (const tm of teamsMaster) {
-          if (tm.name && !teamsMap.has(tm.name)) {
-            teamsMap.set(tm.name, {
-              name: tm.name,
-              teamId: tm.id,
-              badgeUrl: tm.badgeUrl || null,
-              leagueName: tm.leagueName,
-            });
-          }
-        }
-      }
 
       for (const p of list) {
-        if (p.teamName && !teamsMap.has(p.teamName)) {
+        if (p.isSdClub && p.teamName && !teamsMap.has(p.teamName)) {
           teamsMap.set(p.teamName, {
             name: p.teamName,
             teamId: p.teamId || null,

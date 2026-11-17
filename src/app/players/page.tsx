@@ -954,24 +954,6 @@ function PlayersDirectoryContent() {
           {/* Advanced Filters */}
           {(
             <div className="space-y-4">
-              {/* Season Filter */}
-              <div>
-                <label className="text-[10px] font-semibold text-slate-300 uppercase tracking-wider block mb-1">
-                  Season
-                </label>
-                <Select
-                  value={seasonFilter}
-                  onChange={(e) => setSeasonFilter(e.target.value)}
-                  className="bg-navy-950/90 border-white/10 h-9 text-xs font-semibold rounded-lg"
-                >
-                  <option value="all">⚡ All Seasons (Accumulated)</option>
-                  {availableSeasons.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </Select>
-              </div>
 
               {/* Competition / League (Multi-select with Flag/Logo) */}
               <div>

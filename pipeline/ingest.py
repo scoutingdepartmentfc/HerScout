@@ -180,7 +180,9 @@ class IngestionPipeline:
             self.store.upsert('teams', grupo)
         # La v1 del pipeline insertaba entrenadores y asistentes como jugadores
         self.store.delete_in('players', 'id', sorted(staff - set(players)))
-        for grupo in _homogeneo(filas):
+        existentes = {r['id'] for r in self.store.select_all('players', 'id')}
+        filas_existentes = [r for r in filas if r.get('id') in existentes]
+        for grupo in _homogeneo(filas_existentes):
             self.store.upsert('players', grupo)
         self.miembros = miembros
         logger.info(f"  Plantillas: {len(teams)} equipos, {len(players)} jugadores")

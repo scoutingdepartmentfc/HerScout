@@ -199,7 +199,9 @@ class IngestionPipeline:
                     miembros[r.player_id] = {'season_id': comp['season_id'], 'player_id': r.player_id,
                                              'competition_id': comp['id'], 'team_id': r.team_id, 'active': False,
                                              'shirt_number': None, 'updated_at': now_iso()}
-        for grupo in _homogeneo(list(miembros.values())):
+        existentes = {r['id'] for r in self.store.select_all('players', 'id')}
+        miembros_existentes = [r for r in miembros.values() if r.get('player_id') in existentes]
+        for grupo in _homogeneo(miembros_existentes):
             self.store.upsert('squad_members', grupo, on_conflict='season_id,player_id')
         if comp.get('active', True) and not es_internacional(comp) and self.store.online:
             activas = {pid for pid, m in miembros.items() if m['active']}

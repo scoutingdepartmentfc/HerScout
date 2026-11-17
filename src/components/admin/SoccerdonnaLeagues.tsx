@@ -529,7 +529,7 @@ export function SoccerdonnaLeagues() {
                       <>
                         <td className="py-3 px-3">
                           <StatusCell done={s.players > 0} value={`${s.players} jugadoras`}
-                            detail={`${s.teams}${l.teams ? `/${l.teams}` : ""} clubes`} date={l.last_download_at}
+                            detail={l.last_download_at ? `${s.teams} clubes` : `${s.teams}${l.teams ? `/${l.teams}` : ""} clubes`} date={l.last_download_at}
                             progress={l.last_download_at ? 100 : l.teams ? Math.min(99, Math.round((s.teams / l.teams) * 100)) : s.players > 0 ? 50 : 0} />
                         </td>
                         <td className="py-3 px-3">

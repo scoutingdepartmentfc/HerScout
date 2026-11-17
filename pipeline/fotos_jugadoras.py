@@ -162,6 +162,11 @@ def main():
     jugadoras, clubes = jugadoras_objetivo(store, comps)
     logger.info(f"Fotos: {len(jugadoras)} jugadoras")
     logger.info(f"Fotos completado: {sincronizar_fotos_jugadoras(store, FotMobClient(), SDClient(), jugadoras, clubes, args.refresh_photos, comps[-1]['fotmob_id'])}")
+    try:
+        from . import recortar_fotos
+        recortar_fotos.main()
+    except Exception as exc:
+        logger.warning(f"Recorte/fondo de fotos omitido: {exc}")
 
 
 if __name__ == "__main__":

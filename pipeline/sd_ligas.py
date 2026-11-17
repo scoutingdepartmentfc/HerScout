@@ -280,7 +280,7 @@ def descargar(store: Store, sd: SDClient, liga_code: Optional[str], limit: Optio
                     if dem:
                         row["primary_position"] = dem
                 row.update(sd_league_code=liga["code"], country=(prof["nacionalidades"] or [None])[0],
-                           shirt_number=prof.get("dorsal"))
+                           shirt_number=prof.get("dorsal"), fm_team_name=club["name"])
                 # Club actual y su liga según Soccerdonna (puede haber fichado por otra liga)
                 if prof.get("club_actual_id"):
                     row["fm_team_badge_url"] = imagen_sd(store, sd, SD_MEDIUM.format(id=prof["club_actual_id"]),

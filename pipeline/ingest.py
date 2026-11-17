@@ -180,9 +180,7 @@ class IngestionPipeline:
             self.store.upsert('teams', grupo)
         # La v1 del pipeline insertaba entrenadores y asistentes como jugadores
         self.store.delete_in('players', 'id', sorted(staff - set(players)))
-        existentes = {r['id'] for r in self.store.select_all('players', 'id')}
-        filas_existentes = [r for r in filas if r.get('id') in existentes]
-        for grupo in _homogeneo(filas_existentes):
+        for grupo in _homogeneo(filas):
             self.store.upsert('players', grupo)
         self.miembros = miembros
         logger.info(f"  Plantillas: {len(teams)} equipos, {len(players)} jugadores")
@@ -199,9 +197,7 @@ class IngestionPipeline:
                     miembros[r.player_id] = {'season_id': comp['season_id'], 'player_id': r.player_id,
                                              'competition_id': comp['id'], 'team_id': r.team_id, 'active': False,
                                              'shirt_number': None, 'updated_at': now_iso()}
-        existentes = {r['id'] for r in self.store.select_all('players', 'id')}
-        miembros_existentes = [r for r in miembros.values() if r.get('player_id') in existentes]
-        for grupo in _homogeneo(miembros_existentes):
+        for grupo in _homogeneo(list(miembros.values())):
             self.store.upsert('squad_members', grupo, on_conflict='season_id,player_id')
         if comp.get('active', True) and not es_internacional(comp) and self.store.online:
             activas = {pid for pid, m in miembros.items() if m['active']}
@@ -412,7 +408,20 @@ class IngestionPipeline:
             **{sc: float(getattr(r, sc)) for sc in SCORE_COLS},
         } for r in df_sp.itertuples()]
         season_rows = filas_season_stats(df_temp, cid, sid, ts)
-        if not actualizar_jugadoras:
+        if actualizar_jugadoras:
+            # Demarcación principal = la de más minutos en la temporada (se asegura que existan en players antes de FK)
+            principal = cache.groupby(['player_id', 'demarcacion'])['minutes_played'].sum().reset_index() \
+                .sort_values('minutes_played').drop_duplicates('player_id', keep='last')
+            nombres = cache.drop_duplicates('player_id', keep='last').set_index('player_id')['player_name']
+            filas = []
+            for r in principal.itertuples():
+                perfil = perfiles.get(r.player_id, {})
+                filas.append({'id': r.player_id, 'name': perfil.get('name') or nombres.get(r.player_id) or 'Jugador',
+                              'primary_position': r.demarcacion,
+                              'grupo_demarcacion': cache.loc[cache['demarcacion'] == r.demarcacion, 'grupo_demarcacion'].iloc[0],
+                              'updated_at': ts})
+            self.store.upsert('players', filas)
+        else:
             # Sin crear fichas: fuera las jugadoras de la caché que ya no están en players (fusionadas o borradas),
             # que romperían la clave foránea. Siguen contando como referencia en el cálculo de la liga.
             existentes = self._ids_jugadoras()
@@ -427,9 +436,6 @@ class IngestionPipeline:
         self.store.upsert('player_match_scores', score_rows, on_conflict='match_id,player_id')
 
         # Una fila por jugador (antes una por demarcación): se borran las de versiones anteriores
-        existentes_recalc = {r['id'] for r in self.store.select_all('players', 'id')}
-        score_rows = [r for r in score_rows if r.get('player_id') in existentes_recalc]
-        season_rows = [r for r in season_rows if r.get('player_id') in existentes_recalc]
         self.store.delete('player_season_stats', competition_id=cid, season_id=sid)
         self.store.upsert('player_season_stats', season_rows, on_conflict='player_id,season_id,demarcacion', batch=200)
         self.totales['season_rows'] += len(season_rows)
@@ -437,18 +443,6 @@ class IngestionPipeline:
             logger.info(f"  Temporada recalculada: {len(season_rows)} filas, {len(score_rows)} ratings por partido")
             return
 
-        # Demarcación principal = la de más minutos en la temporada
-        principal = cache.groupby(['player_id', 'demarcacion'])['minutes_played'].sum().reset_index() \
-            .sort_values('minutes_played').drop_duplicates('player_id', keep='last')
-        nombres = cache.drop_duplicates('player_id', keep='last').set_index('player_id')['player_name']
-        filas = []
-        for r in principal.itertuples():
-            perfil = perfiles.get(r.player_id, {})
-            filas.append({'id': r.player_id, 'name': perfil.get('name') or nombres.get(r.player_id) or 'Jugador',
-                          'primary_position': r.demarcacion,
-                          'grupo_demarcacion': cache.loc[cache['demarcacion'] == r.demarcacion, 'grupo_demarcacion'].iloc[0],
-                          'updated_at': ts})
-        self.store.upsert('players', filas)
         top = df_temp.sort_values('score_general', ascending=False).head(3)
         logger.info(f"  Temporada: {len(season_rows)} filas jugador-demarcación, {len(score_rows)} scores por partido. "
                     f"Top: {', '.join(f'{nombres.get(p, p)} ({s:.2f})' for p, s in zip(top.player_id, top.score_general))}")
@@ -536,7 +530,8 @@ class IngestionPipeline:
                 self.store.delete('player_season_stats', season_id=sid)
                 self.store.delete('player_match_stats', season_id=sid)
                 self.store.delete_in('player_match_scores', 'match_id', [m['matchInfo']['id'] for m in jugados])
-            hechos = set(cache['match_id'].unique()) if not cache.empty else set()
+            en_stats = {r['match_id'] for r in self.store.select_all('player_match_stats', 'match_id', season_id=sid)} if self.store.online else set()
+            hechos = (set(cache['match_id'].unique()) & en_stats) if not cache.empty else set()
             nuevos = sorted((m for m in jugados if m['matchInfo']['id'] not in hechos),
                             key=lambda m: m['matchInfo'].get('date', ''))
             if self.max_matches_per_comp:
@@ -544,7 +539,8 @@ class IngestionPipeline:
             logger.info(f"  Partidos: {len(jugados)} jugados, {len(hechos)} ya procesados, {len(nuevos)} nuevos a procesar")
             if nuevos:
                 cache = self.procesar_partidos(comp, nuevos, perfiles, cache)
-            hechos = set(cache['match_id'].unique()) if not cache.empty else set()
+            en_stats = {r['match_id'] for r in self.store.select_all('player_match_stats', 'match_id', season_id=sid)} if self.store.online else set()
+            hechos = (set(cache['match_id'].unique()) & en_stats) if not cache.empty else set()
             self.guardar_calendario(comp, fixtures, hechos)
             if not cache.empty and (nuevos or self.rebuild):
                 self.recalcular_temporada(comp, cache, perfiles)

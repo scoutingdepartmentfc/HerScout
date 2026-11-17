@@ -850,7 +850,9 @@ def main():
         descargar(store, sd, args.liga, args.limit, args.refresco_dias)
         fotos(store, args.liga, args.limit)
     if args.accion == "opta":
-        opta(store, args.liga, args.max_matches, modo="todo")
+        opta(store, args.liga, args.max_matches, modo="todo", solo_ultima=not args.todas_temporadas)
+        vincular(store, args.liga)
+        corregir_clubes(store)
     if args.accion == "opta-jugadoras":
         opta(store, args.liga, args.max_matches, modo="jugadoras")
     if args.accion == "opta-partidos":

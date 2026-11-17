@@ -1247,7 +1247,7 @@ function PlayersDirectoryContent() {
                             <img
                               src={player.photoUrl}
                               alt={player.name}
-                              className="w-full h-full object-cover object-top scale-110 group-hover:scale-125 transition-transform duration-200"
+                              className="w-full h-full object-contain object-bottom group-hover:scale-105 transition-transform duration-200"
                               loading="lazy"
                               onError={(e) => {
                                 (e.target as HTMLElement).style.display = "none";

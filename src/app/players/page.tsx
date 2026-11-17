@@ -664,45 +664,22 @@ function PlayersDirectoryContent() {
 
   // Dynamically adapt available teams based on selected leagues, and available leagues based on selected teams
   const filteredAvailableTeams = useMemo(() => {
-    if (selectedLeagues.length === 0) return availableTeams;
     const leaguesNorm = selectedLeagues.map(normLeague);
-
-    // 1. Calculate each team's definitive league:
-    // If availableTeams has a leagueName for the team (from teams table or API), use that.
-    // Otherwise, calculate the majority league among players of that team to avoid transfer anomalies.
-    const teamLeagueCounts = new Map<string, Map<string, number>>();
+    const byName = new Map<string, { id: string; name: string; teamId?: string; badgeUrl?: string | null }>();
     allPlayers.forEach((p) => {
-      if (!p.teamName || !p.leagueName) return;
-      const tKey = p.teamName.toLowerCase();
-      let m = teamLeagueCounts.get(tKey);
-      if (!m) {
-        m = new Map<string, number>();
-        teamLeagueCounts.set(tKey, m);
+      if (!p.teamName || p.teamName === "Without club") return;
+      if (leaguesNorm.length > 0 && (!p.leagueName || !leaguesNorm.includes(normLeague(p.leagueName)))) return;
+      if (!byName.has(p.teamName)) {
+        byName.set(p.teamName, {
+          id: p.teamName,
+          name: p.teamName,
+          teamId: p.teamId,
+          badgeUrl: p.badgeUrl,
+        });
       }
-      const lNorm = normLeague(p.leagueName);
-      m.set(lNorm, (m.get(lNorm) || 0) + 1);
     });
-
-    const getTeamLeague = (teamName: string, explicitLeague?: string | null): string | null => {
-      if (explicitLeague) return normLeague(explicitLeague);
-      const m = teamLeagueCounts.get(teamName.toLowerCase());
-      if (!m || m.size === 0) return null;
-      let bestLeague = "";
-      let maxCount = -1;
-      m.forEach((count, l) => {
-        if (count > maxCount) {
-          maxCount = count;
-          bestLeague = l;
-        }
-      });
-      return bestLeague || null;
-    };
-
-    return availableTeams.filter((t) => {
-      const tLeague = getTeamLeague(t.name, (t as any).leagueName);
-      return tLeague != null && leaguesNorm.includes(tLeague);
-    });
-  }, [availableTeams, selectedLeagues, allPlayers]);
+    return Array.from(byName.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [selectedLeagues, allPlayers]);
 
   const filteredAvailableLeagues = useMemo(() => {
     if (selectedTeams.length === 0) return availableLeagues;
@@ -988,7 +965,7 @@ function PlayersDirectoryContent() {
                       teamId={opt.teamId}
                       badgeUrl={opt.badgeUrl}
                       name={opt.name}
-                      size={18}
+                      size={26}
                       className="shrink-0"
                     />
                   )}

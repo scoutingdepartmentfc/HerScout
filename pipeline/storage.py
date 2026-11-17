@@ -213,30 +213,58 @@ def chunked(items: Iterable, size: int):
         yield items[i:i + size]
 
 
-def competiciones_objetivo(store: "Store", solo_admin: bool = False) -> List[Dict[str, Any]]:
-    """Ligas a descargar: las activadas en el panel de administración (`ingestion_targets`);
-    si no hay ninguna (o no hay BD), las de config.py, salvo con `solo_admin` (entonces ninguna)."""
+def competiciones_objetivo(store: "Store", solo_admin: bool = False, liga_code: Optional[str] = None,
+                           solo_ultima: bool = False) -> List[Dict[str, Any]]:
+    """Temporadas Opta a descargar, según las ligas de /admin (`sd_leagues`): su `opta_competition_id` y las
+    temporadas elegidas (`opta_season_ids`) más la última del catálogo Opta (así una temporada nueva entra sola).
+    `liga_code`: solo esa liga de Soccerdonna (aunque no esté activada). `solo_ultima`: la temporada más reciente
+    y las elegidas que aún no se han descargado nunca (las antiguas ya descargadas no cambian).
+    Orden: de la más antigua a la más reciente; solo la última de cada competición va con `active`.
+    Sin ligas (o sin BD): las de config.py, salvo con `solo_admin` (entonces ninguna)."""
     from .config import COMPETITIONS_CONFIG
-    if store.online:
-        try:
-            filas = store.select_all('ingestion_targets', '*', enabled=True)
-        except Exception as e:
-            logger.warning(f"No se pudo leer ingestion_targets, se usa config.py: {e}")
-            filas = []
-        if filas:
-            # Primero las temporadas antiguas: la activa se procesa la última y queda como active_season_id
-            filas.sort(key=lambda f: (f['competition_id'], f.get('is_active', False), f.get('season_name') or ''))
-            # Id de la liga en FotMob (escudos): el del panel o, si no, el de config.py o mapa conocido
-            fotmob_cfg = {c['id']: c.get('fotmob_id') for c in COMPETITIONS_CONFIG}
-            # Ligas con ID FotMob verificado (el resto se indica en el panel de administración)
-            LIGAS_FOTMOB = {
-                '5k620c7y6dlbmcm88dt3eb7t': 9907,  # Liga F (España)
-            }
-            return [{'id': f['competition_id'], 'name': f['competition_name'], 'country': f['country'],
-                     'season_id': f['season_id'],
-                     'fotmob_id': f.get('fotmob_id') or fotmob_cfg.get(f['competition_id']) or LIGAS_FOTMOB.get(f['competition_id']),
-                     'active': f.get('is_active', False), 'fuente': f.get('fuente') or 'eventing'} for f in filas]
-    return [] if solo_admin and store.online else COMPETITIONS_CONFIG
+    if not store.online:
+        return COMPETITIONS_CONFIG
+    try:
+        ligas = [l for l in store.select_all('sd_leagues', 'code,enabled,opta_competition_id,opta_season_ids')
+                 if l.get('opta_competition_id') and (l['code'] == liga_code if liga_code else l.get('enabled'))]
+        catalogo = store.select_all('opta_catalog', 'season_id,competition_id,competition_name,country,season_name,'
+                                                    'start_date,has_eventing,data_level') if ligas else []
+    except Exception as e:
+        logger.warning(f"No se pudieron leer las ligas de /admin (sd_leagues): {e}")
+        ligas, catalogo = [], []
+    if not ligas:
+        return [] if solo_admin else COMPETITIONS_CONFIG
+    por_temporada = {c['season_id']: c for c in catalogo}
+    elegidas: Dict[str, set] = {}
+    for l in ligas:  # varias ligas de Soccerdonna pueden apuntar a la misma competición Opta
+        elegidas.setdefault(str(l['opta_competition_id']).strip(), set()).update(l.get('opta_season_ids') or [])
+    ultima: Dict[str, Dict[str, Any]] = {}
+    for c in catalogo:
+        if c['competition_id'] in elegidas and (c.get('data_level') or '').startswith('jugadora') \
+                and (c.get('start_date') or '') > (ultima.get(c['competition_id'], {}).get('start_date') or ''):
+            ultima[c['competition_id']] = c
+    descargadas = {s['id'] for s in store.select_all('seasons', 'id')} if solo_ultima else set()
+    # Id de la liga en FotMob (escudos y fotos): el guardado en competitions o, si no, el de config.py
+    fotmob = {c['id']: c.get('fotmob_id') for c in COMPETITIONS_CONFIG}
+    fotmob.update({c['id']: c['fotmob_id'] for c in store.select_all('competitions', 'id,fotmob_id') if c.get('fotmob_id')})
+    salida = []
+    for cid, sids in elegidas.items():
+        sids = {s for s in sids if s in por_temporada}
+        if cid in ultima:
+            sids.add(ultima[cid]['season_id'])
+        if not sids:
+            logger.warning(f"Opta {cid}: sin temporadas en el catálogo (python -m pipeline.catalogo)")
+            continue
+        orden = sorted(sids, key=lambda s: por_temporada[s].get('start_date') or '')
+        if solo_ultima:
+            orden = [s for s in orden[:-1] if s not in descargadas] + orden[-1:]
+        for sid in orden:
+            c = por_temporada[sid]
+            salida.append({'id': cid, 'name': c['competition_name'], 'country': c.get('country'), 'season_id': sid,
+                           'season_name': c.get('season_name'), 'fotmob_id': fotmob.get(cid),
+                           'has_eventing': bool(c.get('has_eventing')), 'active': sid == orden[-1],
+                           'fuente': 'eventing' if c.get('has_eventing') else 'matchstats'})
+    return salida
 
 
 def dorsales_actuales(store: "Store", comps: List[Dict[str, Any]]) -> Dict[str, int]:

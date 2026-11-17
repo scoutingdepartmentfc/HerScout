@@ -4,7 +4,7 @@ import { requireAdmin } from "@/lib/adminGuard";
 
 /**
  * Clubs with a HerScout subscription (organizations) and the leagues each one has contracted
- * (organization_leagues). Leagues come from ingestion_targets: only what the pipeline downloads.
+ * (organization_leagues). Leagues come from sd_leagues (enabled, with an Opta ID): only what the pipeline downloads.
  */
 
 const PLANS = ["trial", "standard", "pro", "enterprise"];
@@ -46,7 +46,7 @@ export async function GET(req: NextRequest) {
         .order("name"),
       db.from("organization_members").select("organization_id"),
       db.from("organization_leagues").select("organization_id, competition_id"),
-      db.from("ingestion_targets").select("competition_id, competition_name, country"),
+      db.from("sd_leagues").select("name, country, opta_competition_id").eq("enabled", true).not("opta_competition_id", "is", null),
     ]);
     for (const r of [orgs, members, clubLeagues, targets]) if (r.error) throw r.error;
 
@@ -56,9 +56,12 @@ export async function GET(req: NextRequest) {
     for (const l of clubLeagues.data) {
       leaguesByClub.set(l.organization_id, [...(leaguesByClub.get(l.organization_id) || []), l.competition_id]);
     }
-    // One entry per league (ingestion_targets has one row per season)
+    // One entry per Opta competition (several Soccerdonna leagues can share one)
     const leagues = new Map<string, { competition_id: string; competition_name: string; country: string | null }>();
-    for (const t of targets.data) if (!leagues.has(t.competition_id)) leagues.set(t.competition_id, t);
+    for (const t of targets.data) {
+      if (!leagues.has(t.opta_competition_id))
+        leagues.set(t.opta_competition_id, { competition_id: t.opta_competition_id, competition_name: t.name, country: t.country });
+    }
 
     return NextResponse.json({
       clubs: orgs.data.map((o: any) => ({

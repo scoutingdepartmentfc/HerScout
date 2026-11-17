@@ -3,7 +3,8 @@
 pipeline/reset.py
 Borra TODO lo descargado (jugadoras, equipos, partidos, estadísticas, Soccerdonna, ligas FotMob, ejecuciones)
 para volver a descargar desde cero. Conserva:
- - opta_catalog e ingestion_targets (las ligas y temporadas elegidas en /admin)
+ - opta_catalog y sd_leagues (las ligas elegidas en /admin, su ID Opta y temporadas); sus fechas de descarga
+   se ponen a cero para que el panel muestre "nunca"
  - organizations, watchlists e informes de los clubes (pero sus jugadoras vinculadas se borran en cascada)
 También vacía la caché de partidos del pipeline (Storage `pipeline-cache` y .cache/ local, salvo Soccerdonna
 si se pasa --mantener-cache-soccerdonna: así no se vuelven a pedir miles de fichas a la web).
@@ -77,6 +78,14 @@ def main():
             logger.info(f"  {tabla}: vaciada")
         except Exception as e:
             logger.warning(f"  {tabla}: no se pudo vaciar ({e})")
+
+    # Configuración de /admin intacta; solo las fechas de la última descarga de cada parte
+    for col in ("last_download_at", "last_opta_at", "last_fotmob_at"):
+        try:
+            client.table("sd_leagues").update({col: None}).not_.is_("code", "null").execute()
+        except Exception as e:  # last_opta_at / last_fotmob_at no existen sin la migración 20261117120000
+            logger.warning(f"  sd_leagues.{col}: no se pudo poner a cero ({e})")
+    logger.info("  sd_leagues: fechas de descarga a cero (ligas, ID Opta y temporadas se conservan)")
 
     try:
         logger.info(f"  Storage {BUCKET_PIPELINE_CACHE}: {vaciar_bucket(client, BUCKET_PIPELINE_CACHE)} ficheros borrados")

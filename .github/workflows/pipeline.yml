@@ -1,0 +1,139 @@
+name: Pipeline de datos (Soccerdonna + Opta + FotMob)
+run-name: >-
+  ${{ github.event_name == 'schedule' && (github.event.schedule == '0 3 * * 3' && 'Semanal: todo' || 'Diario: partidos Opta')
+  || format('Manual: {0} {1}', inputs.pasos, inputs.liga) }}
+
+# Un solo workflow para todo (un único grupo de concurrencia: nunca dos descargas escribiendo a la vez).
+# Lo lanzan los botones de /admin (src/lib/githubDispatch.ts) con los inputs `pasos` y `liga`.
+on:
+  schedule:
+    # Semanal, miércoles 03:00 UTC: todo (Soccerdonna → Opta última temporada → vincular → fotos FotMob)
+    - cron: '0 3 * * 3'
+    # Diario 04:00 UTC salvo el miércoles: partidos Opta (resultados, calendario y notas por partido)
+    - cron: '0 4 * * 0,1,2,4,5,6'
+  workflow_dispatch:
+    inputs:
+      pasos:
+        description: 'todo | soccerdonna | opta | fotmob (varias con comas: soccerdonna,fotmob) | partidos | recalcular | catalogo'
+        required: false
+        default: todo
+      liga:
+        description: 'Código de liga Soccerdonna (ESP1, SLV...). En blanco = todas las activas en /admin'
+        required: false
+        default: ''
+      todas_temporadas:
+        description: 'Opta: todas las temporadas elegidas en /admin, no solo la última (y las nunca descargadas)'
+        type: boolean
+        required: false
+        default: false
+      refresco_dias:
+        description: 'Soccerdonna: releer las fichas guardadas hace más de N días (en blanco = 25; 0 = todas)'
+        required: false
+        default: ''
+      limite:
+        description: 'Solo N jugadoras por liga (pruebas; en blanco = todas)'
+        required: false
+        default: ''
+      max_matches:
+        description: 'Opta: máximo de partidos NUEVOS por temporada (pruebas; en blanco = todos)'
+        required: false
+        default: ''
+
+concurrency:
+  group: data-pipeline
+  cancel-in-progress: false
+
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+    # La primera carga de una liga tarda; las siguientes son incrementales y continúan donde se cortaron.
+    timeout-minutes: 330
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      SDAPI_OUTLET_KEY: ${{ secrets.SDAPI_OUTLET_KEY }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: pipeline/requirements.txt
+
+      - name: Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r pipeline/requirements.txt -c pipeline/constraints.txt
+
+      - name: Elegir pasos
+        id: plan
+        env:
+          EVENTO: ${{ github.event_name }}
+          CRON: ${{ github.event.schedule }}
+          PASOS: ${{ inputs.pasos }}
+          LIGA: ${{ inputs.liga }}
+        run: |
+          if ! echo "$LIGA" | grep -Eq '^[A-Za-z0-9_-]*$'; then
+            echo "::error::Código de liga no válido: $LIGA"; exit 1
+          fi
+          if [ "$EVENTO" = "schedule" ]; then
+            [ "$CRON" = "0 3 * * 3" ] && PASOS=todo || PASOS=partidos
+          fi
+          PASOS="$(echo "${PASOS:-todo}" | tr -d ' ')"
+          if ! echo "$PASOS" | grep -Eq '^(todo|partidos|recalcular|catalogo|(soccerdonna|opta|fotmob)(,(soccerdonna|opta|fotmob))*)$'; then
+            echo "::error::Pasos no válidos: $PASOS"; exit 1
+          fi
+          echo "pasos=$PASOS" >> "$GITHUB_OUTPUT"
+          echo "▶ Pasos: $PASOS" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Tests del motor
+        if: steps.plan.outputs.pasos != 'partidos'
+        run: python -m unittest discover -s tests/pipeline -t tests/pipeline
+
+      - name: Catálogos (ligas Soccerdonna e IDs/temporadas Opta)
+        if: steps.plan.outputs.pasos == 'catalogo'
+        run: |
+          python -m pipeline.catalogo
+          python -m pipeline.sd_ligas catalogo
+
+      - name: Descarga (${{ steps.plan.outputs.pasos }})
+        if: steps.plan.outputs.pasos != 'catalogo'
+        env:
+          PASOS: ${{ steps.plan.outputs.pasos }}
+          LIGA: ${{ inputs.liga }}
+          TODAS: ${{ inputs.todas_temporadas }}
+          REFRESCO: ${{ inputs.refresco_dias }}
+          LIMITE: ${{ inputs.limite }}
+          MAX_MATCHES: ${{ inputs.max_matches }}
+        run: |
+          ARGS=""
+          [ -n "$LIGA" ] && ARGS="$ARGS --liga $LIGA"
+          [ -n "$LIMITE" ] && ARGS="$ARGS --limit $LIMITE"
+          [ -n "$MAX_MATCHES" ] && ARGS="$ARGS --max-matches $MAX_MATCHES"
+          [ "$TODAS" = "true" ] && ARGS="$ARGS --todas-temporadas"
+          case "$PASOS" in
+            partidos)   CMD="opta-partidos" ;;
+            recalcular) CMD="recalcular" ;;
+            *)
+              CMD="pasos --pasos $PASOS --refresco-dias ${REFRESCO:-25} --sin-coche-escoba"
+              # Primera semana del mes: revisar también las retiradas (Soccerdonna)
+              if [ "$(date +%d)" -le 7 ] && echo "$PASOS" | grep -Eq 'todo|soccerdonna'; then
+                CMD="$CMD --retiradas"
+              fi ;;
+          esac
+          echo "▶ python -m pipeline.sd_ligas $CMD $ARGS"
+          python -m pipeline.sd_ligas $CMD $ARGS
+
+      # Coche escoba ceroacero.es: solo en la descarga completa, aunque falle el paso anterior. Rellena lo que
+      # siga vacío (foto, nacimiento, nacionalidad, pie, altura...). Máx. 60 min; continúa en la siguiente.
+      - name: Coche escoba (ceroacero.es)
+        if: ${{ !cancelled() && steps.plan.outputs.pasos == 'todo' }}
+        continue-on-error: true
+        env:
+          LIMITE: ${{ inputs.limite }}
+        run: |
+          ARGS="--refresh-days 30 --max-minutos 60"
+          [ -n "$LIMITE" ] && ARGS="$ARGS --limit $LIMITE"
+          python -m pipeline.ceroacero $ARGS

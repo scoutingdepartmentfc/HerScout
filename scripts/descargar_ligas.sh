@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Descarga de ligas en local: lo mismo que el GitHub Action (.github/workflows/data_pipeline.yml), sin gastar
+# Descarga de ligas en local: lo mismo que el GitHub Action (.github/workflows/pipeline.yml), sin gastar
 # minutos de GitHub. Usa las claves de .env.local y el entorno Python .venv (se crea la primera vez).
 #
 #   scripts/descargar_ligas.sh                       Martes: Opta, última temporada de cada liga de /admin

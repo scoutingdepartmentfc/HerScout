@@ -24,7 +24,11 @@ Descargas automáticas (GitHub Action), mismo flujo:
   recalcular              Ratings por partido y notas de temporada desde la caché de partidos (sin descargar nada):
                           tras cambiar la fórmula en pipeline/scoring.py
 
+Por partes (panel /admin y GitHub Action .github/workflows/pipeline.yml):
+  pasos --pasos todo|soccerdonna,opta,fotmob [--liga ESP1] [--todas-temporadas]
+
 Uso:
+    python -m pipeline.sd_ligas pasos --pasos opta --liga ESP1
     python -m pipeline.sd_ligas catalogo
     python -m pipeline.sd_ligas todo [--liga ESP1] [--limit 10] [--max-matches 5]
     python -m pipeline.sd_ligas actualizar-opta [--liga ESP1] [--todas-temporadas]
@@ -191,7 +195,7 @@ def catalogo_logo(store: Store, code: str) -> Dict[str, Any]:
 
 
 def descargar(store: Store, sd: SDClient, liga_code: Optional[str], limit: Optional[int],
-              refresco_dias: int = REFRESCO_DIAS):
+              refresco_dias: int = REFRESCO_DIAS, con_fotos: bool = True):
     ligas = [l for l in store.select_all("sd_leagues", "code,name,country,url,enabled")
              if (l["code"] == liga_code if liga_code else l["enabled"])]
     if not ligas:
@@ -221,6 +225,12 @@ def descargar(store: Store, sd: SDClient, liga_code: Optional[str], limit: Optio
     limite = time.time() - refresco_dias * 86400
     for liga in ligas:
         clubes = clubes_liga(sd, liga["url"])
+        # Liga añadida en /admin por URL: aún no tiene nombre (se guarda el código); se lee del <h1>
+        if liga["name"] == liga["code"]:
+            h1 = re.search(r"<h1[^>]*>(.*?)</h1>", sd.get(liga["url"], FRESCO_DIAS) or "", re.S)
+            if h1 and _txt(h1.group(1)):
+                liga["name"] = _txt(h1.group(1))
+                store.update("sd_leagues", {"name": liga["name"]}, code=liga["code"])
         logger.info(f"▶ {liga['name']} ({liga['country']}): {len(clubes)} clubes")
         logo = imagen_sd(store, sd, SD_MEDIUM.format(id=liga["code"].lower()), f"ligas/sd-{liga['code']}.jpg")
         store.update("sd_leagues", {"logo_url": logo}, code=liga["code"])
@@ -283,7 +293,7 @@ def descargar(store: Store, sd: SDClient, liga_code: Optional[str], limit: Optio
                         imagen_sd(store, sd, prof.get("liga_actual_logo"), f"ligas/sd-{liga['code']}.jpg")
                 if p["id"].startswith("sd-"):  # las unidas a Opta conservan el equipo Opta (estadísticas)
                     row["current_team_id"] = f"sd-{club['sd_id']}"
-                foto = None if previa and previa.get("photo_url") else \
+                foto = None if not con_fotos or (previa and previa.get("photo_url")) else \
                     foto_fotmob(store, fotmob, {**p, "birth_date": row.get("birth_date")}, club["name"])
                 if foto:
                     row.update(photo_url=foto, photo_updated_at=now_iso())
@@ -328,55 +338,23 @@ def descargar(store: Store, sd: SDClient, liga_code: Optional[str], limit: Optio
 
 
 def ligas_opta(store: Store, liga_code: Optional[str]) -> List[Dict[str, Any]]:
-    return [l for l in store.select_all("sd_leagues", "code,name,country,enabled,opta_competition_id")
+    return [l for l in store.select_all("sd_leagues", "code,name,country,enabled,opta_competition_id,opta_season_ids")
             if l.get("opta_competition_id") and (l["code"] == liga_code if liga_code else l["enabled"])]
 
 
 def opta(store: Store, liga_code: Optional[str], max_matches: Optional[int], solo_ultima: bool = False, modo: str = "todo"):
-    """Temporadas Opta elegidas en /admin de cada competición enlazada (o la última con datos) → pipeline.
-    `solo_ultima`: de cada competición solo su temporada más reciente (y las elegidas que nunca se descargaron)."""
+    """Temporadas Opta de cada liga de /admin con ID Opta: las elegidas + la última del catálogo (ver
+    storage.competiciones_objetivo). `solo_ultima`: la más reciente y las elegidas aún sin descargar."""
     from .ingest import IngestionPipeline
     from .storage import competiciones_objetivo
-    from .config import COMPETICIONES_INTERNACIONALES
-    ligas = ligas_opta(store, liga_code)
-    comp_ids = {l["opta_competition_id"] for l in ligas}
-    # Competiciones internacionales activadas en /admin (Champions...): entran en la descarga general
-    intl = set()
-    if not comp_ids and not intl:
-        logger.info("Opta: ninguna liga elegida tiene competición Opta enlazada")
+    comps = competiciones_objetivo(store, solo_admin=True, liga_code=liga_code, solo_ultima=solo_ultima)
+    if not comps:
+        logger.info("Opta: ninguna liga elegida tiene un ID de Opta con temporadas en el catálogo")
         return
-    catalogo = store.select_all("opta_catalog", "*")
-    ultima = {}
-    for c in catalogo:
-        if c["competition_id"] in comp_ids and (c.get("data_level") or "").startswith("jugadora"):
-            if (c.get("start_date") or "") > (ultima.get(c["competition_id"], {}).get("start_date") or ""):
-                ultima[c["competition_id"]] = c
-    # Temporadas elegidas en /admin (sd_leagues.opta_season_ids); si no hay ninguna, la última de opta_catalog
-    cat_by_season = {c["season_id"]: c for c in catalogo}
-    elegidas_por_comp = {
-        l["opta_competition_id"]: list(l.get("opta_season_ids") or [])
-        for l in ligas
-        if l.get("opta_competition_id")
-    }
-    comps = []
-    for cid in list(comp_ids) + [c for c in intl if c not in comp_ids]:
-        sids = elegidas_por_comp.get(cid) or ([ultima[cid]["season_id"]] if cid in ultima else [])
-        if solo_ultima and cid in ultima:
-            sids = [ultima[cid]["season_id"]]
-        for sid in sids:
-            c = cat_by_season.get(sid)
-            if c:
-                comps.append({
-                    "id": c["competition_id"],
-                    "name": c["competition_name"],
-                    "season_id": c["season_id"],
-                    "season_name": c["season_name"],
-                    "country": c.get("country"),
-                    "has_eventing": bool(c.get("has_eventing")),
-                })
     pipe = IngestionPipeline(skip_photos=True, max_matches_per_comp=max_matches)
     for comp in comps:
-        logger.info(f"▶ Opta ({modo}) {comp['name']} {comp['season_id']}")
+        logger.info(f"▶ Opta ({modo}) {comp['name']} {comp['season_name']} ({comp['season_id']})"
+                    f"{' [actual]' if comp['active'] else ''}")
         if modo == "todo":
             pipe.procesar_competicion(comp)
         elif modo == "jugadoras":
@@ -400,57 +378,6 @@ def opta(store: Store, liga_code: Optional[str], max_matches: Optional[int], sol
     logger.info(f"Opta completado: {pipe.totales}")
 
 
-def temporada_nueva(store: Store, catalogo: List[Dict[str, Any]], targets: List[Dict[str, Any]], comp_ids: set,
-                    margen_dias: int = 14):
-    """Competiciones activadas cuya temporada más nueva del catálogo ya ha empezado (o empieza en `margen_dias`)
-    y aún no está elegida: se activa y pasa a ser la actual (como al marcarla en /admin). Sin esto, una liga con
-    la 2025/26 elegida nunca descargaría la 2026/27. No se exige nivel "jugadora" en el catálogo: es una foto
-    fija del CSV y la temporada que empieza figura como "sin jugados"; se hereda la fuente de la anterior."""
-    limite = (datetime.now(timezone.utc) + timedelta(days=margen_dias)).date().isoformat()
-    inicio = {c["season_id"]: c.get("start_date") or "" for c in catalogo}
-    altas, desactivar = [], set()
-    for cid in comp_ids:
-        mias = [t for t in targets if t["competition_id"] == cid]
-        if not mias:
-            continue
-        actual = max(mias, key=lambda t: inicio.get(t["season_id"], ""))
-        candidatas = [c for c in catalogo if c["competition_id"] == cid and c.get("start_date")
-                      and inicio.get(actual["season_id"], "") < c["start_date"] <= limite]
-        if not candidatas:
-            continue
-        c = max(candidatas, key=lambda c: c["start_date"])
-        logger.info(f"Opta {c['competition_name']}: temporada nueva {c['season_name']} ({c['start_date']}) "
-                    f"→ se activa (antes {actual.get('season_name')})")
-        altas.append({
-            "season_id": c["season_id"], "competition_id": cid, "competition_name": c["competition_name"],
-            "country": c.get("country") or actual.get("country"), "season_name": c["season_name"],
-            "is_active": True, "enabled": True, "fuente": actual.get("fuente") or "matchstats",
-            "fotmob_id": actual.get("fotmob_id"), "updated_at": now_iso()})
-        desactivar.add(cid)
-    for cid in desactivar:
-        store.client.table("ingestion_targets").update({"is_active": False}).eq("competition_id", cid).execute()
-    if altas:
-        store.upsert("ingestion_targets", altas, on_conflict="season_id")
-
-
-def temporadas_semanales(store: Store, comps: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """De cada competición, la temporada más reciente (fecha de inicio en opta_catalog) y las que aún no tienen
-    ningún partido en BD (recién elegidas). Las antiguas ya descargadas no cambian: no se vuelven a pedir."""
-    inicio = {c["season_id"]: c.get("start_date") or "" for c in store.select_all("opta_catalog", "season_id,start_date")}
-    ultima: Dict[str, Dict[str, Any]] = {}
-    for c in comps:
-        clave = (inicio.get(c["season_id"], ""), c.get("active", False))
-        prev = ultima.get(c["id"])
-        if not prev or clave >= (inicio.get(prev["season_id"], ""), prev.get("active", False)):
-            ultima[c["id"]] = c
-    con_partidos = {m["season_id"] for m in store.select_all("matches", "season_id")}
-    elegidas = [c for c in comps if c is ultima[c["id"]] or c["season_id"] not in con_partidos]
-    for c in comps:
-        if c not in elegidas:
-            logger.info(f"  Opta {c['name']} {c['season_id']}: temporada anterior ya descargada, se omite")
-    return elegidas
-
-
 def ligas_nuevas(store: Store, liga_code: Optional[str]) -> List[str]:
     """Ligas activadas en /admin que nunca se han descargado de Soccerdonna (o cuyos datos se borraron)."""
     return [l["code"] for l in store.select_all("sd_leagues", "code,enabled,last_download_at")
@@ -461,11 +388,8 @@ def recalcular(store: Store, liga_code: Optional[str]):
     """Vuelve a puntuar todas las temporadas elegidas en /admin con los partidos ya procesados (caché)."""
     from .ingest import IngestionPipeline
     from .storage import competiciones_objetivo
-    comp_ids = {l["opta_competition_id"] for l in ligas_opta(store, liga_code)} if liga_code else None
     pipe = IngestionPipeline(skip_photos=True)
-    for comp in competiciones_objetivo(store, solo_admin=True):
-        if comp_ids is not None and comp["id"] not in comp_ids:
-            continue
+    for comp in competiciones_objetivo(store, solo_admin=True, liga_code=liga_code):
         cache = store.load_match_cache(comp["season_id"])
         if cache.empty:
             continue
@@ -860,10 +784,13 @@ def fotos(store: Store, liga_code: Optional[str], limit: Optional[int] = None):
 
 def main():
     parser = argparse.ArgumentParser(description="Jugadoras desde las ligas de Soccerdonna elegidas en /admin")
-    parser.add_argument("accion", choices=["catalogo", "descargar", "opta", "opta-jugadoras", "opta-partidos",
+    parser.add_argument("accion", choices=["pasos", "catalogo", "descargar", "opta", "opta-jugadoras", "opta-partidos",
                                            "vincular", "escudos", "fotos", "todo",
                                            "actualizar-opta", "actualizar-soccerdonna", "recalcular", "retiradas", "completar",
                                            "corregir-clubes"])
+    parser.add_argument("--pasos", default="todo",
+                        help="pasos: 'todo' o lista separada por comas de soccerdonna,opta,fotmob")
+    parser.add_argument("--retiradas", action="store_true", help="pasos: revisar también las retiradas (Soccerdonna)")
     parser.add_argument("--prueba", action="store_true", help="corregir-clubes: solo mostrar los cambios")
     parser.add_argument("--max-matches", type=int, help="Opta: máximo de partidos nuevos por temporada (pruebas)")
     parser.add_argument("--refresco-dias", type=int, default=REFRESCO_DIAS,
@@ -889,6 +816,13 @@ def main():
     if args.accion == "retiradas":
         return marcar_retiradas(store, sd, args.refresco_dias)
     escoba = None if args.sin_coche_escoba else args.max_minutos_escoba
+    if args.accion == "pasos":
+        lista = PASOS if args.pasos.strip() == "todo" else tuple(p.strip() for p in args.pasos.split(",") if p.strip())
+        desconocidos = set(lista) - set(PASOS)
+        if desconocidos or not lista:
+            raise SystemExit(f"Pasos no válidos: {', '.join(desconocidos) or args.pasos} (usa {', '.join(PASOS)} o todo)")
+        return pasos(store, sd, lista, args.liga, args.limit, args.refresco_dias, args.max_matches,
+                     solo_ultima=not args.todas_temporadas, retiradas=args.retiradas, coche_escoba=escoba)
     if args.accion == "actualizar-opta":
         # Semanal: plantillas de Soccerdonna (solo fichas nuevas o antiguas) → última temporada Opta → ...
         return flujo(store, sd, args.liga, args.limit, args.refresco_dias, args.max_matches,
@@ -959,16 +893,63 @@ def flujo(store: Store, sd: SDClient, liga_code: Optional[str], limit: Optional[
     # nombre): se deshacen y esas jugadoras se quedan sin el club, los datos y la foto que venían de ella
     from .auditar_vinculos import revisar_fichas_sd
     revisar_fichas_sd(store)
+    if con_opta:
+        marcar(store, liga_code, "last_opta_at")
     fotos(store, liga_code, limit)
     # Agentes libres y jugadoras solo en plantillas antiguas: no salen en las plantillas de las ligas de arriba
     from .fotos_jugadoras import fotos_sin_club
     fotos_sin_club(store, limit)
+    marcar(store, liga_code, "last_fotmob_at")
     if coche_escoba:
         from .ceroacero import CeroaceroSync
         try:  # si falla, lo descargado ya está guardado
             CeroaceroSync(refresh_days=30, limit=limit, max_minutos=coche_escoba).run()
         except Exception as e:
             logger.warning(f"Coche escoba: omitido ({e})")
+
+# Partes que se pueden lanzar por separado desde /admin (en este orden si van juntas)
+PASOS = ("soccerdonna", "opta", "fotmob")
+
+
+def marcar(store: Store, liga_code: Optional[str], campo: str):
+    """Fecha de la última descarga de una parte (sd_leagues.last_opta_at / last_fotmob_at) para /admin."""
+    try:
+        codigos = [liga_code] if liga_code else [l["code"] for l in store.select_all("sd_leagues", "code", enabled=True)]
+        for code in codigos:
+            store.update("sd_leagues", {campo: now_iso()}, code=code)
+    except Exception as e:  # sin la migración 20261117120000 no hay columna: no tumba la descarga
+        logger.warning(f"No se pudo guardar sd_leagues.{campo}: {e}")
+
+
+def pasos(store: Store, sd: SDClient, lista, liga_code: Optional[str], limit: Optional[int], refresco_dias: int,
+          max_matches: Optional[int], solo_ultima: bool = True, retiradas: bool = False,
+          coche_escoba: Optional[float] = None):
+    """Descarga por partes (botones de /admin y GitHub Action). Las tres juntas = flujo estándar completo.
+      soccerdonna  Liga → clubes (nombre, escudo) → plantillas → ficha de cada jugadora. Sin fotos.
+      opta         Temporadas Opta de la liga → vincular equipos/jugadoras con Soccerdonna → club según último
+                   partido → escudos verificados.
+      fotmob       Fotos de las jugadoras sin foto de la liga (FotMob; si no, 365scores / Opta)."""
+    if set(lista) == set(PASOS):
+        nuevas = ligas_nuevas(store, liga_code)
+        return flujo(store, sd, liga_code, limit, refresco_dias, max_matches, solo_ultima=solo_ultima,
+                     retiradas=retiradas, escudos_ligas=[liga_code] if liga_code else nuevas, coche_escoba=coche_escoba)
+    if "soccerdonna" in lista:
+        descargar(store, sd, liga_code, limit, refresco_dias, con_fotos=False)
+        if retiradas:
+            marcar_retiradas(store, sd, refresco_dias)
+    if "opta" in lista:
+        opta(store, liga_code, max_matches, solo_ultima=solo_ultima)
+        vincular(store, liga_code)
+        corregir_clubes(store)
+        escudos(store, liga_code)
+        marcar(store, liga_code, "last_opta_at")
+    if "fotmob" in lista:
+        fotos(store, liga_code, limit)
+        if not liga_code:
+            from .fotos_jugadoras import fotos_sin_club
+            fotos_sin_club(store, limit)
+        marcar(store, liga_code, "last_fotmob_at")
+
 
 if __name__ == "__main__":
     main()

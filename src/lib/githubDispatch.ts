@@ -1,7 +1,14 @@
-/** Starts a GitHub Action workflow (defaults to weekly_soccerdonna_pipeline.yml). Needs a token with "Actions: write". */
+export const PIPELINE_WORKFLOW = "pipeline.yml";
+
+/** URL of the pipeline runs on GitHub (to follow a download started from /admin). */
+export const pipelineRunsUrl = () =>
+  `https://github.com/${process.env.GITHUB_REPO || "scoutingdepartmentfc/HerScout"}/actions/workflows/${PIPELINE_WORKFLOW}`;
+
+/** Starts a GitHub Action workflow (defaults to pipeline.yml). Needs a token with "Actions: write".
+ *  pipeline.yml inputs: pasos (todo | soccerdonna,opta,fotmob | catalogo...), liga, todas_temporadas, limite... */
 export async function dispatchPipeline(
   inputs: Record<string, string> = {},
-  workflow = "weekly_soccerdonna_pipeline.yml"
+  workflow = PIPELINE_WORKFLOW
 ) {
   const token = process.env.GITHUB_TOKEN;
   if (!token) throw new Error("GITHUB_TOKEN is not configured: the download will run on the next scheduled run");

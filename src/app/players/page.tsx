@@ -1092,76 +1092,169 @@ function PlayersDirectoryContent() {
               </div>
 
               {/* Market Value Range */}
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Market Value (€)
-                </label>
-                <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-2 rounded-lg border border-border/80 bg-navy-950/60 p-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Market Value
+                  </label>
+                  <div className="flex items-center gap-1.5 text-[11px] font-mono">
+                    <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                      ≥ €{Math.round((Number(minValue || 0)) / 1000)}k
+                    </span>
+                    <span className="text-muted-foreground">–</span>
+                    <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                      ≤ €{Math.round((Number(maxValue || 2000000)) / 1000)}k
+                    </span>
+                  </div>
+                </div>
+                <div className="relative h-6 flex items-center">
+                  <div className="w-full h-1.5 bg-navy-900 rounded-full overflow-hidden relative">
+                    <div
+                      className="h-full bg-gradient-to-r from-emerald-500 to-teal-400"
+                      style={{
+                        left: `${(Number(minValue || 0) / 2000000) * 100}%`,
+                        right: `${100 - (Number(maxValue || 2000000) / 2000000) * 100}%`,
+                        position: "absolute",
+                      }}
+                    />
+                  </div>
                   <input
-                    type="number"
+                    type="range"
                     min={0}
-                    placeholder="Min €"
-                    value={minValue}
-                    onChange={(e) => setMinValue(e.target.value)}
-                    className="h-8 w-full rounded-lg border border-border/80 bg-navy-950/90 px-2.5 text-xs text-white placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                    max={2000000}
+                    step={50000}
+                    value={Number(minValue || 0)}
+                    onChange={(e) => {
+                      const v = Number(e.target.value);
+                      if (v <= Number(maxValue || 2000000)) setMinValue(v === 0 ? "" : String(v));
+                    }}
+                    className="range-slider-thumb absolute w-full h-1.5 appearance-none bg-transparent pointer-events-none accent-emerald-400"
+                    style={{ zIndex: Number(minValue || 0) > 1500000 ? 20 : 10 }}
                   />
                   <input
-                    type="number"
+                    type="range"
                     min={0}
-                    placeholder="Max €"
-                    value={maxValue}
-                    onChange={(e) => setMaxValue(e.target.value)}
-                    className="h-8 w-full rounded-lg border border-border/80 bg-navy-950/90 px-2.5 text-xs text-white placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                    max={2000000}
+                    step={50000}
+                    value={Number(maxValue || 2000000)}
+                    onChange={(e) => {
+                      const v = Number(e.target.value);
+                      if (v >= Number(minValue || 0)) setMaxValue(v === 2000000 ? "" : String(v));
+                    }}
+                    className="range-slider-thumb absolute w-full h-1.5 appearance-none bg-transparent pointer-events-none accent-teal-400"
+                    style={{ zIndex: 15 }}
                   />
                 </div>
               </div>
 
               {/* Minutes Played Range */}
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Minutes Played
-                </label>
-                <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-2 rounded-lg border border-border/80 bg-navy-950/60 p-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Minutes Played
+                  </label>
+                  <div className="flex items-center gap-1.5 text-[11px] font-mono">
+                    <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                      ≥ {minMinutes || 0}&apos;
+                    </span>
+                    <span className="text-muted-foreground">–</span>
+                    <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                      ≤ {maxMinutes || 3500}&apos;
+                    </span>
+                  </div>
+                </div>
+                <div className="relative h-6 flex items-center">
+                  <div className="w-full h-1.5 bg-navy-900 rounded-full overflow-hidden relative">
+                    <div
+                      className="h-full bg-gradient-to-r from-emerald-500 to-teal-400"
+                      style={{
+                        left: `${(Number(minMinutes || 0) / 3500) * 100}%`,
+                        right: `${100 - (Number(maxMinutes || 3500) / 3500) * 100}%`,
+                        position: "absolute",
+                      }}
+                    />
+                  </div>
                   <input
-                    type="number"
+                    type="range"
                     min={0}
-                    placeholder="Min min"
-                    value={minMinutes}
-                    onChange={(e) => setMinMinutes(e.target.value)}
-                    className="h-8 w-full rounded-lg border border-border/80 bg-navy-950/90 px-2.5 text-xs text-white placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                    max={3500}
+                    step={90}
+                    value={Number(minMinutes || 0)}
+                    onChange={(e) => {
+                      const v = Number(e.target.value);
+                      if (v <= Number(maxMinutes || 3500)) setMinMinutes(v === 0 ? "" : String(v));
+                    }}
+                    className="range-slider-thumb absolute w-full h-1.5 appearance-none bg-transparent pointer-events-none accent-emerald-400"
+                    style={{ zIndex: Number(minMinutes || 0) > 2500 ? 20 : 10 }}
                   />
                   <input
-                    type="number"
+                    type="range"
                     min={0}
-                    placeholder="Max min"
-                    value={maxMinutes}
-                    onChange={(e) => setMaxMinutes(e.target.value)}
-                    className="h-8 w-full rounded-lg border border-border/80 bg-navy-950/90 px-2.5 text-xs text-white placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                    max={3500}
+                    step={90}
+                    value={Number(maxMinutes || 3500)}
+                    onChange={(e) => {
+                      const v = Number(e.target.value);
+                      if (v >= Number(minMinutes || 0)) setMaxMinutes(v === 3500 ? "" : String(v));
+                    }}
+                    className="range-slider-thumb absolute w-full h-1.5 appearance-none bg-transparent pointer-events-none accent-teal-400"
+                    style={{ zIndex: 15 }}
                   />
                 </div>
               </div>
 
               {/* Goals Range */}
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Goals
-                </label>
-                <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-2 rounded-lg border border-border/80 bg-navy-950/60 p-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Goals
+                  </label>
+                  <div className="flex items-center gap-1.5 text-[11px] font-mono">
+                    <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                      ≥ {minGoals || 0}
+                    </span>
+                    <span className="text-muted-foreground">–</span>
+                    <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                      ≤ {maxGoals || 40}
+                    </span>
+                  </div>
+                </div>
+                <div className="relative h-6 flex items-center">
+                  <div className="w-full h-1.5 bg-navy-900 rounded-full overflow-hidden relative">
+                    <div
+                      className="h-full bg-gradient-to-r from-emerald-500 to-teal-400"
+                      style={{
+                        left: `${(Number(minGoals || 0) / 40) * 100}%`,
+                        right: `${100 - (Number(maxGoals || 40) / 40) * 100}%`,
+                        position: "absolute",
+                      }}
+                    />
+                  </div>
                   <input
-                    type="number"
+                    type="range"
                     min={0}
-                    placeholder="Min"
-                    value={minGoals}
-                    onChange={(e) => setMinGoals(e.target.value)}
-                    className="h-8 w-full rounded-lg border border-border/80 bg-navy-950/90 px-2.5 text-xs text-white placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                    max={40}
+                    step={1}
+                    value={Number(minGoals || 0)}
+                    onChange={(e) => {
+                      const v = Number(e.target.value);
+                      if (v <= Number(maxGoals || 40)) setMinGoals(v === 0 ? "" : String(v));
+                    }}
+                    className="range-slider-thumb absolute w-full h-1.5 appearance-none bg-transparent pointer-events-none accent-emerald-400"
+                    style={{ zIndex: Number(minGoals || 0) > 30 ? 20 : 10 }}
                   />
                   <input
-                    type="number"
+                    type="range"
                     min={0}
-                    placeholder="Max"
-                    value={maxGoals}
-                    onChange={(e) => setMaxGoals(e.target.value)}
-                    className="h-8 w-full rounded-lg border border-border/80 bg-navy-950/90 px-2.5 text-xs text-white placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                    max={40}
+                    step={1}
+                    value={Number(maxGoals || 40)}
+                    onChange={(e) => {
+                      const v = Number(e.target.value);
+                      if (v >= Number(minGoals || 0)) setMaxGoals(v === 40 ? "" : String(v));
+                    }}
+                    className="range-slider-thumb absolute w-full h-1.5 appearance-none bg-transparent pointer-events-none accent-teal-400"
+                    style={{ zIndex: 15 }}
                   />
                 </div>
               </div>

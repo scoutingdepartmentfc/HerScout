@@ -415,8 +415,8 @@ export async function GET(req: NextRequest) {
 
           // No current club (Soccerdonna / current_team_id): club of her latest match, only if within the last 3 months
           const fallbackTeam = !p.teams && !p.fm_team_name ? recentTeamByPlayer.get(p.id) || null : null;
-          const teamName = p.fm_team_name || NO_CLUB_DATA;
-          const hasClub = !!(p.fm_team_name && p.fm_team_name !== NO_CLUB_DATA);
+          const teamName = p.fm_team_name || p.teams?.name || NO_CLUB_DATA;
+          const hasClub = !!(p.fm_team_name || p.teams);
           const leagueName = p.current_league_name || null;
           const leagueCountry =
             (leagueName ? leagueCountryByName.get(leagueName.toLowerCase()) : null) ||

@@ -284,6 +284,12 @@ export async function GET(req: NextRequest) {
   // season: "all" (accumulated by default) | season name e.g. "2026/2027", "2025/2026"
   const season = url.searchParams.get("season") || "all";
   const minRating = url.searchParams.get("minRating") ? Number(url.searchParams.get("minRating")) : null;
+  const minValue = url.searchParams.get("minValue") ? Number(url.searchParams.get("minValue")) : null;
+  const maxValue = url.searchParams.get("maxValue") ? Number(url.searchParams.get("maxValue")) : null;
+  const minMinutes = url.searchParams.get("minMinutes") ? Number(url.searchParams.get("minMinutes")) : null;
+  const maxMinutes = url.searchParams.get("maxMinutes") ? Number(url.searchParams.get("maxMinutes")) : null;
+  const minGoals = url.searchParams.get("minGoals") ? Number(url.searchParams.get("minGoals")) : null;
+  const maxGoals = url.searchParams.get("maxGoals") ? Number(url.searchParams.get("maxGoals")) : null;
   // ratings: "all" | "rated" | "unrated"
   const ratings = url.searchParams.get("ratings") || "all";
   const sortBy = url.searchParams.get("sortBy") || "nota_global";
@@ -394,6 +400,14 @@ export async function GET(req: NextRequest) {
           const recentRows = playerRows.filter((r: any) => (r.seasons?.name || null) === recentSeason);
           const recentSum = (k: string) => recentRows.reduce((n: number, r: any) => n + (Number(r[k]) || 0), 0);
 
+          const recentNotas = recentRows
+            .map((r: any) => Number(r.nota_global))
+            .filter((n: number) => Number.isFinite(n) && n > 0);
+          const latestNotaGlobal =
+            recentNotas.length > 0
+              ? recentNotas.reduce((a: number, b: number) => a + b, 0) / recentNotas.length
+              : getWeightedVal("nota_global");
+
           const getWeightedVal = (k: string) => {
             const item = sumWeighted[k];
             return item.mins > 0 ? item.sum / item.mins : null;
@@ -401,7 +415,7 @@ export async function GET(req: NextRequest) {
 
           // No current club (Soccerdonna / current_team_id): club of her latest match, only if within the last 3 months
           const fallbackTeam = !p.teams && !p.fm_team_name ? recentTeamByPlayer.get(p.id) || null : null;
-          const teamName = p.teams?.name || fallbackTeam?.name || p.fm_team_name || NO_CLUB_DATA;
+          const teamName = p.fm_team_name || p.teams?.name || fallbackTeam?.name || NO_CLUB_DATA;
           const hasClub = !!(p.teams || fallbackTeam || p.fm_team_name);
           const leagueName = p.current_league_name || p.teams?.league_name || (hasClub ? latestRow.competitions?.name : null) || null;
           const leagueCountry =
@@ -445,7 +459,7 @@ export async function GET(req: NextRequest) {
             isAccumulated: playerRows.length > 1,
             minutesPlayed: totalMins,
             matchesPlayed: totalMatches,
-            notaGlobal: getWeightedVal("nota_global"),
+            notaGlobal: latestNotaGlobal,
             notaAtaque: getWeightedVal("nota_ataque"),
             notaConstruccion: getWeightedVal("nota_construccion"),
             notaDefensa: getWeightedVal("nota_defensa"),
@@ -636,6 +650,24 @@ export async function GET(req: NextRequest) {
 
     if (minRating != null && !isNaN(minRating)) {
       list = list.filter((p: any) => (p.notaGlobal || 0) >= minRating);
+    }
+    if (minValue != null && !isNaN(minValue)) {
+      list = list.filter((p: any) => (p.marketValue || 0) >= minValue);
+    }
+    if (maxValue != null && !isNaN(maxValue)) {
+      list = list.filter((p: any) => (p.marketValue || 0) <= maxValue);
+    }
+    if (minMinutes != null && !isNaN(minMinutes)) {
+      list = list.filter((p: any) => (p.minutesPlayed || 0) >= minMinutes);
+    }
+    if (maxMinutes != null && !isNaN(maxMinutes)) {
+      list = list.filter((p: any) => (p.minutesPlayed || 0) <= maxMinutes);
+    }
+    if (minGoals != null && !isNaN(minGoals)) {
+      list = list.filter((p: any) => (p.goals || 0) >= minGoals);
+    }
+    if (maxGoals != null && !isNaN(maxGoals)) {
+      list = list.filter((p: any) => (p.goals || 0) <= maxGoals);
     }
 
     // Sorting (nulls last)

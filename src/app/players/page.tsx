@@ -399,6 +399,12 @@ function PlayersDirectoryContent() {
   const [seasonFilter, setSeasonFilter] = useState("all");
   const [minRatingFilter, setMinRatingFilter] = useState<string>("all");
   const [minAge, setMinAge] = useState<number>(15);
+  const [minValue, setMinValue] = useState<string>("");
+  const [maxValue, setMaxValue] = useState<string>("");
+  const [minMinutes, setMinMinutes] = useState<string>("");
+  const [maxMinutes, setMaxMinutes] = useState<string>("");
+  const [minGoals, setMinGoals] = useState<string>("");
+  const [maxGoals, setMaxGoals] = useState<string>("");
   const [maxAge, setMaxAge] = useState<number>(42);
   const [sortBy, setSortBy] = useState<string>("nota_global");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
@@ -612,6 +618,17 @@ function PlayersDirectoryContent() {
       recent_minutes: "recentMinutes",
       recent_goals: "recentGoals",
     };
+    if (minValue !== "" || maxValue !== "" || minMinutes !== "" || maxMinutes !== "" || minGoals !== "" || maxGoals !== "") {
+      list = list.filter((p) => {
+        if (minValue !== "" && (p.marketValue || 0) < Number(minValue)) return false;
+        if (maxValue !== "" && (p.marketValue || 0) > Number(maxValue)) return false;
+        if (minMinutes !== "" && (p.minutesPlayed || 0) < Number(minMinutes)) return false;
+        if (maxMinutes !== "" && (p.minutesPlayed || 0) > Number(maxMinutes)) return false;
+        if (minGoals !== "" && (p.goals || 0) < Number(minGoals)) return false;
+        if (maxGoals !== "" && (p.goals || 0) > Number(maxGoals)) return false;
+        return true;
+      });
+    }
     const sorted = list === allPlayers ? list.slice() : list;
     if (sortBy === "contract") {
       // desc = longest contract first; players without a contract date always last
@@ -643,7 +660,7 @@ function PlayersDirectoryContent() {
       });
     }
     return sorted;
-  }, [allPlayers, deferredSearch, positionFilter, selectedTeams, selectedLeagues, minAge, maxAge, minRatingFilter, sortBy, sortOrder]);
+  }, [allPlayers, deferredSearch, positionFilter, selectedTeams, selectedLeagues, minAge, maxAge, minRatingFilter, minValue, maxValue, minMinutes, maxMinutes, minGoals, maxGoals, sortBy, sortOrder]);
 
   // Dynamically adapt available teams based on selected leagues, and available leagues based on selected teams
   const filteredAvailableTeams = useMemo(() => {
@@ -1070,6 +1087,81 @@ function PlayersDirectoryContent() {
                     }}
                     className="range-slider-thumb absolute w-full h-1.5 appearance-none bg-transparent pointer-events-none accent-teal-400"
                     style={{ zIndex: 15 }}
+                  />
+                </div>
+              </div>
+
+              {/* Market Value Range */}
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Market Value (€)
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="number"
+                    min={0}
+                    placeholder="Min €"
+                    value={minValue}
+                    onChange={(e) => setMinValue(e.target.value)}
+                    className="h-8 w-full rounded-lg border border-border/80 bg-navy-950/90 px-2.5 text-xs text-white placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                  <input
+                    type="number"
+                    min={0}
+                    placeholder="Max €"
+                    value={maxValue}
+                    onChange={(e) => setMaxValue(e.target.value)}
+                    className="h-8 w-full rounded-lg border border-border/80 bg-navy-950/90 px-2.5 text-xs text-white placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+              </div>
+
+              {/* Minutes Played Range */}
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Minutes Played
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="number"
+                    min={0}
+                    placeholder="Min min"
+                    value={minMinutes}
+                    onChange={(e) => setMinMinutes(e.target.value)}
+                    className="h-8 w-full rounded-lg border border-border/80 bg-navy-950/90 px-2.5 text-xs text-white placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                  <input
+                    type="number"
+                    min={0}
+                    placeholder="Max min"
+                    value={maxMinutes}
+                    onChange={(e) => setMaxMinutes(e.target.value)}
+                    className="h-8 w-full rounded-lg border border-border/80 bg-navy-950/90 px-2.5 text-xs text-white placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+              </div>
+
+              {/* Goals Range */}
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Goals
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="number"
+                    min={0}
+                    placeholder="Min"
+                    value={minGoals}
+                    onChange={(e) => setMinGoals(e.target.value)}
+                    className="h-8 w-full rounded-lg border border-border/80 bg-navy-950/90 px-2.5 text-xs text-white placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                  <input
+                    type="number"
+                    min={0}
+                    placeholder="Max"
+                    value={maxGoals}
+                    onChange={(e) => setMaxGoals(e.target.value)}
+                    className="h-8 w-full rounded-lg border border-border/80 bg-navy-950/90 px-2.5 text-xs text-white placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                   />
                 </div>
               </div>

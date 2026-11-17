@@ -164,10 +164,16 @@ REFRESCO_DIAS = 30
 
 def clubes_liga(sd: SDClient, url: str) -> List[Dict[str, Any]]:
     html = sd.get(url, FRESCO_DIAS) or ""
-    # La clasificación (style="s10") lista solo los clubes de la liga; el resto de enlaces son de otras ligas
     vistos = {}
-    for slug, cid, nombre in re.findall(r'href="/en/([^/]+)/startseite/verein_(\d+)\.html" style="s10" alt="([^"]+)"', html):
-        vistos.setdefault(int(cid), {"slug": slug, "sd_id": int(cid), "name": unescape(nombre)})
+    # Tabla principal de clubes (Vereine / Clubs): <table class="standard_tabelle" ...>
+    m_tab = re.search(r'<table class="standard_tabelle"[^>]*>.*?</table>', html, re.S)
+    if m_tab:
+        for slug, cid, nombre in re.findall(r'href="/(?:en|de)/([^/]+)/startseite/verein_(\d+)\.html" title="([^"]+)"', m_tab.group(0)):
+            vistos.setdefault(int(cid), {"slug": slug, "sd_id": int(cid), "name": unescape(nombre)})
+    # Fallback: clasificación (style="s10")
+    if not vistos:
+        for slug, cid, nombre in re.findall(r'href="/(?:en|de)/([^/]+)/startseite/verein_(\d+)\.html" style="s10" alt="([^"]+)"', html):
+            vistos.setdefault(int(cid), {"slug": slug, "sd_id": int(cid), "name": unescape(nombre)})
     return list(vistos.values())
 
 

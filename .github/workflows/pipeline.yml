@@ -6,11 +6,13 @@ run-name: >-
 # Un solo workflow para todo (un único grupo de concurrencia: nunca dos descargas escribiendo a la vez).
 # Lo lanzan los botones de /admin (src/lib/githubDispatch.ts) con los inputs `pasos` y `liga`.
 on:
-  schedule:
-    # Semanal, miércoles 03:00 UTC: todo (Soccerdonna → Opta última temporada → vincular → fotos FotMob)
-    - cron: '0 3 * * 3'
-    # Diario 04:00 UTC salvo el miércoles: partidos Opta (resultados, calendario y notas por partido)
-    - cron: '0 4 * * 0,1,2,4,5,6'
+  # Descargas automáticas DESACTIVADAS mientras se eligen y cargan las ligas desde /admin.
+  # Para activarlas, descomentar:
+  # schedule:
+  #   # Semanal, miércoles 03:00 UTC: todo (Soccerdonna → Opta última temporada → vincular → fotos FotMob)
+  #   - cron: '0 3 * * 3'
+  #   # Diario 04:00 UTC salvo el miércoles: partidos Opta (resultados, calendario y notas por partido)
+  #   - cron: '0 4 * * 0,1,2,4,5,6'
   workflow_dispatch:
     inputs:
       pasos:

@@ -105,15 +105,7 @@ export async function POST(req: NextRequest) {
     }
     const { error } = await db.from("sd_leagues").update(changes).eq("code", body.code);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    // League just activated and never downloaded: download everything right away (Soccerdonna + Opta + photos)
-    if (body.enabled === true && !before.enabled && !before.last_download_at) {
-      try {
-        await dispatchPipeline({ pasos: "todo", liga: String(body.code) });
-        return NextResponse.json({ ok: true, started: true });
-      } catch (err: any) {
-        return NextResponse.json({ ok: true, started: false, warning: err.message });
-      }
-    }
+    // Activating does not download anything: downloads start only from the /admin buttons
     return NextResponse.json({ ok: true });
   }
   if (body.action === "addUrl") {

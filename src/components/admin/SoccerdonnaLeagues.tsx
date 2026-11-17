@@ -7,8 +7,8 @@ import { Badge } from "@/components/ui/Badge";
 import { Input } from "@/components/ui/Input";
 import { Bandera } from "@/components/scouting/Bandera";
 import {
-  AlertTriangle, BarChart3, Camera, Check, CheckCircle2, ChevronDown, ChevronUp, Database, Download, ExternalLink,
-  Globe2, Link2, Plus, RefreshCw, Search, Trash2, Trophy, X,
+  AlertTriangle, BarChart3, Camera, CheckCircle2, Database, Download, ExternalLink, Link2, Plus, RefreshCw, Search,
+  Trash2, Trophy, X,
 } from "lucide-react";
 
 interface SdLeague {
@@ -162,12 +162,12 @@ export function SoccerdonnaLeagues() {
   const [saving, setSaving] = useState<string | null>(null);
   const [allSeasons, setAllSeasons] = useState(false);
   const [newUrl, setNewUrl] = useState("");
-  // Catalog explorer (to add leagues)
-  const [catalogOpen, setCatalogOpen] = useState(false);
+  // Table filters: "all" shows the whole Soccerdonna catalog (active leagues first)
+  const [view, setView] = useState<"active" | "all">("all");
   const [query, setQuery] = useState("");
   const [countryFilter, setCountryFilter] = useState<string>("all");
   const [tierOnly, setTierOnly] = useState(true);
-  const [displayLimit, setDisplayLimit] = useState(30);
+  const [displayLimit, setDisplayLimit] = useState(40);
   const [deleting, setDeleting] = useState<SdLeague | null>(null);
   const [password, setPassword] = useState("");
 
@@ -227,15 +227,19 @@ export function SoccerdonnaLeagues() {
     [leagues]
   );
 
-  const catalog = useMemo(() => {
+  const rows = useMemo(() => {
     const text = query.trim().toLowerCase();
     return leagues
-      .filter((l) => !l.enabled)
-      .filter((l) => !tierOnly || (l.level || "").startsWith("Tier"))
+      .filter((l) => (view === "active" ? l.enabled : true))
+      .filter((l) => l.enabled || !tierOnly || (l.level || "").startsWith("Tier"))
       .filter((l) => countryFilter === "all" || l.country === countryFilter)
       .filter((l) => !text || `${l.name} ${l.country || ""} ${l.code} ${l.level || ""}`.toLowerCase().includes(text))
-      .sort((a, b) => (a.country || "zzz").localeCompare(b.country || "zzz") || (a.level || "").localeCompare(b.level || "") || a.name.localeCompare(b.name));
-  }, [leagues, query, countryFilter, tierOnly]);
+      .sort((a, b) =>
+        Number(b.enabled) - Number(a.enabled) ||
+        (a.country || "zzz").localeCompare(b.country || "zzz") ||
+        (a.level || "").localeCompare(b.level || "") ||
+        a.name.localeCompare(b.name));
+  }, [leagues, view, query, countryFilter, tierOnly]);
 
   const anyActive = active.length > 0;
 
@@ -249,12 +253,13 @@ export function SoccerdonnaLeagues() {
                 <Trophy className="w-4 h-4" />
               </div>
               <CardTitle className="text-xl font-black text-white">Ligas a descargar</CardTitle>
+              <Badge variant="default" size="sm">{leagues.length} en el catálogo</Badge>
               <Badge variant="success" size="sm">{active.length} activas</Badge>
             </div>
             <CardDescription className="mt-1.5 text-xs text-muted-foreground max-w-2xl">
               Soccerdonna da clubes, plantillas y fichas; Opta las estadísticas y el eventing (se vincula por el ID de
               competición); FotMob las fotos. Se puede lanzar todo o cada parte por separado, para todas las ligas o
-              para una sola.
+              para una sola. Activar una liga no descarga nada: la descarga empieza solo cuando pulsas un botón.
             </CardDescription>
           </div>
 
@@ -291,7 +296,7 @@ export function SoccerdonnaLeagues() {
               )}
             </div>
             <span className="text-[10px] text-muted-foreground">
-              Automático: todo cada miércoles · partidos Opta a diario
+              Descarga automática desactivada: solo se descarga lo que lances aquí
             </span>
           </div>
         </div>
@@ -324,7 +329,7 @@ export function SoccerdonnaLeagues() {
             if (res) {
               setNewUrl("");
               setNotice(res.added
-                ? `Liga ${res.code} añadida y activada: pon su ID de Opta y pulsa Descargar.`
+                ? `Liga ${res.code} añadida y activada: pon su ID de Opta y pulsa un botón de descarga.`
                 : `Liga ${res.code} activada.`);
             }
           }}
@@ -344,11 +349,49 @@ export function SoccerdonnaLeagues() {
       </CardHeader>
 
       <CardContent className="pt-4 space-y-4">
-        {/* Active leagues: what the pipeline downloads */}
+        {/* Filters: the whole Soccerdonna catalog, active leagues first */}
+        <div className="flex flex-col lg:flex-row gap-2">
+          <div className="flex gap-1 shrink-0">
+            {([["active", `Activas (${active.length})`], ["all", `Todas (${leagues.length})`]] as const).map(([id, label]) => (
+              <button key={id} type="button" onClick={() => { setView(id); setDisplayLimit(40); }}
+                className={`px-3 h-9 rounded-lg border text-xs font-medium transition-colors ${
+                  view === id ? "bg-primary text-white border-primary" : "bg-navy-950/60 border-border/60 text-muted-foreground hover:text-white"
+                }`}>
+                {label}
+              </button>
+            ))}
+          </div>
+          <Input
+            value={query}
+            onChange={(e) => { setQuery(e.target.value); setDisplayLimit(40); }}
+            placeholder="Buscar por liga, país o código (Liga F, WSL, ESP1…)"
+            leftIcon={<Search className="w-4 h-4 text-muted-foreground" />}
+            className="h-9 bg-navy-950/80 border-border text-xs"
+          />
+          <select
+            value={countryFilter}
+            onChange={(e) => { setCountryFilter(e.target.value); setDisplayLimit(40); }}
+            className="h-9 text-xs rounded-lg border border-border bg-navy-950 px-2 text-white min-w-[180px]"
+          >
+            <option value="all">Todos los países</option>
+            {countries.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+          <label className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground whitespace-nowrap">
+            <input type="checkbox" checked={tierOnly} onChange={(e) => setTierOnly(e.target.checked)} className="accent-sky-500" />
+            Solo ligas (sin copas)
+          </label>
+          <Button size="sm" variant="ghost" isLoading={saving === "run-catalogo-all"}
+            leftIcon={<RefreshCw className="w-3.5 h-3.5" />} onClick={() => run("catalogo")}
+            title="Vuelve a leer el índice de ligas de Soccerdonna y el catálogo Opta">
+            Actualizar catálogos
+          </Button>
+        </div>
+
         <div className="overflow-x-auto rounded-xl border border-border/60">
           <table className="w-full text-left border-collapse text-xs">
             <thead>
               <tr className="border-b border-border/60 bg-navy-950/80 text-[10px] uppercase tracking-wider text-muted-foreground">
+                <th className="py-2.5 px-3">Activa</th>
                 <th className="py-2.5 px-3">Liga (Soccerdonna)</th>
                 <th className="py-2.5 px-3">ID Opta</th>
                 <th className="py-2.5 px-3 min-w-[180px]">Temporadas Opta</th>
@@ -359,14 +402,34 @@ export function SoccerdonnaLeagues() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border/40">
-              {active.map((l) => {
+              {rows.slice(0, displayLimit).map((l) => {
                 const s = stats[l.code] || { players: 0, photos: 0, opta: 0, teams: 0 };
                 const seasons = l.opta_competition_id ? optaSeasons[l.opta_competition_id] || [] : [];
                 const chosen = l.opta_season_ids || [];
                 const pct = (n: number) => (s.players ? Math.round((n / s.players) * 100) : 0);
                 const busy = (part: Part) => saving === `run-${part}-${l.code}`;
                 return (
-                  <tr key={l.code} className="align-top bg-navy-950/30 hover:bg-navy-950/60 transition-colors">
+                  <tr key={l.code} className={`align-top transition-colors ${
+                    l.enabled ? "bg-emerald-950/15 hover:bg-emerald-950/25" : "bg-navy-950/30 hover:bg-navy-950/60"
+                  }`}>
+                    <td className="py-3 px-3">
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={l.enabled}
+                        disabled={saving === `en-${l.code}`}
+                        onClick={() => send(`en-${l.code}`, { action: "update", code: l.code, enabled: !l.enabled })}
+                        title={l.enabled ? "Desactivar (los datos se conservan)" : "Activar: no descarga nada hasta que pulses un botón"}
+                        className={`relative inline-flex h-5 w-9 items-center rounded-full border transition-colors ${
+                          l.enabled ? "bg-emerald-500/80 border-emerald-400" : "bg-navy-950 border-border"
+                        }`}
+                      >
+                        <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform ${
+                          l.enabled ? "translate-x-4" : "translate-x-0.5"
+                        }`} />
+                      </button>
+                    </td>
+
                     <td className="py-3 px-3">
                       <div className="flex items-center gap-2">
                         {l.logo_url ? (
@@ -380,6 +443,7 @@ export function SoccerdonnaLeagues() {
                           <div className="text-[10px] text-muted-foreground">
                             <span className="font-mono">{l.code}</span> · {l.country || "Internacional"}
                             {l.level ? ` · ${l.level}` : ""}
+                            {l.teams ? ` · ${l.teams} clubes` : ""}
                             {l.url && (
                               <a href={`https://www.soccerdonna.de${l.url}`} target="_blank" rel="noreferrer"
                                 className="ml-1 inline-flex align-middle text-sky-300 hover:text-sky-200">
@@ -437,149 +501,83 @@ export function SoccerdonnaLeagues() {
                       )}
                     </td>
 
-                    <td className="py-3 px-3">
-                      <StatusCell done={s.players > 0} value={`${s.players} jugadoras`}
-                        detail={`${s.teams}${l.teams ? `/${l.teams}` : ""} clubes`} date={l.last_download_at} />
-                    </td>
-                    <td className="py-3 px-3">
-                      {l.opta_competition_id ? (
-                        <StatusCell done={s.opta > 0} value={`${s.opta} vinculadas`} detail={`${pct(s.opta)}% de la plantilla`}
-                          date={l.last_opta_at} />
-                      ) : (
-                        <span className="text-[10px] text-muted-foreground">Sin ID Opta</span>
-                      )}
-                    </td>
-                    <td className="py-3 px-3">
-                      <StatusCell done={s.photos > 0} value={`${s.photos} con foto`} detail={`${pct(s.photos)}% de la plantilla`}
-                        date={l.last_fotmob_at} />
-                    </td>
+                    {l.enabled || s.players > 0 ? (
+                      <>
+                        <td className="py-3 px-3">
+                          <StatusCell done={s.players > 0} value={`${s.players} jugadoras`}
+                            detail={`${s.teams}${l.teams ? `/${l.teams}` : ""} clubes`} date={l.last_download_at} />
+                        </td>
+                        <td className="py-3 px-3">
+                          {l.opta_competition_id ? (
+                            <StatusCell done={s.opta > 0} value={`${s.opta} vinculadas`} detail={`${pct(s.opta)}% de la plantilla`}
+                              date={l.last_opta_at} />
+                          ) : (
+                            <span className="text-[10px] text-muted-foreground">Sin ID Opta</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-3">
+                          <StatusCell done={s.photos > 0} value={`${s.photos} con foto`} detail={`${pct(s.photos)}% de la plantilla`}
+                            date={l.last_fotmob_at} />
+                        </td>
+                      </>
+                    ) : (
+                      <td colSpan={3} className="py-3 px-3 text-[10px] text-muted-foreground">Actívala para descargarla</td>
+                    )}
 
                     <td className="py-3 px-3">
-                      <div className="flex flex-col items-end gap-1.5">
-                        <div className="flex flex-wrap justify-end gap-1">
-                          <Button size="xs" isLoading={busy("todo")} leftIcon={<Download className="w-3 h-3" />}
-                            onClick={() => run("todo", l)} title="Soccerdonna → Opta → vincular → fotos FotMob">
-                            Todo
-                          </Button>
-                          <Button size="xs" variant="outline" isLoading={busy("soccerdonna")} onClick={() => run("soccerdonna", l)}
-                            title="Clubes, escudos, plantillas y fichas de Soccerdonna">
-                            SD
-                          </Button>
-                          <Button size="xs" variant="outline" isLoading={busy("opta")} disabled={!l.opta_competition_id}
-                            onClick={() => run("opta", l)} title="Stats y eventing de Opta + vinculación de equipos y jugadoras">
-                            Opta
-                          </Button>
-                          <Button size="xs" variant="outline" isLoading={busy("fotmob")} onClick={() => run("fotmob", l)}
-                            title="Fotos de FotMob de las jugadoras sin foto">
-                            Fotos
-                          </Button>
-                        </div>
-                        <div className="flex gap-1">
-                          <Button size="xs" variant="ghost" isLoading={saving === `en-${l.code}`}
-                            onClick={() => send(`en-${l.code}`, { action: "update", code: l.code, enabled: false })}
-                            title="Deja de descargarse (los datos se conservan)">
-                            Desactivar
-                          </Button>
+                      {l.enabled ? (
+                        <div className="flex flex-col items-end gap-1.5">
+                          <div className="flex flex-wrap justify-end gap-1">
+                            <Button size="xs" isLoading={busy("todo")} leftIcon={<Download className="w-3 h-3" />}
+                              onClick={() => run("todo", l)} title="Soccerdonna → Opta → vincular → fotos FotMob">
+                              Todo
+                            </Button>
+                            <Button size="xs" variant="outline" isLoading={busy("soccerdonna")} onClick={() => run("soccerdonna", l)}
+                              title="Clubes, escudos, plantillas y fichas de Soccerdonna">
+                              SD
+                            </Button>
+                            <Button size="xs" variant="outline" isLoading={busy("opta")} disabled={!l.opta_competition_id}
+                              onClick={() => run("opta", l)} title="Stats y eventing de Opta + vinculación de equipos y jugadoras">
+                              Opta
+                            </Button>
+                            <Button size="xs" variant="outline" isLoading={busy("fotmob")} onClick={() => run("fotmob", l)}
+                              title="Fotos de FotMob de las jugadoras sin foto">
+                              Fotos
+                            </Button>
+                          </div>
                           {s.players > 0 && (
                             <Button size="xs" variant="ghost" className="text-rose-400 hover:bg-rose-500/10"
                               onClick={() => { setDeleting(l); setPassword(""); setError(null); }}
-                              title="Borrar todo lo descargado de esta liga">
-                              <Trash2 className="w-3 h-3" />
+                              title="Borrar todo lo descargado de esta liga" leftIcon={<Trash2 className="w-3 h-3" />}>
+                              Borrar datos
                             </Button>
                           )}
                         </div>
-                      </div>
+                      ) : null}
                     </td>
                   </tr>
                 );
               })}
-              {!anyActive && (
+              {rows.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="py-10 text-center text-xs text-muted-foreground">
-                    No hay ligas activas. Añade una por URL o actívala desde el catálogo de abajo.
+                  <td colSpan={8} className="py-10 text-center text-xs text-muted-foreground">
+                    {view === "active"
+                      ? "No hay ligas activas. Pulsa «Todas» y activa las que quieras descargar."
+                      : "No hay ligas con esos filtros."}
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
         </div>
-
-        {/* Catalog: Soccerdonna leagues not active yet */}
-        <div className="rounded-xl border border-border/60">
-          <button
-            type="button"
-            onClick={() => setCatalogOpen(!catalogOpen)}
-            className="w-full flex items-center justify-between px-3 py-2.5 text-xs font-semibold text-white hover:bg-white/5"
-          >
-            <span className="flex items-center gap-2">
-              <Globe2 className="w-4 h-4 text-sky-400" /> Catálogo de Soccerdonna ({leagues.length - active.length} ligas sin activar)
-            </span>
-            {catalogOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-          </button>
-          {catalogOpen && (
-            <div className="border-t border-border/40 p-3 space-y-3">
-              <div className="flex flex-col sm:flex-row gap-2">
-                <Input
-                  value={query}
-                  onChange={(e) => { setQuery(e.target.value); setDisplayLimit(30); }}
-                  placeholder="Buscar por liga, país o código…"
-                  leftIcon={<Search className="w-4 h-4 text-muted-foreground" />}
-                  className="h-9 bg-navy-950/80 border-border text-xs"
-                />
-                <select
-                  value={countryFilter}
-                  onChange={(e) => { setCountryFilter(e.target.value); setDisplayLimit(30); }}
-                  className="h-9 text-xs rounded-lg border border-border bg-navy-950 px-2 text-white min-w-[180px]"
-                >
-                  <option value="all">Todos los países</option>
-                  {countries.map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
-                <label className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground whitespace-nowrap">
-                  <input type="checkbox" checked={tierOnly} onChange={(e) => setTierOnly(e.target.checked)} className="accent-sky-500" />
-                  Solo ligas (sin copas)
-                </label>
-                <Button size="sm" variant="ghost" isLoading={saving === "run-catalogo-all"}
-                  leftIcon={<RefreshCw className="w-3.5 h-3.5" />} onClick={() => run("catalogo")}
-                  title="Vuelve a leer el índice de ligas de Soccerdonna y el catálogo Opta">
-                  Actualizar catálogos
-                </Button>
-              </div>
-              <div className="divide-y divide-border/30 rounded-lg border border-border/40">
-                {catalog.slice(0, displayLimit).map((l) => (
-                  <div key={l.code} className="flex items-center justify-between gap-3 px-3 py-2 text-xs">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <Bandera country={l.country} size="sm" />
-                      <span className="font-medium text-white truncate">{l.name}</span>
-                      <span className="text-[10px] font-mono text-slate-400">{l.code}</span>
-                      <span className="text-[10px] text-muted-foreground truncate">
-                        {l.country || "Internacional"}{l.level ? ` · ${l.level}` : ""}{l.teams ? ` · ${l.teams} clubes` : ""}
-                      </span>
-                    </div>
-                    <Button size="xs" isLoading={saving === `en-${l.code}`} leftIcon={<Check className="w-3 h-3" />}
-                      onClick={async () => {
-                        setNotice(null);
-                        const res = await send(`en-${l.code}`, { action: "update", code: l.code, enabled: true });
-                        if (res?.started) setNotice(`${l.name}: activada y descarga completa iniciada.`);
-                        else if (res?.warning) setNotice(`${l.name}: activada. ${res.warning}`);
-                      }}>
-                      Activar
-                    </Button>
-                  </div>
-                ))}
-                {catalog.length === 0 && (
-                  <div className="py-8 text-center text-xs text-muted-foreground">No hay ligas con esos filtros.</div>
-                )}
-              </div>
-              {catalog.length > displayLimit && (
-                <div className="flex justify-center">
-                  <Button size="sm" variant="outline" onClick={() => setDisplayLimit((n) => n + 30)}>
-                    Ver más ({catalog.length - displayLimit})
-                  </Button>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+        {rows.length > displayLimit && (
+          <div className="flex justify-center gap-2">
+            <Button size="sm" variant="outline" onClick={() => setDisplayLimit((n) => n + 40)}>
+              Ver más ({rows.length - displayLimit})
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setDisplayLimit(rows.length)}>Ver todas</Button>
+          </div>
+        )}
 
         {deleting && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">

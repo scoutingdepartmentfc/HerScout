@@ -190,12 +190,12 @@ async function loadBaseData(db: any): Promise<BaseData> {
       player_ea_ratings ( pace, physicality )`;
     const fetchAllPlayers = async () => {
       try {
-        const { count, error: cErr } = await db.from("players").select("id", { count: "exact", head: true });
+        const { count, error: cErr } = await db.from("players").select("id", { count: "exact", head: true }).not("sd_id", "is", null);
         if (cErr) throw cErr;
         const offs: number[] = [];
         for (let from = 0; from < (count || 0); from += PAGE) offs.push(from);
         const res = await Promise.all(
-          offs.map((from) => db.from("players").select(PLAYER_FIELDS).order("id").range(from, from + PAGE - 1))
+          offs.map((from) => db.from("players").select(PLAYER_FIELDS).not("sd_id", "is", null).order("id").range(from, from + PAGE - 1))
         );
         const out: any[] = [];
         for (const r of res as any[]) {
@@ -205,7 +205,7 @@ async function loadBaseData(db: any): Promise<BaseData> {
         return out;
       } catch (e) {
         console.warn("[FETCH_ALL_PLAYERS] Fallback limited:", e);
-        const { data } = await db.from("players").select(PLAYER_FIELDS).limit(5000);
+        const { data } = await db.from("players").select(PLAYER_FIELDS).not("sd_id", "is", null).limit(5000);
         return data || [];
       }
     };

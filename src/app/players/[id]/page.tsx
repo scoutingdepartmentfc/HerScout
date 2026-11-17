@@ -96,7 +96,7 @@ export default function PlayerProfilePage() {
   // Default: all seasons accumulated (allSeasons) when available, or the first season
   const seasons: any[] = data.seasonStats || [];
   const options: any[] = data.allSeasons ? [data.allSeasons, ...seasons] : seasons;
-  const selected = (seasonKey ? options.find((s) => claveTemporada(s) === seasonKey) : options[0]) || null;
+  const selected = (seasonKey ? options.find((s) => claveTemporada(s) === seasonKey) : (seasons[0] || options[0])) || null;
   const selectedKey = selected ? claveTemporada(selected) : null;
   const stats = selected && !selected.sinNotas ? selected : null;
   const metricas = stats?.radar_data?.metricas || {};

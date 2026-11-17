@@ -647,16 +647,16 @@ export async function GET(req: NextRequest) {
       list = list.filter((p: any) => (p.marketValue || 0) <= maxValue);
     }
     if (minMinutes != null && !isNaN(minMinutes)) {
-      list = list.filter((p: any) => (p.minutesPlayed || 0) >= minMinutes);
+      list = list.filter((p: any) => (p.recentMinutes ?? p.minutesPlayed ?? 0) >= minMinutes);
     }
     if (maxMinutes != null && !isNaN(maxMinutes)) {
-      list = list.filter((p: any) => (p.minutesPlayed || 0) <= maxMinutes);
+      list = list.filter((p: any) => (p.recentMinutes ?? p.minutesPlayed ?? 0) <= maxMinutes);
     }
     if (minGoals != null && !isNaN(minGoals)) {
-      list = list.filter((p: any) => (p.goals || 0) >= minGoals);
+      list = list.filter((p: any) => (p.recentGoals ?? p.goals ?? 0) >= minGoals);
     }
     if (maxGoals != null && !isNaN(maxGoals)) {
-      list = list.filter((p: any) => (p.goals || 0) <= maxGoals);
+      list = list.filter((p: any) => (p.recentGoals ?? p.goals ?? 0) <= maxGoals);
     }
 
     // Sorting (nulls last)

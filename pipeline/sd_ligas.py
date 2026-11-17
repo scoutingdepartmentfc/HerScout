@@ -256,6 +256,7 @@ def descargar(store: Store, sd: SDClient, liga_code: Optional[str], limit: Optio
                                 "updated_at": r["updated_at"]} for r in raw_sd_teams])
         hechas = 0
         for club in clubes:
+            club_badge = imagen_sd(store, sd, SD_MEDIUM.format(id=club["sd_id"]), f"sd/{club['sd_id']}.jpg")
             pendiente: Dict[str, List[Dict[str, Any]]] = {}
             for j in plantilla(sd, club):
                 if limit and hechas >= limit:
@@ -268,8 +269,14 @@ def descargar(store: Store, sd: SDClient, liga_code: Optional[str], limit: Optio
                     mismo_club = normalizar_club(previa.get("fm_team_name")) == normalizar_club(club["name"])
                     if hecha > limite and mismo_club:
                         tot["al_dia"] += 1
-                        # Sigue en la liga (o ha llegado de otra elegida): solo se actualiza su club
-                        store.update("players", {"sd_league_code": liga["code"]}, id=previa["id"])
+                        # Asegura que el club y liga de Soccerdonna estén siempre rellenos e inamovibles
+                        store.update("players", {
+                            "sd_league_code": liga["code"],
+                            "current_league_name": liga["name"],
+                            "current_league_logo_url": logo,
+                            "fm_team_name": club["name"],
+                            "fm_team_badge_url": club_badge,
+                        }, id=previa["id"])
                         continue
                 # Nueva: ficha completa; ya guardada pero antigua: ficha fresca (valor, traspasos, lesiones)
                 frescura = None if not previa else 1
@@ -281,27 +288,26 @@ def descargar(store: Store, sd: SDClient, liga_code: Optional[str], limit: Optio
                 filas = filas_jugadora(p, j, prof, sd.traspasos(j["slug"], j["sd_id"], frescura), now_iso())
                 row = filas["players"][0]
                 if not row.get("primary_position") or row.get("primary_position") == "Desconocida":
-                    from .demarcaciones import por_texto
-                    dem, _ = por_texto(prof.get("posicion") or prof.get("position") or j.get("position"))
+                    from .demarcaciones import GENERICA, _central, por_texto
+                    from .positions import get_grupo_demarcacion
+                    pos_txt = row.get("tm_position_main") or (prof.get("datos") or {}).get("Position") or j.get("position")
+                    dem, _ = por_texto(pos_txt)
+                    if not dem and pos_txt:
+                        dem = GENERICA.get(str(pos_txt).split(" - ", 1)[0].strip().lower())
+                    dem = _central(dem, row.get("preferred_foot"))
                     if dem:
                         row["primary_position"] = dem
-                row.update(sd_league_code=liga["code"], country=(prof["nacionalidades"] or [None])[0],
-                           shirt_number=prof.get("dorsal"), fm_team_name=club["name"])
-                # Club actual y su liga según Soccerdonna (puede haber fichado por otra liga)
-                if prof.get("club_actual_id"):
-                    row["fm_team_badge_url"] = imagen_sd(store, sd, SD_MEDIUM.format(id=prof["club_actual_id"]),
-                                                         f"sd/{prof['club_actual_id']}.jpg")
-                if prof.get("liga_actual_nombre"):
-                    # Nombre oficial del catálogo ("Serie A Women", no el texto corto del enlace "Serie A");
-                    # una copa ("Serie A Women's Cup") no es su liga: se queda la que se está descargando
-                    cod = (prof.get("liga_actual_codigo") or "").upper()
-                    cat = catalogo_sd.get(cod)
-                    if not cat or not (cat.get("level") or "").startswith("Tier"):
-                        cat = liga
-                    row["current_league_name"] = liga["name"]
-                    row["sd_league_code"] = liga["code"]
-                    row["current_league_logo_url"] = (catalogo_sd.get(liga["code"]) or {}).get("logo_url") or \
-                        imagen_sd(store, sd, prof.get("liga_actual_logo"), f"ligas/sd-{liga['code']}.jpg")
+                        row["grupo_demarcacion"] = get_grupo_demarcacion(dem)
+                # Club y liga siempre inamovibles desde la plantilla y liga de Soccerdonna que se descarga
+                row.update(
+                    sd_league_code=liga["code"],
+                    current_league_name=liga["name"],
+                    current_league_logo_url=logo,
+                    fm_team_name=club["name"],
+                    fm_team_badge_url=club_badge,
+                    country=(prof["nacionalidades"] or [None])[0],
+                    shirt_number=prof.get("dorsal"),
+                )
                 if p["id"].startswith("sd-"):  # las unidas a Opta conservan el equipo Opta (estadísticas)
                     row["current_team_id"] = f"sd-{club['sd_id']}"
                 foto = None if not con_fotos or (previa and previa.get("photo_url")) else \
@@ -412,7 +418,8 @@ def recalcular(store: Store, liga_code: Optional[str]):
 
 
 SD_CAMPOS = ("sd_id", "sd_url", "sd_updated_at", "sd_league_code", "market_value", "market_value_updated_at",
-             "contract_expires", "citizenship", "tm_position_main", "outfitter", "photo_url", "photo_updated_at",
+             "contract_expires", "joined_on", "citizenship", "tm_position_main", "tm_positions_other", "outfitter",
+             "photo_url", "photo_updated_at", "fotmob_id", "fotmob_photo_url", "shirt_number",
              "height", "preferred_foot", "place_of_birth", "fm_team_name", "fm_team_badge_url",
              "current_league_name", "current_league_logo_url")
 
@@ -424,7 +431,7 @@ def vincular(store: Store, liga_code: Optional[str]):
     equipos = {t["id"]: t for t in store.select_all("teams", "id,name,competition_id,sd_league_code,badge_url,"
                                                               "league_name,league_logo_url")}
     jugadoras = store.select_all("players", "id,name,first_name,last_name,match_name,birth_date,current_team_id,"
-                                            "sd_league_code,opta_id," + ",".join(SD_CAMPOS))
+                                            "primary_position,grupo_demarcacion,sd_league_code,opta_id," + ",".join(SD_CAMPOS))
     # Uniones que se quedaron a medias (fallo entre mover sd_id y borrar la "sd-"): se terminan
     por_sd = {p["sd_id"]: p for p in jugadoras if p.get("sd_id") and not p["id"].startswith("sd-")}
     for p in [p for p in jugadoras if p["id"].startswith("sd-") and not p.get("sd_id")]:
@@ -527,7 +534,9 @@ def corregir_clubes(store: Store, dias: int = 60, prueba: bool = False) -> List[
         if cid and (cid not in ligas or nivel(l) < nivel(ligas[cid])):
             ligas[cid] = l
     cambios = []
-    for p in store.select_all("players", "id,name,current_team_id,fm_team_name,current_league_name,sd_league_code"):
+    for p in store.select_all("players", "id,name,sd_id,current_team_id,fm_team_name,current_league_name,sd_league_code"):
+        if p.get("sd_id"):
+            continue
         r = ultimo.get(p["id"])
         if not r or es_internacional({"id": r["competition_id"], "country": (comps.get(r["competition_id"]) or {}).get("country")}):
             continue
@@ -585,15 +594,19 @@ def corregir_clubes(store: Store, dias: int = 60, prueba: bool = False) -> List[
     return cambios
 
 
-def _unir(store: Store, s_: Dict[str, Any], mejor: Dict[str, Any], club_de_soccerdonna: bool = False):
-    """Pasa los datos de la ficha "sd-" a la fila Opta (que tiene las estadísticas) y borra la "sd-"."""
-    club = ("fm_team_name", "fm_team_badge_url", "current_league_name", "current_league_logo_url")
-    # El club y la liga de Soccerdonna solo si Opta no la tiene en una plantilla actual: aunque la fila Opta no
-    # tenga esos campos, el club de Opta (con el que juega) manda sobre una plantilla de Soccerdonna desfasada
-    datos = {k: s_[k] for k in SD_CAMPOS if s_.get(k) is not None and (k.startswith(("sd_", "market", "photo"))
-                                                                      or (k in club and club_de_soccerdonna)
-                                                                      or (k not in club and not mejor.get(k)))}
-    if club_de_soccerdonna and s_.get("current_team_id"):
+def _unir(store: Store, s_: Dict[str, Any], mejor: Dict[str, Any], club_de_soccerdonna: bool = True):
+    """Pasa los datos de la ficha "sd-" a la fila Opta (que tiene las estadísticas) y borra la "sd-".
+    El club (fm_team_name) y la liga (current_league_name, sd_league_code) de Soccerdonna son SIEMPRE inamovibles."""
+    siempre_sd = ("sd_id", "sd_url", "sd_updated_at", "sd_league_code", "market_value", "market_value_updated_at",
+                  "contract_expires", "joined_on", "citizenship", "tm_position_main", "tm_positions_other", "outfitter",
+                  "photo_url", "photo_updated_at", "fotmob_id", "fotmob_photo_url",
+                  "fm_team_name", "fm_team_badge_url", "current_league_name", "current_league_logo_url")
+    datos = {k: s_[k] for k in SD_CAMPOS if s_.get(k) is not None and (k in siempre_sd or not mejor.get(k))}
+    if s_.get("primary_position") and mejor.get("primary_position") in (None, "", "Desconocida"):
+        datos["primary_position"] = s_["primary_position"]
+        if s_.get("grupo_demarcacion"):
+            datos["grupo_demarcacion"] = s_["grupo_demarcacion"]
+    if club_de_soccerdonna and s_.get("current_team_id") and not mejor.get("current_team_id"):
         datos["current_team_id"] = s_["current_team_id"]
     # Ficha que vino de ceroacero (ligas sin Soccerdonna): su id pasa a la fila Opta (el coche escoba ya no la busca)
     cz = (store.select_all("players", "cz_id,cz_url,cz_updated_at,weight,country", id=s_["id"]) or [{}])[0]
@@ -760,6 +773,7 @@ def fotos(store: Store, liga_code: Optional[str], limit: Optional[int] = None):
     equipos = store.select_all("teams", "id,name,competition_id,sd_league_code")
     fotmob = FotMobClient()
     fotmob.cargar_asignados(store)
+    sd = SDClient()
     for liga in ligas:
         clubes = {t["id"]: t["name"] for t in equipos if t.get("sd_league_code") == liga["code"]
                   or (liga.get("opta_competition_id") and t.get("competition_id") == liga["opta_competition_id"])}
@@ -767,30 +781,49 @@ def fotos(store: Store, liga_code: Optional[str], limit: Optional[int] = None):
         comp = store.select_all("competitions", "id,fotmob_id", id=liga["opta_competition_id"]) if liga.get("opta_competition_id") else []
         liga_fm = comp[0].get("fotmob_id") if comp else None
         sin_foto = [p for p in store.select_all("players", "id,name,first_name,last_name,match_name,birth_date,"
-                                                            "current_team_id,photo_url")
-                    if p.get("current_team_id") in clubes and not p.get("photo_url")]
+                                                            "current_team_id,fm_team_name,sd_league_code,sd_id,sd_url,photo_url")
+                    if (p.get("sd_league_code") == liga["code"] or p.get("current_team_id") in clubes) and not p.get("photo_url")]
         if limit:
             sin_foto = sin_foto[:limit]
-        tot = {"fotmob": 0, "365scores": 0, "opta": 0, "sin_foto": 0}
+        tot = {"fotmob": 0, "soccerdonna": 0, "365scores": 0, "opta": 0, "sin_foto": 0}
         for n, p in enumerate(sin_foto, 1):
-            club = clubes[p["current_team_id"]]
+            club = p.get("fm_team_name") or clubes.get(p.get("current_team_id")) or ""
             m = fotmob.buscar_jugador(p, club, liga_fm)
             img = fotmob.image(FOTMOB_PLAYER_IMG.format(id=m["id"])) if m else None
             url = store.upload(BUCKET_PLAYER_PHOTOS, f"{p['id']}.png", img, "image/png") if img else None
             fuente = "fotmob"
+            if not url and p.get("sd_url"):
+                m_sd = re.search(r"/en/([^/]+)/profil/spieler_(\d+)\.html", str(p["sd_url"]))
+                prof = sd.perfil(m_sd.group(1), int(m_sd.group(2)), 365) if m_sd else None
+                if prof and prof.get("foto"):
+                    raw_img = sd.image(prof["foto"])
+                    if raw_img:
+                        try:
+                            from .recortar_fotos import procesar_recorte, tiene_fondo_solido
+                            if tiene_fondo_solido(raw_img):
+                                raw_img = procesar_recorte(raw_img)
+                        except Exception:
+                            pass
+                        url = store.upload(BUCKET_PLAYER_PHOTOS, f"{p['id']}_sd.png", raw_img, "image/png")
+                        fuente = "soccerdonna"
             if not url:
                 url, fuente = fotos_365.subir_foto(store, p, club), "365scores"
-            if not url and not p["id"].startswith("sd-"):
+            if not url and not p["id"].startswith("sd-") and p.get("current_team_id"):
                 url, fuente = fotmob.subir_foto_opta(store, p["id"], (p["current_team_id"],)), "opta"
             if url:
-                store.update("players", {"photo_url": f"{url}?v={int(time.time())}", "photo_updated_at": now_iso(),
-                                     "fotmob_id": int(m["id"]) if fuente == "fotmob" else None}, id=p["id"])
+                final_url = f"{url}?v={int(time.time())}"
+                upd = {"photo_url": final_url, "photo_updated_at": now_iso(),
+                       "fotmob_id": int(m["id"]) if fuente == "fotmob" and m else None}
+                if fuente == "fotmob":
+                    upd["fotmob_photo_url"] = final_url
+                store.update("players", upd, id=p["id"])
                 tot[fuente] += 1
             else:
                 tot["sin_foto"] += 1
             if n % 25 == 0:
                 logger.info(f"  Fotos {liga['name']}: {n}/{len(sin_foto)} {tot}")
         logger.info(f"Fotos {liga['name']}: {len(sin_foto)} sin foto → {tot}")
+    marcar(store, liga_code, "last_fotmob_at")
 
 
 def main():
@@ -847,12 +880,11 @@ def main():
         return flujo(store, sd, args.liga, args.limit, args.refresco_dias, args.max_matches, coche_escoba=escoba)
     # Pasos sueltos
     if args.accion == "descargar":
-        descargar(store, sd, args.liga, args.limit, args.refresco_dias)
-        fotos(store, args.liga, args.limit)
+        descargar(store, sd, args.liga, args.limit, args.refresco_dias, con_fotos=False)
     if args.accion == "opta":
         opta(store, args.liga, args.max_matches, modo="todo", solo_ultima=not args.todas_temporadas)
         vincular(store, args.liga)
-        corregir_clubes(store)
+        marcar(store, args.liga, "last_opta_at")
     if args.accion == "opta-jugadoras":
         opta(store, args.liga, args.max_matches, modo="jugadoras")
     if args.accion == "opta-partidos":

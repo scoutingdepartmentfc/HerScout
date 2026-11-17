@@ -622,10 +622,10 @@ function PlayersDirectoryContent() {
       list = list.filter((p) => {
         if (minValue !== "" && (p.marketValue || 0) < Number(minValue)) return false;
         if (maxValue !== "" && (p.marketValue || 0) > Number(maxValue)) return false;
-        if (minMinutes !== "" && (p.minutesPlayed || 0) < Number(minMinutes)) return false;
-        if (maxMinutes !== "" && (p.minutesPlayed || 0) > Number(maxMinutes)) return false;
-        if (minGoals !== "" && (p.goals || 0) < Number(minGoals)) return false;
-        if (maxGoals !== "" && (p.goals || 0) > Number(maxGoals)) return false;
+        if (minMinutes !== "" && (p.recentMinutes ?? p.minutesPlayed ?? 0) < Number(minMinutes)) return false;
+        if (maxMinutes !== "" && (p.recentMinutes ?? p.minutesPlayed ?? 0) > Number(maxMinutes)) return false;
+        if (minGoals !== "" && (p.recentGoals ?? p.goals ?? 0) < Number(minGoals)) return false;
+        if (maxGoals !== "" && (p.recentGoals ?? p.goals ?? 0) > Number(maxGoals)) return false;
         return true;
       });
     }

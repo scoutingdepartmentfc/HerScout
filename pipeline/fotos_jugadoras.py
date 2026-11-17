@@ -160,8 +160,18 @@ def main():
         return
     comps = [c for c in competiciones_objetivo(store) if not args.comp_id or c["id"] == args.comp_id]
     jugadoras, clubes = jugadoras_objetivo(store, comps)
+    if not jugadoras:
+        activas = {l["code"] for l in store.select_all("sd_leagues", "code,enabled") if l.get("enabled")}
+        todas_p = store.select_all(
+            "players",
+            "id,name,match_name,first_name,last_name,birth_date,place_of_birth,photo_url,current_team_id,country,citizenship,fotmob_id,sd_league_code",
+        )
+        jugadoras = [p for p in todas_p if p.get("sd_league_code") in activas]
+        equipos = store.select_all("teams", "id,name")
+        clubes = {t["id"]: t["name"] for t in equipos}
     logger.info(f"Fotos: {len(jugadoras)} jugadoras")
-    logger.info(f"Fotos completado: {sincronizar_fotos_jugadoras(store, FotMobClient(), SDClient(), jugadoras, clubes, args.refresh_photos, comps[-1]['fotmob_id'])}")
+    fotmob_comp_id = comps[-1]["fotmob_id"] if comps else None
+    logger.info(f"Fotos completado: {sincronizar_fotos_jugadoras(store, FotMobClient(), SDClient(), jugadoras, clubes, args.refresh_photos, fotmob_comp_id)}")
     try:
         from . import recortar_fotos
         recortar_fotos.main()

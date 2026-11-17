@@ -312,102 +312,167 @@ export async function GET(req: NextRequest) {
     if (cachedProcessed && cachedProcessed.timestamp === baseCache?.timestamp) {
       processed = cachedProcessed.value;
     } else {
-    const { rows, leagueCountryByCode, leagueCountryByName, trendByPlayer, allPlayers, recentTeamByPlayer, teamsMaster } = base;
+      const { rows, leagueCountryByCode, leagueCountryByName, trendByPlayer, allPlayers, recentTeamByPlayer, teamsMaster } = base;
 
-    // Extract available season names from all rows for the filter dropdown
-    const availableSeasons = Array.from(
-      new Set(rows.map((r: any) => r.seasons?.name).filter(Boolean))
-    ).sort().reverse();
+      // Extract available season names from all rows for the filter dropdown
+      const availableSeasons = Array.from(
+        new Set(rows.map((r: any) => r.seasons?.name).filter(Boolean))
+      ).sort().reverse();
 
-    // Group rows by player
-    const rowsByPlayer = new Map<string, any[]>();
-    for (const r of rows) {
-      if (!r.players || isRetired(r.players)) continue;
-      const arr = rowsByPlayer.get(r.player_id) || [];
-      arr.push(r);
-      rowsByPlayer.set(r.player_id, arr);
-    }
+      // Group rows by player
+      const rowsByPlayer = new Map<string, any[]>();
+      for (const r of rows) {
+        if (!r.players || isRetired(r.players)) continue;
+        const arr = rowsByPlayer.get(r.player_id) || [];
+        arr.push(r);
+        rowsByPlayer.set(r.player_id, arr);
+      }
 
-    const list: any[] = [];
+      const list: any[] = [];
 
-    const intlComps = new Map<string, { name: string; logoUrl: string | null }>();
-    {
-      // Weighted average (by minutes) of every row in scope: all seasons, or every competition of one season
-      // (league + Champions League + cups add up)
-      Array.from(rowsByPlayer.entries()).forEach(([playerId, allRows]) => {
-        const playerRows = season === "all" ? allRows : allRows.filter((r: any) => r.seasons?.name === season);
-        if (!playerRows.length) return;
-        // International club competitions she played (filterable as their own "league")
-        const competitions = Array.from(
-          new Set<string>(
-            playerRows
-              .filter((r: any) => isInternational(r.competition_id, r.competitions?.country))
-              .map((r: any) => r.competitions?.name)
-              .filter(Boolean)
-          )
-        );
-        for (const r of playerRows) {
-          if (r.competitions?.name && isInternational(r.competition_id, r.competitions?.country) && !intlComps.has(r.competitions.name))
-            intlComps.set(r.competitions.name, { name: r.competitions.name, logoUrl: r.competitions.logo_url || null });
-        }
-        const latestRow = [...playerRows].sort((a, b) =>
-          String(b.seasons?.start_date || "").localeCompare(String(a.seasons?.start_date || "")) ||
-          (b.minutes_played || 0) - (a.minutes_played || 0)
-        )[0];
-        const p = preferOptaClub(latestRow.players);
-
-        const ea = Array.isArray(p.player_ea_ratings) ? p.player_ea_ratings[0] : p.player_ea_ratings;
-        const notaFisico = (() => {
-          if (ea?.pace != null && ea?.physicality != null) {
-            return Math.round(Number(ea.pace) * 0.45 + Number(ea.physicality) * 0.55);
+      const intlComps = new Map<string, { name: string; logoUrl: string | null }>();
+      {
+        // Weighted average (by minutes) of every row in scope: all seasons, or every competition of one season
+        // (league + Champions League + cups add up)
+        Array.from(rowsByPlayer.entries()).forEach(([playerId, allRows]) => {
+          const playerRows = season === "all" ? allRows : allRows.filter((r: any) => r.seasons?.name === season);
+          if (!playerRows.length) return;
+          // International club competitions she played (filterable as their own "league")
+          const competitions = Array.from(
+            new Set<string>(
+              playerRows
+                .filter((r: any) => isInternational(r.competition_id, r.competitions?.country))
+                .map((r: any) => r.competitions?.name)
+                .filter(Boolean)
+            )
+          );
+          for (const r of playerRows) {
+            if (r.competitions?.name && isInternational(r.competition_id, r.competitions?.country) && !intlComps.has(r.competitions.name))
+              intlComps.set(r.competitions.name, { name: r.competitions.name, logoUrl: r.competitions.logo_url || null });
           }
-          return ea?.pace != null ? Number(ea.pace) : ea?.physicality != null ? Number(ea.physicality) : null;
-        })();
+          const latestRow = [...playerRows].sort((a, b) =>
+            String(b.seasons?.start_date || "").localeCompare(String(a.seasons?.start_date || "")) ||
+            (b.minutes_played || 0) - (a.minutes_played || 0)
+          )[0];
+          const p = preferOptaClub(latestRow.players);
 
-        // Calculate weighted averages across all seasons with stats
-        let totalMins = 0;
-        let totalMatches = 0;
-        const sumWeighted: Record<string, { sum: number; mins: number }> = {
-          nota_global: { sum: 0, mins: 0 },
-          nota_ataque: { sum: 0, mins: 0 },
-          nota_construccion: { sum: 0, mins: 0 },
-          nota_defensa: { sum: 0, mins: 0 },
-          nota_balon_parado: { sum: 0, mins: 0 },
-          nota_disponibilidad: { sum: 0, mins: 0 },
-        };
+          const ea = Array.isArray(p.player_ea_ratings) ? p.player_ea_ratings[0] : p.player_ea_ratings;
+          const notaFisico = (() => {
+            if (ea?.pace != null && ea?.physicality != null) {
+              return Math.round(Number(ea.pace) * 0.45 + Number(ea.physicality) * 0.55);
+            }
+            return ea?.pace != null ? Number(ea.pace) : ea?.physicality != null ? Number(ea.physicality) : null;
+          })();
 
-        for (const r of playerRows) {
-          const m = Number(r.minutes_played) || 0;
-          totalMins += m;
-          totalMatches += Number(r.matches_played) || 0;
-          for (const k of Object.keys(sumWeighted)) {
-            if (r[k] != null) {
-              sumWeighted[k].sum += Number(r[k]) * m;
-              sumWeighted[k].mins += m;
+          // Calculate weighted averages across all seasons with stats
+          let totalMins = 0;
+          let totalMatches = 0;
+          const sumWeighted: Record<string, { sum: number; mins: number }> = {
+            nota_global: { sum: 0, mins: 0 },
+            nota_ataque: { sum: 0, mins: 0 },
+            nota_construccion: { sum: 0, mins: 0 },
+            nota_defensa: { sum: 0, mins: 0 },
+            nota_balon_parado: { sum: 0, mins: 0 },
+            nota_disponibilidad: { sum: 0, mins: 0 },
+          };
+
+          for (const r of playerRows) {
+            const m = Number(r.minutes_played) || 0;
+            totalMins += m;
+            totalMatches += Number(r.matches_played) || 0;
+            for (const k of Object.keys(sumWeighted)) {
+              if (r[k] != null) {
+                sumWeighted[k].sum += Number(r[k]) * m;
+                sumWeighted[k].mins += m;
+              }
             }
           }
-        }
 
-        // Most recent season in scope (all its competitions added up): matches, minutes and goals
-        const recentSeason = latestRow.seasons?.name || null;
-        const recentRows = playerRows.filter((r: any) => (r.seasons?.name || null) === recentSeason);
-        const recentSum = (k: string) => recentRows.reduce((n: number, r: any) => n + (Number(r[k]) || 0), 0);
+          // Most recent season in scope (all its competitions added up): matches, minutes and goals
+          const recentSeason = latestRow.seasons?.name || null;
+          const recentRows = playerRows.filter((r: any) => (r.seasons?.name || null) === recentSeason);
+          const recentSum = (k: string) => recentRows.reduce((n: number, r: any) => n + (Number(r[k]) || 0), 0);
 
-        const getWeightedVal = (k: string) => {
-          const item = sumWeighted[k];
-          return item.mins > 0 ? item.sum / item.mins : null;
-        };
+          const getWeightedVal = (k: string) => {
+            const item = sumWeighted[k];
+            return item.mins > 0 ? item.sum / item.mins : null;
+          };
 
-        // No current club (Soccerdonna / current_team_id): club of her latest match, only if within the last 3 months
-        const fallbackTeam = !p.teams && !p.fm_team_name ? recentTeamByPlayer.get(p.id) || null : null;
-        const teamName = p.teams?.name || fallbackTeam?.name || p.fm_team_name || NO_CLUB_DATA;
-        const hasClub = !!(p.teams || fallbackTeam || p.fm_team_name);
-        const leagueName = p.current_league_name || p.teams?.league_name || (hasClub ? latestRow.competitions?.name : null) || null;
+          // No current club (Soccerdonna / current_team_id): club of her latest match, only if within the last 3 months
+          const fallbackTeam = !p.teams && !p.fm_team_name ? recentTeamByPlayer.get(p.id) || null : null;
+          const teamName = p.teams?.name || fallbackTeam?.name || p.fm_team_name || NO_CLUB_DATA;
+          const hasClub = !!(p.teams || fallbackTeam || p.fm_team_name);
+          const leagueName = p.current_league_name || p.teams?.league_name || (hasClub ? latestRow.competitions?.name : null) || null;
+          const leagueCountry =
+            (leagueName ? leagueCountryByName.get(leagueName.toLowerCase()) : null) ||
+            (p.teams?.league_name ? leagueCountryByName.get(p.teams.league_name.toLowerCase()) : null) ||
+            p.teams?.country ||
+            (p.sd_league_code ? leagueCountryByCode.get(p.sd_league_code) : null) ||
+            null;
+
+          list.push({
+            id: p.id,
+            name: p.name,
+            matchName: p.match_name || p.name,
+            country: p.country,
+            birthDate: p.birth_date,
+            photoUrl: p.photo_url,
+            position: latestRow.demarcacion || p.primary_position || "Centrocampista",
+            grupoDemarcacion: latestRow.grupo_demarcacion || p.grupo_demarcacion || "General",
+            shirtNumber: p.shirt_number,
+            height: p.height,
+            weight: p.weight,
+            preferredFoot: p.preferred_foot,
+            marketValue: p.market_value,
+            contractUntil: p.contract_expires,
+            recentSeason,
+            recentMatches: recentSum("matches_played"),
+            recentMinutes: recentSum("minutes_played"),
+            // player_season_stats only stores goals per 90: goals = goals_p90 * minutes / 90 (exact after rounding)
+            recentGoals: recentRows.reduce(
+              (n: number, r: any) => n + Math.round(((Number(r.goals_p90) || 0) * (Number(r.minutes_played) || 0)) / 90),
+              0
+            ),
+            teamId: p.teams?.id || fallbackTeam?.id,
+            teamName,
+            badgeUrl: (p.fm_team_name ? p.fm_team_badge_url : null) || p.teams?.badge_url || fallbackTeam?.badge_url,
+            leagueName,
+            leagueLogoUrl: p.current_league_logo_url || p.teams?.league_logo_url || (leagueName === latestRow.competitions?.name ? latestRow.competitions?.logo_url : null),
+            leagueCountry,
+            seasonName: season !== "all" ? season : playerRows.length > 1 ? `All seasons (${playerRows.length})` : playerRows[0]?.seasons?.name || null,
+            competitions,
+            isAccumulated: playerRows.length > 1,
+            minutesPlayed: totalMins,
+            matchesPlayed: totalMatches,
+            notaGlobal: getWeightedVal("nota_global"),
+            notaAtaque: getWeightedVal("nota_ataque"),
+            notaConstruccion: getWeightedVal("nota_construccion"),
+            notaDefensa: getWeightedVal("nota_defensa"),
+            notaBalonParado: getWeightedVal("nota_balon_parado"),
+            notaDisponibilidad: getWeightedVal("nota_disponibilidad"),
+            notaFisico,
+            hasRatings: true,
+            lowSample: isLowSample(totalMins, totalMatches),
+          });
+        });
+      }
+
+      // Players without season stats (e.g. leagues where Opta has no player data): listed without ratings
+      for (const p of allPlayers) {
+        if (rowsByPlayer.has(p.id) || isRetired(p)) continue;
+        preferOptaClub(p);
+        const ea = Array.isArray(p.player_ea_ratings) ? p.player_ea_ratings[0] : p.player_ea_ratings;
+        const notaFisico =
+          ea?.pace != null && ea?.physicality != null
+            ? Math.round(Number(ea.pace) * 0.45 + Number(ea.physicality) * 0.55)
+            : ea?.pace != null ? Number(ea.pace) : ea?.physicality != null ? Number(ea.physicality) : null;
+        const teamName = p.teams?.name || p.fm_team_name || NO_CLUB_DATA;
+        const leagueName = p.current_league_name || p.teams?.league_name || null;
         const leagueCountry =
           (leagueName ? leagueCountryByName.get(leagueName.toLowerCase()) : null) ||
           (p.teams?.league_name ? leagueCountryByName.get(p.teams.league_name.toLowerCase()) : null) ||
-          p.teams?.country ||
           (p.sd_league_code ? leagueCountryByCode.get(p.sd_league_code) : null) ||
+          p.teams?.country ||
           null;
 
         list.push({
@@ -417,165 +482,100 @@ export async function GET(req: NextRequest) {
           country: p.country,
           birthDate: p.birth_date,
           photoUrl: p.photo_url,
-          position: latestRow.demarcacion || p.primary_position || "Centrocampista",
-          grupoDemarcacion: latestRow.grupo_demarcacion || p.grupo_demarcacion || "General",
+          position: p.primary_position || "Centrocampista",
+          grupoDemarcacion: p.grupo_demarcacion || "General",
           shirtNumber: p.shirt_number,
           height: p.height,
           weight: p.weight,
           preferredFoot: p.preferred_foot,
           marketValue: p.market_value,
           contractUntil: p.contract_expires,
-          recentSeason,
-          recentMatches: recentSum("matches_played"),
-          recentMinutes: recentSum("minutes_played"),
-          // player_season_stats only stores goals per 90: goals = goals_p90 * minutes / 90 (exact after rounding)
-          recentGoals: recentRows.reduce(
-            (n: number, r: any) => n + Math.round(((Number(r.goals_p90) || 0) * (Number(r.minutes_played) || 0)) / 90),
-            0
-          ),
-          teamId: p.teams?.id || fallbackTeam?.id,
+          recentSeason: null,
+          recentMatches: null,
+          recentMinutes: null,
+          recentGoals: null,
+          teamId: p.teams?.id,
           teamName,
-          badgeUrl: (p.fm_team_name ? p.fm_team_badge_url : null) || p.teams?.badge_url || fallbackTeam?.badge_url,
+          badgeUrl: (p.fm_team_name ? p.fm_team_badge_url : null) || p.teams?.badge_url,
           leagueName,
-          leagueLogoUrl: p.current_league_logo_url || p.teams?.league_logo_url || (leagueName === latestRow.competitions?.name ? latestRow.competitions?.logo_url : null),
+          leagueLogoUrl: p.current_league_logo_url || p.teams?.league_logo_url,
           leagueCountry,
-          seasonName: season !== "all" ? season : playerRows.length > 1 ? `All seasons (${playerRows.length})` : playerRows[0]?.seasons?.name || null,
-          competitions,
-          isAccumulated: playerRows.length > 1,
-          minutesPlayed: totalMins,
-          matchesPlayed: totalMatches,
-          notaGlobal: getWeightedVal("nota_global"),
-          notaAtaque: getWeightedVal("nota_ataque"),
-          notaConstruccion: getWeightedVal("nota_construccion"),
-          notaDefensa: getWeightedVal("nota_defensa"),
-          notaBalonParado: getWeightedVal("nota_balon_parado"),
-          notaDisponibilidad: getWeightedVal("nota_disponibilidad"),
+          seasonName: null,
+          competitions: [],
+          isAccumulated: false,
+          minutesPlayed: 0,
+          matchesPlayed: 0,
+          notaGlobal: null,
+          notaAtaque: null,
+          notaConstruccion: null,
+          notaDefensa: null,
+          notaBalonParado: null,
+          notaDisponibilidad: null,
           notaFisico,
-          hasRatings: true,
-          lowSample: isLowSample(totalMins, totalMatches),
+          hasRatings: false,
         });
-      });
-    }
+      }
 
-    // Players without season stats (e.g. leagues where Opta has no player data): listed without ratings
-    for (const p of allPlayers) {
-      if (rowsByPlayer.has(p.id) || isRetired(p)) continue;
-      preferOptaClub(p);
-      const ea = Array.isArray(p.player_ea_ratings) ? p.player_ea_ratings[0] : p.player_ea_ratings;
-      const notaFisico =
-        ea?.pace != null && ea?.physicality != null
-          ? Math.round(Number(ea.pace) * 0.45 + Number(ea.physicality) * 0.55)
-          : ea?.pace != null ? Number(ea.pace) : ea?.physicality != null ? Number(ea.physicality) : null;
-      const teamName = p.teams?.name || p.fm_team_name || NO_CLUB_DATA;
-      const leagueName = p.current_league_name || p.teams?.league_name || null;
-      const leagueCountry =
-        (leagueName ? leagueCountryByName.get(leagueName.toLowerCase()) : null) ||
-        (p.teams?.league_name ? leagueCountryByName.get(p.teams.league_name.toLowerCase()) : null) ||
-        (p.sd_league_code ? leagueCountryByCode.get(p.sd_league_code) : null) ||
-        p.teams?.country ||
-        null;
+      // Available filter options extracted from all data and master teams
+      const teamsMap = new Map<string, { name: string; teamId?: string | null; badgeUrl?: string | null; leagueName?: string }>();
+      const leaguesMap = new Map<string, { name: string; logoUrl?: string | null; country?: string | null }>();
 
-      list.push({
-        id: p.id,
-        name: p.name,
-        matchName: p.match_name || p.name,
-        country: p.country,
-        birthDate: p.birth_date,
-        photoUrl: p.photo_url,
-        position: p.primary_position || "Centrocampista",
-        grupoDemarcacion: p.grupo_demarcacion || "General",
-        shirtNumber: p.shirt_number,
-        height: p.height,
-        weight: p.weight,
-        preferredFoot: p.preferred_foot,
-        marketValue: p.market_value,
-        contractUntil: p.contract_expires,
-        recentSeason: null,
-        recentMatches: null,
-        recentMinutes: null,
-        recentGoals: null,
-        teamId: p.teams?.id,
-        teamName,
-        badgeUrl: (p.fm_team_name ? p.fm_team_badge_url : null) || p.teams?.badge_url,
-        leagueName,
-        leagueLogoUrl: p.current_league_logo_url || p.teams?.league_logo_url,
-        leagueCountry,
-        seasonName: null,
-        competitions: [],
-        isAccumulated: false,
-        minutesPlayed: 0,
-        matchesPlayed: 0,
-        notaGlobal: null,
-        notaAtaque: null,
-        notaConstruccion: null,
-        notaDefensa: null,
-        notaBalonParado: null,
-        notaDisponibilidad: null,
-        notaFisico,
-        hasRatings: false,
-      });
-    }
+      // Seed master teams to guarantee canonical team -> league mapping
+      if (teamsMaster && teamsMaster.length) {
+        for (const tm of teamsMaster) {
+          if (tm.name && !teamsMap.has(tm.name)) {
+            teamsMap.set(tm.name, {
+              name: tm.name,
+              teamId: tm.id,
+              badgeUrl: tm.badgeUrl || null,
+              leagueName: tm.leagueName,
+            });
+          }
+        }
+      }
 
-    // Available filter options extracted from all data and master teams
-    const teamsMap = new Map<string, { name: string; teamId?: string | null; badgeUrl?: string | null; leagueName?: string }>();
-    const leaguesMap = new Map<string, { name: string; logoUrl?: string | null; country?: string | null }>();
-
-    // Seed master teams to guarantee canonical team -> league mapping
-    if (teamsMaster && teamsMaster.length) {
-      for (const tm of teamsMaster) {
-        if (tm.name && !teamsMap.has(tm.name)) {
-          teamsMap.set(tm.name, {
-            name: tm.name,
-            teamId: tm.id,
-            badgeUrl: tm.badgeUrl || null,
-            leagueName: tm.leagueName,
+      for (const p of list) {
+        if (p.teamName && !teamsMap.has(p.teamName)) {
+          teamsMap.set(p.teamName, {
+            name: p.teamName,
+            teamId: p.teamId || null,
+            badgeUrl: p.badgeUrl || null,
+            leagueName: p.leagueName,
+          });
+        }
+        if (p.leagueName && !leaguesMap.has(p.leagueName)) {
+          leaguesMap.set(p.leagueName, {
+            name: p.leagueName,
+            logoUrl: p.leagueLogoUrl || null,
+            country: p.leagueCountry || null,
           });
         }
       }
-    }
 
-    for (const p of list) {
-      if (p.teamName && !teamsMap.has(p.teamName)) {
-        teamsMap.set(p.teamName, {
-          name: p.teamName,
-          teamId: p.teamId || null,
-          badgeUrl: p.badgeUrl || null,
-          leagueName: p.leagueName,
-        });
+      for (const c of Array.from(intlComps.values())) {
+        if (!leaguesMap.has(c.name)) leaguesMap.set(c.name, { name: c.name, logoUrl: c.logoUrl, country: INTERNATIONAL_COUNTRY });
       }
-      if (p.leagueName && !leaguesMap.has(p.leagueName)) {
-        leaguesMap.set(p.leagueName, {
-          name: p.leagueName,
-          logoUrl: p.leagueLogoUrl || null,
-          country: p.leagueCountry || null,
-        });
+
+      const availableTeamsList = Array.from(teamsMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+      const availableLeaguesList = Array.from(leaguesMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+      const availableTeams = availableTeamsList.map((t) => t.name);
+      const availableLeagues = availableLeaguesList.map((l) => l.name);
+
+      for (const p of list) {
+        p.trend = trendByPlayer.get(p.id) ?? null;
       }
-    }
 
-    for (const c of Array.from(intlComps.values())) {
-      if (!leaguesMap.has(c.name)) leaguesMap.set(c.name, { name: c.name, logoUrl: c.logoUrl, country: INTERNATIONAL_COUNTRY });
-    }
-
-    const availableTeamsList = Array.from(teamsMap.values()).sort((a, b) => a.name.localeCompare(b.name));
-    const availableLeaguesList = Array.from(leaguesMap.values()).sort((a, b) => a.name.localeCompare(b.name));
-    const availableTeams = availableTeamsList.map((t) => t.name);
-    const availableLeagues = availableLeaguesList.map((l) => l.name);
-
-    for (const p of list) {
-      p.trend = trendByPlayer.get(p.id) ?? null;
-    }
-
-    processed = {
-      list,
-      filters: {
-        teams: availableTeams,
-        teamsDetailed: availableTeamsList,
-        leagues: availableLeagues,
-        leaguesDetailed: availableLeaguesList,
-        seasons: availableSeasons,
-      },
-    };
-    processedCache.set(season, { timestamp: baseCache?.timestamp ?? now, value: processed });
+      processed = {
+        list,
+        filters: {
+          teams: availableTeams,
+          teamsDetailed: availableTeamsList,
+          leagues: availableLeagues,
+          leaguesDetailed: availableLeaguesList,
+          seasons: availableSeasons,
+        },
+      };
+      processedCache.set(season, { timestamp: baseCache?.timestamp ?? now, value: processed });
     }
 
     const evaluatedPeriod = "TREND (LAST 3M)";
@@ -599,8 +599,8 @@ export async function GET(req: NextRequest) {
     const selectedTeams = teamsParam
       ? teamsParam.split(",").map((t) => t.trim().toLowerCase()).filter(Boolean)
       : team !== "all"
-      ? [team.trim().toLowerCase()]
-      : [];
+        ? [team.trim().toLowerCase()]
+        : [];
 
     if (selectedTeams.length > 0) {
       list = list.filter((p: any) => selectedTeams.includes((p.teamName || "").toLowerCase()));

@@ -77,10 +77,26 @@ function ago(iso?: string | null) {
 const fullDate = (iso?: string | null) => (iso ? new Date(iso).toLocaleString("es-ES") : "Sin descargar");
 
 /** Status of one part of the download: main figure, detail and date of the last run. */
-function StatusCell({ value, detail, date, done }: { value: string; detail?: string; date?: string | null; done: boolean }) {
+function StatusCell({ value, detail, date, done, progress }: { value: string; detail?: string; date?: string | null; done: boolean; progress?: number }) {
+  const pct = progress !== undefined ? Math.max(0, Math.min(100, progress)) : undefined;
   return (
-    <div className="space-y-0.5" title={`Última descarga: ${fullDate(date)}`}>
-      <div className={`text-xs font-semibold ${done ? "text-white" : "text-muted-foreground"}`}>{value}</div>
+    <div className="space-y-1 min-w-[110px]" title={`Última descarga: ${fullDate(date)}`}>
+      <div className="flex items-center justify-between gap-2">
+        <span className={`text-xs font-semibold ${done ? "text-white" : "text-muted-foreground"}`}>{value}</span>
+        {pct !== undefined && (
+          <span className={`text-[10px] font-mono font-semibold ${pct === 100 ? "text-emerald-400" : pct > 0 ? "text-sky-300" : "text-muted-foreground"}`}>
+            {pct}%
+          </span>
+        )}
+      </div>
+      {pct !== undefined && (
+        <div className="h-1.5 w-full rounded-full bg-white/10 overflow-hidden">
+          <div
+            className="h-full rounded-full bg-gradient-to-r from-emerald-400 via-teal-400 to-sky-400 transition-all duration-500 shadow-[0_0_8px_rgba(52,211,153,0.45)]"
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+      )}
       {detail && <div className="text-[10px] text-muted-foreground">{detail}</div>}
       <div className={`text-[10px] ${date ? "text-sky-300/80" : "text-amber-300/80"}`}>{ago(date)}</div>
     </div>
@@ -189,6 +205,14 @@ export function SoccerdonnaLeagues() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (!leagues.some((l) => l.enabled)) return;
+    const id = setInterval(() => {
+      load();
+    }, 10000);
+    return () => clearInterval(id);
+  }, [leagues, load]);
 
   const send = async (key: string, body: Record<string, any>) => {
     setSaving(key);
@@ -505,18 +529,19 @@ export function SoccerdonnaLeagues() {
                       <>
                         <td className="py-3 px-3">
                           <StatusCell done={s.players > 0} value={`${s.players} jugadoras`}
-                            detail={`${s.teams}${l.teams ? `/${l.teams}` : ""} clubes`} date={l.last_download_at} />
+                            detail={`${s.teams}${l.teams ? `/${l.teams}` : ""} clubes`} date={l.last_download_at}
+                            progress={l.last_download_at ? 100 : l.teams ? Math.min(99, Math.round((s.teams / l.teams) * 100)) : s.players > 0 ? 50 : 0} />
                         </td>
                         <td className="py-3 px-3">
                           {l.opta_competition_id ? (
-                            <StatusCell done={s.opta > 0} value={`${s.opta} vinculadas`} detail={`${pct(s.opta)}% de la plantilla`}
+                            <StatusCell done={s.opta > 0} value={`${s.opta} vinculadas`} detail={`${pct(s.opta)}% de la plantilla`} progress={pct(s.opta)}
                               date={l.last_opta_at} />
                           ) : (
                             <span className="text-[10px] text-muted-foreground">Sin ID Opta</span>
                           )}
                         </td>
                         <td className="py-3 px-3">
-                          <StatusCell done={s.photos > 0} value={`${s.photos} con foto`} detail={`${pct(s.photos)}% de la plantilla`}
+                          <StatusCell done={s.photos > 0} value={`${s.photos} con foto`} detail={`${pct(s.photos)}% de la plantilla`} progress={pct(s.photos)}
                             date={l.last_fotmob_at} />
                         </td>
                       </>

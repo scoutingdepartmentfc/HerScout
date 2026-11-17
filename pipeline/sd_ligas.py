@@ -274,6 +274,11 @@ def descargar(store: Store, sd: SDClient, liga_code: Optional[str], limit: Optio
                 p = {"id": ids.get(j["sd_id"], f"sd-{j['sd_id']}"), "name": j["name"]}
                 filas = filas_jugadora(p, j, prof, sd.traspasos(j["slug"], j["sd_id"], frescura), now_iso())
                 row = filas["players"][0]
+                if not row.get("primary_position") or row.get("primary_position") == "Desconocida":
+                    from .demarcaciones import por_texto
+                    dem, _ = por_texto(prof.get("posicion") or prof.get("position") or j.get("position"))
+                    if dem:
+                        row["primary_position"] = dem
                 row.update(sd_league_code=liga["code"], country=(prof["nacionalidades"] or [None])[0],
                            shirt_number=prof.get("dorsal"))
                 # Club actual y su liga según Soccerdonna (puede haber fichado por otra liga)

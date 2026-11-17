@@ -162,6 +162,7 @@ async function loadBaseData(db: any): Promise<BaseData> {
           country,
           birth_date,
           photo_url,
+          fotmob_photo_url,
           primary_position,
           grupo_demarcacion,
           shirt_number,
@@ -182,7 +183,7 @@ async function loadBaseData(db: any): Promise<BaseData> {
       .select("player_id", { count: "exact", head: true });
 
     // Stats count, sd_leagues and trends all run in parallel
-    const PLAYER_FIELDS = `id, name, match_name, country, birth_date, photo_url, primary_position, grupo_demarcacion,
+    const PLAYER_FIELDS = `id, name, match_name, country, birth_date, photo_url, fotmob_photo_url, primary_position, grupo_demarcacion,
       shirt_number, height, weight, preferred_foot, market_value, contract_expires,
       fm_team_name, fm_team_badge_url, current_league_name, current_league_logo_url, sd_league_code,
       teams:current_team_id ( id, name, badge_url, league_name, league_logo_url ),
@@ -416,7 +417,7 @@ export async function GET(req: NextRequest) {
             matchName: p.match_name || p.name,
             country: p.country,
             birthDate: p.birth_date,
-            photoUrl: p.photo_url,
+            photoUrl: p.fotmob_photo_url || p.photo_url,
             position: latestRow.demarcacion || p.primary_position || "Centrocampista",
             grupoDemarcacion: latestRow.grupo_demarcacion || p.grupo_demarcacion || "General",
             shirtNumber: p.shirt_number,
@@ -481,7 +482,7 @@ export async function GET(req: NextRequest) {
           matchName: p.match_name || p.name,
           country: p.country,
           birthDate: p.birth_date,
-          photoUrl: p.photo_url,
+          photoUrl: p.fotmob_photo_url || p.photo_url,
           position: p.primary_position || "Centrocampista",
           grupoDemarcacion: p.grupo_demarcacion || "General",
           shirtNumber: p.shirt_number,

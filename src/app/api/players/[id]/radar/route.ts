@@ -49,15 +49,15 @@ async function loadPool(db: any, seasonIds: string[], grupo: string): Promise<Ro
   return rows;
 }
 
-/** Percentile (0-100) of v within vals (mid-rank for ties) */
-function percentile(vals: number[], v: number) {
+/** Percentile (0-100) of v within vals (mid-rank for ties; invert=true when lower is better) */
+function percentile(vals: number[], v: number, invert = false) {
   if (!vals.length) return null;
-  let below = 0, equal = 0;
+  let better = 0, equal = 0;
   for (const x of vals) {
-    if (x < v) below++;
+    if (invert ? x > v : x < v) better++;
     else if (x === v) equal++;
   }
-  return ((below + equal / 2) / vals.length) * 100;
+  return ((better + equal / 2) / vals.length) * 100;
 }
 
 /** One row per player (the one with most minutes if she appears twice) */
@@ -70,11 +70,11 @@ function perPlayer(rows: Row[]) {
   return Array.from(best.values());
 }
 
-/** Position of v in rows for one stat (1 = highest; ties share the rank) */
-function metricRank(rows: Row[], key: string, v: number | null) {
+/** Position of v in rows for one stat (1 = best; ties share the rank) */
+function metricRank(rows: Row[], key: string, v: number | null, invert = false) {
   const vals = rows.map((r) => statValue(r.metricas, key)).filter((x): x is number => x != null);
   if (v == null) return { rank: null, total: vals.length };
-  return { rank: 1 + vals.filter((x) => x > v).length, total: vals.length };
+  return { rank: 1 + vals.filter((x) => (invert ? x < v : x > v)).length, total: vals.length };
 }
 
 function weightedAvg(rows: Row[], key: string) {
@@ -150,8 +150,8 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       // Axis max: 95th percentile of the whole pool, so outliers don't squash the radar (≤100 for % stats)
       const p95 = values.length ? values[Math.min(values.length - 1, Math.floor(values.length * 0.95))] : null;
       const max = Math.max(p95 || 0, 1e-6);
-      const lr = metricRank(perPlayer(leaguePool), st.key, v);
-      const or = metricRank(perPlayer(pool), st.key, v);
+      const lr = metricRank(perPlayer(leaguePool), st.key, v, st.invert);
+      const or = metricRank(perPlayer(pool), st.key, v, st.invert);
       return {
         ...st,
         value: v,
@@ -161,8 +161,8 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         overallTotal: or.total,
         leagueAvg: weightedAvg(leaguePool, st.key),
         compareAvg: compareId ? weightedAvg(comparePool, st.key) : null,
-        leaguePercentile: v == null ? null : percentile(leagueVals, v),
-        overallPercentile: v == null ? null : percentile(values, v),
+        leaguePercentile: v == null ? null : percentile(leagueVals, v, st.invert),
+        overallPercentile: v == null ? null : percentile(values, v, st.invert),
         max,
       };
     });

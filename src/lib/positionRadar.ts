@@ -13,7 +13,10 @@ export interface RadarStat {
   ref: string; // stat name in the department's list
   weight: number;
   isPct?: boolean;
+  invert?: boolean; // true when lower values are better (e.g. goals conceded, xG conceded)
 }
+
+const INVERT_KEYS = new Set(["def_goles_encajados_p90", "def_xg_contra_p90", "def_goles_menos_xgc_p90"]);
 
 export interface RadarTemplate {
   id: RadarTemplateId;
@@ -22,7 +25,14 @@ export interface RadarTemplate {
   stats: RadarStat[];
 }
 
-const s = (key: string, label: string, ref: string, weight: number, isPct = false): RadarStat => ({ key, label, ref, weight, isPct });
+const s = (key: string, label: string, ref: string, weight: number, isPct = false): RadarStat => ({
+  key,
+  label,
+  ref,
+  weight,
+  isPct,
+  invert: INVERT_KEYS.has(key),
+});
 
 /** Metrics not stored by the pipeline, computed from stored ones */
 export const DERIVED: Record<string, (m: Record<string, [number, number]>) => number | null> = {

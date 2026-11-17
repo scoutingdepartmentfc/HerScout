@@ -76,9 +76,11 @@ def scale_0_10(serie: pd.Series, invert: bool = False) -> pd.Series:
 
 
 def _grupos(df: pd.DataFrame, minimo: int) -> pd.Series:
-    """Grupo de demarcación de cada fila; los grupos pequeños (o sin grupo) se comparan con toda la liga."""
-    return df['grupo_demarcacion'].where(
-        df.groupby('grupo_demarcacion')['player_id'].transform('size') >= minimo, '_liga').fillna('_liga')
+    """Grupo de demarcación de cada fila; los grupos pequeños de campo se comparan con las jugadoras de campo (_liga).
+    Las porteras NUNCA se mezclan con jugadoras de campo: siempre se comparan solo entre porteras."""
+    g = df['grupo_demarcacion']
+    n = g.groupby(g).transform('size')
+    return g.where((g == 'Porteros') | (n >= minimo), '_liga').fillna('_liga')
 
 
 def _categorias(pcts: pd.DataFrame, grupo: pd.Series) -> Tuple[pd.DataFrame, pd.DataFrame]:
@@ -455,7 +457,7 @@ def _z_combinada(v: pd.Series, grupos: pd.Series, grupos_dem: pd.Series, ref: pd
         suma, n = vr.groupby(clave).transform('sum'), vr.groupby(clave).transform('count')
         propia = vr.notna().astype(float)
         media_eq = (suma - vr.fillna(0)) / (n - propia)  # compañeras, sin ella
-        partes['equipo'] = ((v - media_eq) / sd_liga).where((n - propia >= 1) & (sd_liga > 1e-9))
+        partes['equipo'] = ((v - media_eq) / sd_liga).where((grupos != 'Porteros') & (n - propia >= 1) & (sd_liga > 1e-9))
     g_media, g_sd = {}, {}
     for g, met in general.items():
         t = met.get(col)
@@ -576,31 +578,33 @@ def puntuar_temporada(df_temp: pd.DataFrame, nivel: float = NOTA_MEDIA_LIGA, gen
     df_temp['score_defensivo'] = a10(df_temp['nota_defensa'])
     df_temp['score_abp'] = a10(df_temp['nota_balon_parado'])
     df_temp['score_comportamiento'] = a10(df_temp['nota_disponibilidad'])
-    # Percentiles en la liga frente a las jugadoras con muestra suficiente (las de muestra baja se sitúan
-    # respecto a ellas, pero no mueven el ranking de las demás)
+    # Percentiles, notas base y top 10 separando siempre Porteros del resto de jugadoras de campo
+    es_gk = df_temp['grupo_demarcacion'] == 'Porteros'
     fiables = ~df_temp['_muestra_baja']
-    if fiables.sum() < 2:
-        fiables = pd.Series(True, index=df_temp.index)
     for sc in SCORE_COLS:
-        ref_vals = np.sort(df_temp.loc[fiables, sc].to_numpy(dtype=float))
-        if len(ref_vals) > 1:
-            lo = np.searchsorted(ref_vals, df_temp[sc].to_numpy(dtype=float), side='left')
-            hi = np.searchsorted(ref_vals, df_temp[sc].to_numpy(dtype=float), side='right')
-            df_temp[sc.replace('score_', 'percentile_')] = np.round((lo + hi) / 2 / len(ref_vals) * 99, 2)
-        else:
-            df_temp[sc.replace('score_', 'percentile_')] = 50.0
-    # Nota de cada métrica (0-10): la de su categoría (percentil corregido por minutos, en la escala de la liga)
-    # o, si no está en la jerarquía, la escala clásica frente a la liga
-    notas = pd.DataFrame({c: scale_0_10(df_temp[c], invert=c in MALUS_METRICS) for c in cols})
+        df_temp[sc.replace('score_', 'percentile_')] = 50.0
+    notas = pd.DataFrame(5.0, index=df_temp.index, columns=cols)
+    puestos = pd.DataFrame(np.nan, index=df_temp.index, columns=cols)
+    for mask_pool in (es_gk, ~es_gk):
+        if not mask_pool.any():
+            continue
+        fiables_pool = fiables & mask_pool
+        if fiables_pool.sum() < 2:
+            fiables_pool = mask_pool
+        for sc in SCORE_COLS:
+            ref_vals = np.sort(df_temp.loc[fiables_pool, sc].to_numpy(dtype=float))
+            if len(ref_vals) > 1:
+                vals_pool = df_temp.loc[mask_pool, sc].to_numpy(dtype=float)
+                lo = np.searchsorted(ref_vals, vals_pool, side='left')
+                hi = np.searchsorted(ref_vals, vals_pool, side='right')
+                df_temp.loc[mask_pool, sc.replace('score_', 'percentile_')] = np.round((lo + hi) / 2 / len(ref_vals) * 99, 2)
+        for c in cols:
+            notas.loc[mask_pool, c] = scale_0_10(df_temp.loc[mask_pool, c], invert=c in MALUS_METRICS)
+            puestos.loc[fiables_pool, c] = df_temp.loc[fiables_pool, c].rank(ascending=c in MALUS_METRICS, method='min')
     for i in df_temp.index:
         for c, n in df_temp.at[i, '_notas_met'].items():
             if c in notas.columns and pd.notna(n):
                 notas.at[i, c] = round(n / 10, 2)
-
-    # Puesto en la liga por métrica (1 = mejor; en las de malus, menos es mejor). Solo se guarda el top 10,
-    # se ignoran valores 0 en las métricas positivas y las jugadoras con muestra baja no entran en el ranking.
-    puestos = pd.DataFrame({c: df_temp.loc[fiables, c].rank(ascending=c in MALUS_METRICS, method='min')
-                            for c in cols}).reindex(df_temp.index)
     def top10(i):
         out = {}
         if df_temp.at[i, '_muestra_baja']:

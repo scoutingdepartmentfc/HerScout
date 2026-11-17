@@ -176,7 +176,7 @@ async function loadBaseData(db: any): Promise<BaseData> {
           teams:current_team_id ( id, name, badge_url, league_name, league_logo_url ),
           player_ea_ratings ( pace, physicality )
         )
-      `);
+      `).not("players.sd_id", "is", null);
 
     const statsCountPromise = db
       .from("player_season_stats")

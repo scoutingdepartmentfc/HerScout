@@ -391,7 +391,7 @@ def opta(store: Store, liga_code: Optional[str], max_matches: Optional[int], sol
             hechos = set(cache["match_id"].unique()) if not cache.empty else set()
             fixtures = pipe.adapter.get_fixtures(comp["season_id"])
             pipe.guardar_calendario(comp, fixtures, hechos)
-            pipe.procesar_partidos(comp, fixtures, hechos, perfiles, cache)
+            pipe.procesar_partidos(comp, fixtures, hechos, perfiles)
     if pipe.totales["matches"]:
         try:  # extra: si falla, los datos de la liga ya están guardados y la descarga sigue
             pipe.actualizar_similares()

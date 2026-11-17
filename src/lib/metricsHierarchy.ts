@@ -88,6 +88,7 @@ export const METRICS_HIERARCHY: CategoryDef[] = [
           m("of_remates_primeras_2o_palo_p90", "First-time shots (far post)"),
           m("of_remates_centro_p90", "Shots from crosses"),
           m("of_goles_remate_centro_p90", "Goals from crosses"),
+          m("of_toques_area_rival_p90", "Touches in opp. box"),
         ],
       },
       {
@@ -98,6 +99,8 @@ export const METRICS_HIERARCHY: CategoryDef[] = [
           m("of_asistencia_gol_p90", "Goal assists"),
           m("of_xA_p90", "xA (expected assists)"),
           m("of_xCA_p90", "xCA (expected chain actions)"),
+          m("of_grandes_ocasiones_creadas_p90", "Big chances created"),
+          m("of_entradas_area_p90", "Penalty area entries"),
           m("of_pases_con_ventaja_p90", "Advantage passes"),
           m("of_pase_filtrado_avanzado_p90", "Advanced through balls"),
           m("of_pase_largo_finalizacion_p90", "Long passes to a shot"),
@@ -135,6 +138,7 @@ export const METRICS_HIERARCHY: CategoryDef[] = [
           m("of_participacion_pos_pct", "Involvement in possession %", true),
           m("of_ambidiestro_pct", "Weak foot usage %", true),
           m("of_descarga_primeras_p90", "First-time lay-offs"),
+          m("of_toques_p90", "Touches"),
         ],
       },
       {
@@ -195,6 +199,8 @@ export const METRICS_HIERARCHY: CategoryDef[] = [
         id: "duelos",
         name: "Duels",
         metrics: [
+          m("def_duelos_ganados_p90", "Duels won"),
+          m("def_duelos_ganados_pct", "Duels won %", true),
           m("def_entradas_p90", "Tackles"),
           m("def_entradas_pct", "Tackle success %", true),
           m("def_entradas_propio_p90", "Tackles own half"),
@@ -216,6 +222,7 @@ export const METRICS_HIERARCHY: CategoryDef[] = [
         metrics: [
           m("def_aereos_ganados_p90", "Aerial duels won"),
           m("def_aereos_ganados_pct", "Aerial duels won %", true),
+          m("def_despejes_p90", "Effective clearances"),
           m("def_aereos_continuidad_p90", "Aerials with continuity"),
           m("def_aereos_ganados_propio_p90", "Aerials won own half"),
           m("def_aereos_ganados_propio_pct", "Aerials won own half %", true),
@@ -289,6 +296,7 @@ export const GOALKEEPER_HIERARCHY: CategoryDef[] = [
           m("def_paradas_fuera_area_p90", "Saves outside the box"),
           m("def_paradas_ocasiones_claras_p90", "Saves from big chances"),
           m("def_goles_encajados_p90", "Goals conceded"),
+          m("def_xg_contra_p90", "xG conceded"),
           m("def_porteria_cero_pct", "Clean sheets %", true),
           m("def_penaltis_parados_pct", "Penalties saved %", true),
           m("def_errores_p90", "Errors leading to shot/goal"),
@@ -327,6 +335,7 @@ export const GOALKEEPER_HIERARCHY: CategoryDef[] = [
           m("of_envios_largos_p90", "Accurate launches"),
           m("of_envios_largos_pct", "Launch accuracy %", true),
           m("of_progresivos_p90", "Progressive passes"),
+          m("of_toques_p90", "Touches"),
           m("of_participacion_pct", "Involvement in play %", true),
         ],
       },

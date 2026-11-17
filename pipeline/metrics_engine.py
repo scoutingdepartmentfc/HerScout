@@ -612,7 +612,7 @@ def metricas_matchstats(st: Dict[str, float], mins_played, titular_pct, veces_ca
             'of_entradas_ultimo_tercio_p90': p90(g('finalThirdEntries'), mins_played),
             'of_pases_ultimo_tercio_p90': p90(g('successfulFinalThirdPasses'), mins_played),
             'of_pases_ultimo_tercio_pct': pct_nan(g('successfulFinalThirdPasses'), g('totalFinalThirdPasses')),
-            'of_entradas_area_p90': p90(g('successfulPenAreaEntries'), mins_played),
+            'of_entradas_area_p90': p90(g('penAreaEntries') or g('successfulPenAreaEntries'), mins_played),
             'of_entradas_area_pct': pct_nan(g('successfulPenAreaEntries'), g('penAreaEntries')),
             'of_conducciones_progresivas_p90': p90(g('progressiveCarries'), mins_played),
             'of_pases_filtrados_p90': p90(g('accurateThroughBall'), mins_played),
@@ -633,6 +633,11 @@ def metricas_matchstats(st: Dict[str, float], mins_played, titular_pct, veces_ca
             'def_centros_bloqueados_p90': p90(g('blockedPass'), mins_played),
             'abp_lanzador_corner_pct': pct_nan(g('accurateCornersIntobox'), g('totalCornersIntobox')),
         })
+
+        if 'expectedGoals' in st:
+            m['of_xG_p90'] = p90(g('expectedGoals'), mins_played)
+        if 'expectedAssists' in st:
+            m['of_xA_p90'] = p90(g('expectedAssists'), mins_played)
 
     # Portería (específicas de portera, desde matchstats). Solo para porteras: Opta da goalsConceded y
     # cleanSheet a todas las jugadoras en el campo y no deben puntuar como portería a las de campo.
@@ -664,6 +669,9 @@ def metricas_matchstats(st: Dict[str, float], mins_played, titular_pct, veces_ca
             'of_envios_largos_p90': p90(g('accurateLaunches'), mins_played),
             'of_envios_largos_pct': pct_nan(g('accurateLaunches'), g('totalLaunches')),
         })
+        if 'expectedGoalsConceded' in st:
+            m['def_xg_contra_p90'] = p90(g('expectedGoalsConceded'), mins_played)
+            m['def_goles_menos_xgc_p90'] = p90(g('goalsConceded') - g('expectedGoalsConceded'), mins_played)
 
     return {k: float(v) for k, v in m.items()}
 

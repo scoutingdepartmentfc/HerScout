@@ -34,13 +34,13 @@ export const DERIVED: Record<string, (m: Record<string, [number, number]>) => nu
   },
 };
 
-// Weights by priority (same as pipeline/categorias.py PLANTILLAS_POSICION): the 7 stats of each position in
+// Weights by priority (same as pipeline/categorias.py PLANTILLAS_POSICION): the 8 stats of each position in
 // order + extras (xG, goals and goals − xG for AMF/W/CF, xCA for DMF/CMF/AMF, goals − xG conceded for GK).
-const ORDER = [0.18, 0.16, 0.15, 0.14, 0.13, 0.12, 0.12];
-const EXTRA = 0.15;
+const ORDER = [0.17, 0.15, 0.14, 0.13, 0.12, 0.11, 0.09, 0.09];
+const EXTRA = 0.14;
 type Def = [key: string, label: string, ref: string];
 const tpl = (stats: Def[], extras: Def[] = []): RadarStat[] => [
-  ...stats.map(([k, l, r], i) => s(k, l, r, ORDER[i] ?? 0.12)),
+  ...stats.map(([k, l, r], i) => s(k, l, r, ORDER[i] ?? 0.09)),
   ...extras.filter(([k]) => !stats.some(([x]) => x === k)).map(([k, l, r]) => s(k, l, r, EXTRA)),
 ];
 const XG: Def = ["of_xG_p90", "xG", "expectedGoals"];
@@ -53,11 +53,14 @@ export const RADAR_TEMPLATES: Record<RadarTemplateId, RadarTemplate> = {
     id: "GK", name: "Goalkeeper", grupo: "Porteros", stats: tpl([
       ["def_paradas_p90", "Saves", "saves"],
       ["def_goles_encajados_p90", "Goals conceded", "goalsConceded"],
-      ["def_goles_menos_xgc_p90", "Goals − xG conceded", "goalsConceded − expectedGoalsConceded"],
+      ["def_xg_contra_p90", "xG conceded", "expectedGoalsConceded"],
       ["of_pases_buenos_p90", "Accurate passes", "accuratePass"],
       ["of_envios_largos_p90", "Accurate launches", "accurateLaunches"],
       ["of_toques_p90", "Touches", "touches"],
       ["def_salidas_libero_p90", "Sweeper actions", "accurateKeeperSweeper"],
+      ["def_paradas_area_p90", "Saves inside box", "savedIbox"],
+    ], [
+      ["def_goles_menos_xgc_p90", "Goals − xG conceded", "goalsConceded − expectedGoalsConceded"],
     ]),
   },
   CB: {
@@ -69,6 +72,7 @@ export const RADAR_TEMPLATES: Record<RadarTemplateId, RadarTemplate> = {
       ["of_pases_buenos_p90", "Accurate passes", "accuratePass"],
       ["of_pases_rival_buenos_p90", "Passes opp. half", "accurateFwdZonePass"],
       ["of_pases_largos_p90", "Long balls", "accurateLongBalls"],
+      ["of_toques_p90", "Touches", "touches"],
     ]),
   },
   FB: {
@@ -80,6 +84,7 @@ export const RADAR_TEMPLATES: Record<RadarTemplateId, RadarTemplate> = {
       ["of_pases_rival_buenos_p90", "Passes opp. half", "accurateFwdZonePass"],
       ["def_duelos_ganados_p90", "Duels won", "duelWon"],
       ["def_recuperaciones_p90", "Recoveries", "ballRecovery"],
+      ["def_intercepciones_p90", "Interceptions", "interception"],
     ]),
   },
   DMF: {
@@ -91,6 +96,7 @@ export const RADAR_TEMPLATES: Record<RadarTemplateId, RadarTemplate> = {
       ["of_toques_p90", "Touches", "touches"],
       ["of_pases_buenos_p90", "Accurate passes", "accuratePass"],
       ["of_pases_rival_buenos_p90", "Passes opp. half", "accurateFwdZonePass"],
+      ["of_toques_area_rival_p90", "Touches opp. box", "touchesInOppBox"],
     ], [XCA]),
   },
   CMF: {
@@ -101,7 +107,8 @@ export const RADAR_TEMPLATES: Record<RadarTemplateId, RadarTemplate> = {
       XG,
       ["of_toques_area_rival_p90", "Touches opp. box", "touchesInOppBox"],
       ["def_recuperaciones_p90", "Recoveries", "ballRecovery"],
-      ["def_aereos_ganados_p90", "Aerials won", "aerialWon"],
+      ["of_toques_p90", "Touches", "touches"],
+      ["of_pases_buenos_p90", "Accurate passes", "accuratePass"],
     ], [XCA]),
   },
   AMF: {
@@ -113,6 +120,7 @@ export const RADAR_TEMPLATES: Record<RadarTemplateId, RadarTemplate> = {
       XG,
       ["of_grandes_ocasiones_creadas_p90", "Big chances created", "bigChanceCreated"],
       ["of_regates_p90", "Dribbles won", "wonContest"],
+      ["of_xA_p90", "xA", "expectedAssists"],
     ], [XCA, G_XG]),
   },
   W: {
@@ -124,6 +132,7 @@ export const RADAR_TEMPLATES: Record<RadarTemplateId, RadarTemplate> = {
       ["of_xA_p90", "xA", "expectedAssists"],
       ["of_grandes_ocasiones_creadas_p90", "Big chances created", "bigChanceCreated"],
       ["of_entradas_area_p90", "Box entries", "penAreaEntries"],
+      XG,
     ], [XG, G_XG]),
   },
   CF: {
@@ -135,6 +144,7 @@ export const RADAR_TEMPLATES: Record<RadarTemplateId, RadarTemplate> = {
       ["of_tiros_puerta_area_p90", "Box shots on target", "attIboxTarget"],
       ["of_toques_area_rival_p90", "Touches opp. box", "touchesInOppBox"],
       ["of_toques_p90", "Touches", "touches"],
+      ["def_aereos_ganados_p90", "Aerials won", "aerialWon"],
     ], [G_XG]),
   },
 };

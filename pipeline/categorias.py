@@ -86,7 +86,7 @@ JERARQUIA_PORTEROS: Jerarquia = [
     ('defensa', 'Portería', [
         ('paradas', 'Paradas', [
             'def_paradas_p90', 'def_paradas_pct', 'def_paradas_area_p90', 'def_paradas_fuera_area_p90',
-            'def_paradas_ocasiones_claras_p90', 'def_goles_encajados_p90', 'def_porteria_cero_pct',
+            'def_paradas_ocasiones_claras_p90', 'def_goles_encajados_p90', 'def_xg_contra_p90', 'def_porteria_cero_pct',
             'def_penaltis_parados_pct', 'def_errores_p90', 'def_goles_menos_xgc_p90']),
         ('dominio_area', 'Dominio del área', [
             'def_blocajes_p90', 'def_blocajes_pct', 'def_centros_no_blocados_p90', 'def_despejes_punos_p90',
@@ -121,7 +121,7 @@ PESOS_GRUPO: Dict[str, Dict[str, float]] = {
 }
 
 # Métricas en las que menos es mejor
-MALUS = {'comp_disciplina_malus', 'def_goles_encajados_p90', 'def_errores_p90', 'def_centros_no_blocados_p90',
+MALUS = {'comp_disciplina_malus', 'def_goles_encajados_p90', 'def_xg_contra_p90', 'def_errores_p90', 'def_centros_no_blocados_p90',
          'of_perdidas_p90', 'def_goles_menos_xgc_p90'}
 # Diferencias (pueden ser negativas): un 0 sí informa, no se descarta como "sin acciones" (scoring._z_metricas)
 DIFERENCIAS = {'of_goles_menos_xg_p90', 'def_goles_menos_xgc_p90'}
@@ -133,12 +133,12 @@ CATEGORIAS = [c for c, _, _ in JERARQUIA]
 METRICA_SUB = {m: (c, s) for jer in (JERARQUIA, JERARQUIA_PORTEROS) for c, _, subs in jer for s, _, ms in subs for m in ms}
 
 
-# Métricas clave por posición (departamento de scouting, noviembre 2026): las 7 de cada demarcación en orden de
+# Métricas clave por posición (departamento de scouting, noviembre 2026): las 8 de cada demarcación en orden de
 # prioridad (pesos decrecientes) + extras: xG, goles y goles − xG a AMF, W y CF; xCA a DMF, CMF y AMF; goles − xG en
 # contra a las porteras. Son la parte principal de la nota global (PESO_CLAVE en config.py) y de la nota por partido.
 # Opta "FwdZonePass" = pases en campo rival (of_pases_rival_buenos_p90), no "hacia adelante".
-_ORDEN = (.18, .16, .15, .14, .13, .12, .12)
-_EXTRA = .15
+_ORDEN = (.17, .15, .14, .13, .12, .11, .09, .09)
+_EXTRA = .14
 
 
 def _plantilla(metricas: List[str], extras: Tuple[str, ...] = ()) -> Dict[str, float]:
@@ -149,25 +149,30 @@ def _plantilla(metricas: List[str], extras: Tuple[str, ...] = ()) -> Dict[str, f
 
 
 PLANTILLAS_POSICION: Dict[str, Dict[str, float]] = {
-    'GK': _plantilla(['def_paradas_p90', 'def_goles_encajados_p90', 'def_goles_menos_xgc_p90', 'of_pases_buenos_p90',
-                      'of_envios_largos_p90', 'of_toques_p90', 'def_salidas_libero_p90']),
+    'GK': _plantilla(['def_paradas_p90', 'def_goles_encajados_p90', 'def_xg_contra_p90', 'of_pases_buenos_p90',
+                      'of_envios_largos_p90', 'of_toques_p90', 'def_salidas_libero_p90', 'def_paradas_area_p90'],
+                     ('def_goles_menos_xgc_p90',)),
     'CB': _plantilla(['def_duelos_ganados_p90', 'def_aereos_ganados_p90', 'def_intercepciones_p90', 'def_despejes_p90',
-                      'of_pases_buenos_p90', 'of_pases_rival_buenos_p90', 'of_pases_largos_p90']),
+                      'of_pases_buenos_p90', 'of_pases_rival_buenos_p90', 'of_pases_largos_p90', 'of_toques_p90']),
     'FB': _plantilla(['of_xA_p90', 'of_centros_buenos_p90', 'of_toques_area_rival_p90', 'of_entradas_ultimo_tercio_p90',
-                      'of_pases_rival_buenos_p90', 'def_duelos_ganados_p90', 'def_recuperaciones_p90']),
+                      'of_pases_rival_buenos_p90', 'def_duelos_ganados_p90', 'def_recuperaciones_p90',
+                      'def_intercepciones_p90']),
     'DMF': _plantilla(['def_duelos_ganados_p90', 'def_aereos_ganados_p90', 'def_intercepciones_p90',
-                       'def_recuperaciones_p90', 'of_toques_p90', 'of_pases_buenos_p90', 'of_pases_rival_buenos_p90'],
+                       'def_recuperaciones_p90', 'of_toques_p90', 'of_pases_buenos_p90', 'of_pases_rival_buenos_p90',
+                       'of_toques_area_rival_p90'],
                       ('of_xCA_p90',)),
     'CMF': _plantilla(['of_grandes_ocasiones_creadas_p90', 'of_xA_p90', 'of_goles_p90', 'of_xG_p90',
-                       'of_toques_area_rival_p90', 'def_recuperaciones_p90', 'def_aereos_ganados_p90'], ('of_xCA_p90',)),
+                       'of_toques_area_rival_p90', 'def_recuperaciones_p90', 'of_toques_p90', 'of_pases_buenos_p90'],
+                      ('of_xCA_p90',)),
     'AMF': _plantilla(['of_toques_area_rival_p90', 'of_toques_p90', 'of_goles_p90', 'of_asistencia_gol_p90', 'of_xG_p90',
-                       'of_grandes_ocasiones_creadas_p90', 'of_regates_p90'],
+                       'of_grandes_ocasiones_creadas_p90', 'of_regates_p90', 'of_xA_p90'],
                       ('of_xCA_p90', 'of_goles_p90', 'of_xG_p90', 'of_goles_menos_xg_p90')),
     'W': _plantilla(['of_regates_p90', 'of_centros_buenos_p90', 'of_goles_p90', 'of_asistencia_gol_p90', 'of_xA_p90',
-                     'of_grandes_ocasiones_creadas_p90', 'of_entradas_area_p90'],
+                     'of_grandes_ocasiones_creadas_p90', 'of_entradas_area_p90', 'of_xG_p90'],
                     ('of_goles_p90', 'of_xG_p90', 'of_goles_menos_xg_p90')),
     'CF': _plantilla(['of_goles_p90', 'of_xG_p90', 'of_asistencia_gol_p90', 'of_xA_p90', 'of_tiros_puerta_area_p90',
-                      'of_toques_area_rival_p90', 'of_toques_p90'], ('of_goles_menos_xg_p90',)),
+                      'of_toques_area_rival_p90', 'of_toques_p90', 'def_aereos_ganados_p90'],
+                     ('of_goles_menos_xg_p90',)),
 }
 _PLANTILLA_GRUPO = {'Porteros': 'GK', 'Centrales': 'CB', 'Laterales': 'FB', 'Medios': 'CMF',
                     'Mediapuntas': 'AMF', 'Extremos': 'W', 'Delanteros': 'CF'}

@@ -186,6 +186,34 @@ def plantilla(sd: SDClient, club: Dict[str, Any]) -> List[Dict[str, Any]]:
     return list(vistas.values())
 
 
+def club_preferido(store: Store, sd: SDClient, ligas: List[Dict[str, Any]]) -> Dict[int, int]:
+    """sd_id de jugadora → club de Soccerdonna que le corresponde cuando sale en varias plantillas (las canteranas
+    del filial convocadas con el primer equipo están en las dos): el de la liga de más nivel ("Tier 1" antes que
+    "Tier 2"). Se miran todas las ligas activas de los países que se descargan, también si solo se baja una (el
+    filial solo no puede quitarle el primer equipo). Las plantillas quedan en caché para la descarga."""
+    from .cz_ligas import es_ceroacero
+    paises = {l["country"] for l in ligas}
+    todas = [l for l in store.select_all("sd_leagues", "code,country,url,enabled,level")
+             if l.get("url") and not es_ceroacero(l) and l["country"] in paises
+             and (l["enabled"] or l["code"] in {x["code"] for x in ligas})]
+    nivel = lambda l: (l.get("level") or "Z") if (l.get("level") or "").startswith("Tier") else "Z"
+    vistas: Dict[int, Dict[int, str]] = {}
+    for liga in sorted(todas, key=nivel):
+        for club in clubes_liga(sd, liga["url"]):
+            for j in plantilla(sd, club):
+                vistas.setdefault(j["sd_id"], {}).setdefault(club["sd_id"], nivel(liga))
+    elegido = {}
+    for pid, clubes in vistas.items():
+        if len(clubes) > 1:
+            # mismo nivel (fichaje con la plantilla vieja sin actualizar): sin preferencia, como hasta ahora
+            orden = sorted(clubes.items(), key=lambda kv: kv[1])
+            if orden[0][1] < orden[1][1]:
+                elegido[pid] = orden[0][0]
+    if elegido:
+        logger.info(f"Soccerdonna: {len(elegido)} jugadoras en dos plantillas → club de la liga de más nivel")
+    return elegido
+
+
 def foto_fotmob(store: Store, fotmob: FotMobClient, p: Dict[str, Any], club: str) -> Optional[str]:
     partes = p["name"].split()
     jugadora = {"id": p["id"], "name": p["name"], "match_name": p["name"], "first_name": partes[0] if partes else None,
@@ -223,13 +251,14 @@ def descargar(store: Store, sd: SDClient, liga_code: Optional[str], limit: Optio
         return
     fotmob = FotMobClient()
     fotmob.cargar_asignados(store)
-    tot = {"jugadoras": 0, "nuevas": 0, "al_dia": 0, "fotos": 0, "sin_ficha": 0}
+    tot = {"jugadoras": 0, "nuevas": 0, "al_dia": 0, "fotos": 0, "sin_ficha": 0, "otro_club": 0}
     # Jugadoras ya guardadas (también las unidas a su ficha Opta: se actualiza esa fila, no se crea otra "sd-")
     guardadas = {p["sd_id"]: p for p in store.select_all("players", "id,sd_id,sd_updated_at,photo_url,fm_team_name")
                  if p.get("sd_id")}
     ids = {k: p["id"] for k, p in guardadas.items()}
     catalogo_sd = {l["code"]: l for l in store.select_all("sd_leagues", "code,name,level,logo_url")}
     limite = time.time() - refresco_dias * 86400
+    club_de = club_preferido(store, sd, ligas)
     for liga in ligas:
         clubes = clubes_liga(sd, liga["url"])
         # Liga añadida en /admin por URL: aún no tiene nombre (se guarda el código); se lee del <h1>
@@ -262,6 +291,11 @@ def descargar(store: Store, sd: SDClient, liga_code: Optional[str], limit: Optio
             for j in plantilla(sd, club):
                 if limit and hechas >= limit:
                     break
+                # También en la plantilla de otro club de más nivel (canterana del filial convocada con el primer
+                # equipo): su club es ese, y se guarda al leer aquella plantilla
+                if club_de.get(j["sd_id"], club["sd_id"]) != club["sd_id"]:
+                    tot["otro_club"] += 1
+                    continue
                 previa = guardadas.get(j["sd_id"])
                 if previa and previa.get("sd_updated_at"):
                     hecha = datetime.fromisoformat(previa["sd_updated_at"].replace("Z", "+00:00")).timestamp()

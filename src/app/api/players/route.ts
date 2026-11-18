@@ -5,13 +5,13 @@ import { INTERNATIONAL_IDS, INTERNATIONAL_REGIONS } from "@/lib/internationalCom
 import { computeRatingTrend, PlayerTrend } from "@/lib/ratingTrend";
 import { NO_CLUB_DATA, preferOptaClub } from "@/lib/playerClub";
 import { isLowSample, lowSampleLast } from "@/lib/sampleSize";
+import { leagueId, playerInLeagues } from "@/lib/leagueId";
 
 /** Country shown for international competitions in the league filter (grouped apart from countries) */
 const INTERNATIONAL_COUNTRY = "Internacional";
 const isInternational = (id?: string | null, country?: string | null) =>
   Boolean((id && INTERNATIONAL_IDS.has(id)) || (country && INTERNATIONAL_REGIONS.has(country)));
 // Lowercase, typographic apostrophes → straight, collapsed spaces ("Women’s" == "Women's")
-const normLeague = (s: string) => s.toLowerCase().replace(/[\u2018\u2019\u00b4`]/g, "'").replace(/\s+/g, " ").trim();
 
 const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes cache
 const TREND_FROM_DATE = "2026-08-01";
@@ -239,10 +239,18 @@ async function loadBaseData(db: any): Promise<BaseData> {
 
     const leagueCountryByCode = new Map<string, string>();
     const leagueCountryByName = new Map<string, string>();
+    // A name can belong to several countries ("Women's Super League" = England and Switzerland):
+    // those names are left out of the by-name map so the league code decides.
+    const ambiguousNames = new Set<string>();
     for (const item of sdLRes?.data || []) {
       if (item.code && item.country) leagueCountryByCode.set(item.code, item.country);
-      if (item.name && item.country) leagueCountryByName.set(item.name.toLowerCase(), item.country);
+      if (!item.name || !item.country) continue;
+      const k = item.name.toLowerCase();
+      const prev = leagueCountryByName.get(k);
+      if (prev && prev !== item.country) ambiguousNames.add(k);
+      else leagueCountryByName.set(k, item.country);
     }
+    for (const k of Array.from(ambiguousNames)) leagueCountryByName.delete(k);
 
     const recentTeamByPlayer = await fetchRecentTeams(
       db,
@@ -419,10 +427,10 @@ export async function GET(req: NextRequest) {
           const hasClub = !!(p.fm_team_name || p.teams);
           const leagueName = p.current_league_name || null;
           const leagueCountry =
+            (p.sd_league_code ? leagueCountryByCode.get(p.sd_league_code) : null) ||
             (leagueName ? leagueCountryByName.get(leagueName.toLowerCase()) : null) ||
             (p.teams?.league_name ? leagueCountryByName.get(p.teams.league_name.toLowerCase()) : null) ||
             p.teams?.country ||
-            (p.sd_league_code ? leagueCountryByCode.get(p.sd_league_code) : null) ||
             null;
 
           list.push({
@@ -485,9 +493,9 @@ export async function GET(req: NextRequest) {
         const teamName = p.fm_team_name || p.teams?.name || NO_CLUB_DATA;
         const leagueName = p.current_league_name || p.teams?.league_name || null;
         const leagueCountry =
+          (p.sd_league_code ? leagueCountryByCode.get(p.sd_league_code) : null) ||
           (leagueName ? leagueCountryByName.get(leagueName.toLowerCase()) : null) ||
           (p.teams?.league_name ? leagueCountryByName.get(p.teams.league_name.toLowerCase()) : null) ||
-          (p.sd_league_code ? leagueCountryByCode.get(p.sd_league_code) : null) ||
           p.teams?.country ||
           null;
 
@@ -535,7 +543,7 @@ export async function GET(req: NextRequest) {
 
       // Available filter options extracted from all data and master teams
       const teamsMap = new Map<string, { name: string; teamId?: string | null; badgeUrl?: string | null; leagueName?: string }>();
-      const leaguesMap = new Map<string, { name: string; logoUrl?: string | null; country?: string | null }>();
+      const leaguesMap = new Map<string, { id: string; name: string; logoUrl?: string | null; country?: string | null }>();
 
 
       for (const p of list) {
@@ -547,8 +555,10 @@ export async function GET(req: NextRequest) {
             leagueName: p.leagueName,
           });
         }
-        if (p.leagueName && !leaguesMap.has(p.leagueName)) {
-          leaguesMap.set(p.leagueName, {
+        const lKey = leagueId(p.leagueName, p.leagueCountry);
+        if (p.leagueName && !leaguesMap.has(lKey)) {
+          leaguesMap.set(lKey, {
+            id: lKey,
             name: p.leagueName,
             logoUrl: p.leagueLogoUrl || null,
             country: p.leagueCountry || null,
@@ -557,7 +567,7 @@ export async function GET(req: NextRequest) {
       }
 
       for (const c of Array.from(intlComps.values())) {
-        if (!leaguesMap.has(c.name)) leaguesMap.set(c.name, { name: c.name, logoUrl: c.logoUrl, country: INTERNATIONAL_COUNTRY });
+        if (!leaguesMap.has(c.name)) leaguesMap.set(c.name, { id: c.name, name: c.name, logoUrl: c.logoUrl, country: INTERNATIONAL_COUNTRY });
       }
 
       const availableTeamsList = Array.from(teamsMap.values()).sort((a, b) => a.name.localeCompare(b.name));
@@ -613,14 +623,11 @@ export async function GET(req: NextRequest) {
     // Leagues filter (multiple comma-separated or single): her current league, or an international
     // competition she played (Champions League...)
     const selectedLeagues = (leaguesParam ? leaguesParam.split(",") : league !== "all" ? [league] : [])
-      .map(normLeague)
+      .map((l) => l.trim())
       .filter(Boolean);
 
     if (selectedLeagues.length > 0) {
-      list = list.filter((p: any) => {
-        const own = [p.leagueName, ...(p.competitions || [])].filter(Boolean).map(normLeague);
-        return own.some((l: string) => selectedLeagues.includes(l));
-      });
+      list = list.filter((p: any) => playerInLeagues(selectedLeagues, p.leagueName, p.leagueCountry, p.competitions));
     }
 
     // Age filter (based on birthDate)

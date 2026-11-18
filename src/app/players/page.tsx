@@ -17,13 +17,13 @@ import { notaClases } from "@/lib/notaColor";
 import { getPositionBadge } from "@/lib/positions";
 import { OptaLogo } from "@/components/scouting/OptaLogo";
 import { guessLeagueCountry, sortLeaguesByCountryAndTier } from "@/lib/leagueCountry";
+import { leagueId, leagueMatches, normLeague, parseLeagueId, playerInLeagues } from "@/lib/leagueId";
 import { LOW_SAMPLE_LABEL, lowSampleLast } from "@/lib/sampleSize";
 
 // Normaliza nombres de liga: minúsculas, apóstrofos tipográficos → rectos, espacios.
-const normLeague = (s: string) => s.toLowerCase().replace(/[\u2018\u2019\u00b4`]/g, "'").replace(/\s+/g, " ").trim();
-function dedupeLeagues<T extends { name: string }>(arr: T[]): T[] {
+function dedupeLeagues<T extends { name: string; country?: string | null }>(arr: T[]): T[] {
   const seen = new Set<string>();
-  return arr.filter((l) => { const k = normLeague(l.name); if (seen.has(k)) return false; seen.add(k); return true; });
+  return arr.filter((l) => { const k = `${normLeague(l.name)}|${(l.country || "").toLowerCase()}`; if (seen.has(k)) return false; seen.add(k); return true; });
 }
 
 interface PlayerRow {
@@ -481,7 +481,7 @@ function PlayersDirectoryContent() {
 
       if (json.filters.leaguesDetailed?.length) {
         const mapped = json.filters.leaguesDetailed.map((l: any) => ({
-          id: l.name,
+          id: l.id || l.name,
           name: l.name,
           logoUrl: l.logoUrl,
           country: l.country || guessLeagueCountry(l.name),
@@ -581,12 +581,8 @@ function PlayersDirectoryContent() {
     }
 
     if (selectedLeagues.length > 0) {
-      const leagues = selectedLeagues.map(normLeague);
-      list = list.filter((p) => {
-        // Current league or an international competition she played (Champions League...)
-        const own = [p.leagueName, ...(p.competitions || [])].filter(Boolean).map((l) => normLeague(l as string));
-        return own.some((l) => leagues.includes(l));
-      });
+      // Current league (name + country) or an international competition she played (Champions League...)
+      list = list.filter((p) => playerInLeagues(selectedLeagues, p.leagueName, p.leagueCountry, p.competitions));
     }
 
     const minA = minAge > 15 ? minAge : null;
@@ -665,11 +661,10 @@ function PlayersDirectoryContent() {
 
   // Dynamically adapt available teams based on selected leagues, and available leagues based on selected teams
   const filteredAvailableTeams = useMemo(() => {
-    const leaguesNorm = selectedLeagues.map(normLeague);
     const byName = new Map<string, { id: string; name: string; teamId?: string; badgeUrl?: string | null }>();
     allPlayers.forEach((p) => {
       if (!p.teamName || p.teamName === "Without club") return;
-      if (leaguesNorm.length > 0 && (!p.leagueName || !leaguesNorm.includes(normLeague(p.leagueName)))) return;
+      if (selectedLeagues.length > 0 && !selectedLeagues.some((id) => leagueMatches(id, p.leagueName, p.leagueCountry))) return;
       if (!byName.has(p.teamName)) {
         byName.set(p.teamName, {
           id: p.teamName,
@@ -693,7 +688,7 @@ function PlayersDirectoryContent() {
     const teamToLeague = new Map<string, string>();
     availableTeams.forEach((t) => {
       if ((t as any).leagueName) {
-        teamToLeague.set(t.name.toLowerCase(), normLeague((t as any).leagueName));
+        teamToLeague.set(t.name.toLowerCase(), (t as any).leagueName);
       }
     });
 
@@ -707,8 +702,8 @@ function PlayersDirectoryContent() {
         m = new Map<string, number>();
         teamLeagueCounts.set(tKey, m);
       }
-      const lNorm = normLeague(p.leagueName);
-      m.set(lNorm, (m.get(lNorm) || 0) + 1);
+      const lKey = leagueId(p.leagueName, p.leagueCountry);
+      m.set(lKey, (m.get(lKey) || 0) + 1);
     });
 
     teamsNorm.forEach((tKey) => {
@@ -728,7 +723,8 @@ function PlayersDirectoryContent() {
       if (l) leaguesOfSelectedTeams.add(l);
     });
 
-    return availableLeagues.filter((l) => leaguesOfSelectedTeams.has(normLeague(l.name)));
+    const keys = Array.from(leaguesOfSelectedTeams);
+    return availableLeagues.filter((l) => keys.some((k) => leagueMatches(k, l.name, l.country)));
   }, [availableLeagues, selectedTeams, availableTeams, allPlayers]);
 
   // Progressive rendering: reset window on filter change, grow on scroll
@@ -1272,12 +1268,13 @@ function PlayersDirectoryContent() {
             })}
 
             {/* Assigned Leagues Pills */}
-            {selectedLeagues.map((leagueName) => {
-              const leagueInfo = availableLeagues.find((l) => l.name.toLowerCase() === leagueName.toLowerCase());
-              const country = leagueInfo?.country || guessLeagueCountry(leagueName);
+            {selectedLeagues.map((leagueKey) => {
+              const leagueInfo = availableLeagues.find((l) => l.id === leagueKey);
+              const leagueName = leagueInfo?.name || parseLeagueId(leagueKey).name;
+              const country = leagueInfo?.country || parseLeagueId(leagueKey).country || guessLeagueCountry(leagueName);
               return (
                 <span
-                  key={leagueName}
+                  key={leagueKey}
                   className="inline-flex items-center gap-1.5 pl-2 pr-2 py-1 rounded-full bg-navy-900 border border-white/15 text-white text-xs shadow-sm hover:border-rose-500/40 transition-colors"
                 >
                   {country ? (
@@ -1288,7 +1285,7 @@ function PlayersDirectoryContent() {
                   <span className="font-medium truncate max-w-[160px]">{leagueName}</span>
                   <button
                     type="button"
-                    onClick={() => setSelectedLeagues(selectedLeagues.filter((l) => l.toLowerCase() !== leagueName.toLowerCase()))}
+                    onClick={() => setSelectedLeagues(selectedLeagues.filter((l) => l !== leagueKey))}
                     className="text-slate-400 hover:text-white rounded-full p-0.5 hover:bg-white/10 transition-colors"
                     title={`Remove ${leagueName}`}
                   >

@@ -355,12 +355,16 @@ function BuilderContent() {
           _mv: p.marketValue ? Math.round(Number(p.marketValue) / 1000) : null,
         }));
         setAllPlayers(list);
-        const rawLeagues = (json.filters?.leaguesDetailed || []).map((l: any) => ({
-          id: l.name,
-          name: l.name,
-          country: l.country || guessLeagueCountry(l.name),
-        }));
-        setLeagueOptions(sortLeaguesByCountryAndTier(rawLeagues));
+        // The builder filters leagues by name: a name shared by several countries
+        // ("Women's Super League" = England and Switzerland) becomes one option without a flag
+        const byName = new Map<string, { id: string; name: string; country: string | null }>();
+        for (const l of json.filters?.leaguesDetailed || []) {
+          const country = l.country || guessLeagueCountry(l.name);
+          const prev = byName.get(l.name);
+          if (!prev) byName.set(l.name, { id: l.name, name: l.name, country });
+          else if (prev.country !== country) prev.country = null;
+        }
+        setLeagueOptions(sortLeaguesByCountryAndTier(Array.from(byName.values())));
         setTeamOptions((json.filters?.teamsDetailed || []).map((t: any) => ({ id: t.name, name: t.name, badgeUrl: t.badgeUrl })));
       } catch (err) {
         console.error("Failed to fetch players for 11 Builder", err);

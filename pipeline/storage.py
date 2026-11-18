@@ -243,7 +243,10 @@ def competiciones_objetivo(store: "Store", solo_admin: bool = False, liga_code: 
         if c['competition_id'] in elegidas and (c.get('data_level') or '').startswith('jugadora') \
                 and (c.get('start_date') or '') > (ultima.get(c['competition_id'], {}).get('start_date') or ''):
             ultima[c['competition_id']] = c
-    descargadas = {s['id'] for s in store.select_all('seasons', 'id')} if solo_ultima else set()
+    # Descargada = con estadísticas guardadas. La fila de `seasons` no vale: se crea al EMPEZAR a procesarla, así
+    # que una descarga cortada (timeout, error) dejaba la temporada vacía y marcada como hecha para siempre
+    descargadas = {s['season_id'] for s in store.select_all('player_season_stats', 'season_id')} \
+        if solo_ultima else set()
     # Id de la liga en FotMob (escudos y fotos): el guardado en competitions o, si no, el de config.py
     fotmob = {c['id']: c.get('fotmob_id') for c in COMPETITIONS_CONFIG}
     fotmob.update({c['id']: c['fotmob_id'] for c in store.select_all('competitions', 'id,fotmob_id') if c.get('fotmob_id')})

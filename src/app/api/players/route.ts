@@ -491,7 +491,9 @@ export async function GET(req: NextRequest) {
             ? Math.round(Number(ea.pace) * 0.45 + Number(ea.physicality) * 0.55)
             : ea?.pace != null ? Number(ea.pace) : ea?.physicality != null ? Number(ea.physicality) : null;
         const teamName = p.fm_team_name || p.teams?.name || NO_CLUB_DATA;
-        const leagueName = p.current_league_name || p.teams?.league_name || null;
+        // With a Soccerdonna club, its league is Soccerdonna's: the Opta team's league would put a B-team player
+        // who played some first-team matches (EDF Logroño B → Liga F) in the first team's league
+        const leagueName = p.current_league_name || (p.fm_team_name ? null : p.teams?.league_name) || null;
         const leagueCountry =
           (p.sd_league_code ? leagueCountryByCode.get(p.sd_league_code) : null) ||
           (leagueName ? leagueCountryByName.get(leagueName.toLowerCase()) : null) ||

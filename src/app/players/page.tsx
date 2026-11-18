@@ -193,7 +193,7 @@ function MultiSelectDropdown<T extends { id: string; name: string; badgeUrl?: st
             <span className="text-muted-foreground">{placeholder}</span>
           ) : (
             <span className="font-semibold text-emerald-400">
-              {selectedIds.length === 1 ? selectedIds[0] : `${selectedIds.length} selected`}
+              {selectedIds.length === 1 ? (options.find((o) => o.id === selectedIds[0])?.name ?? parseLeagueId(selectedIds[0]).name) : `${selectedIds.length} selected`}
             </span>
           )}
         </div>

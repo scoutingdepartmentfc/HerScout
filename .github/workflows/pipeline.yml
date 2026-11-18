@@ -1,6 +1,7 @@
 name: Pipeline de datos (Soccerdonna + Opta + FotMob)
 run-name: >-
   ${{ github.event_name == 'schedule' && (github.event.schedule == '0 3 * * 3' && 'Semanal: todo' || 'Diario: partidos Opta')
+  || inputs.cola && 'Cola de descargas de /admin'
   || format('Manual: {0} {1}', inputs.pasos, inputs.liga) }}
 
 # Un solo workflow para todo (un único grupo de concurrencia: nunca dos descargas escribiendo a la vez).
@@ -15,6 +16,11 @@ on:
   #   - cron: '0 4 * * 0,1,2,4,5,6'
   workflow_dispatch:
     inputs:
+      cola:
+        description: 'Procesar la cola de descargas de /admin (ingestion_runs en espera), una detrás de otra. Ignora el resto de opciones'
+        type: boolean
+        required: false
+        default: false
       pasos:
         description: 'todo | soccerdonna | opta | fotmob (varias con comas: soccerdonna,fotmob) | partidos | recalcular | catalogo'
         required: false
@@ -109,7 +115,13 @@ jobs:
           REFRESCO: ${{ inputs.refresco_dias }}
           LIMITE: ${{ inputs.limite }}
           MAX_MATCHES: ${{ inputs.max_matches }}
+          COLA: ${{ inputs.cola }}
         run: |
+          if [ "$COLA" = "true" ]; then
+            echo "▶ python -m pipeline.sd_ligas cola"
+            python -m pipeline.sd_ligas cola --refresco-dias ${REFRESCO:-25}
+            exit $?
+          fi
           ARGS=""
           [ -n "$LIGA" ] && ARGS="$ARGS --liga $LIGA"
           [ -n "$LIMITE" ] && ARGS="$ARGS --limit $LIMITE"

@@ -124,15 +124,22 @@ export async function POST(req: NextRequest) {
   if (body.action === "run") {
     const pasos = parsePasos(body.pasos);
     if (!pasos) return NextResponse.json({ error: "Unknown download part" }, { status: 400 });
-    const inputs: Record<string, string> = { pasos };
+    let liga: string | null = null;
     if (body.code) {
       const { data: league } = await db.from("sd_leagues").select("code").eq("code", String(body.code)).maybeSingle();
       if (!league) return NextResponse.json({ error: "Unknown league" }, { status: 404 });
-      inputs.liga = league.code;
+      liga = league.code;
     }
-    if (body.allSeasons) inputs.todas_temporadas = "true";
+    // Queue it and start the queue runner. GitHub keeps only ONE pending run per concurrency group (the rest are
+    // cancelled), so each button leaves its request in ingestion_runs and the running job picks them all up in order
+    const { error: queueError } = await db.from("ingestion_runs").insert({
+      status: "queued",
+      trigger_type: "admin",
+      details: { pasos, liga, todas_temporadas: !!body.allSeasons },
+    });
+    if (queueError) return NextResponse.json({ error: queueError.message }, { status: 500 });
     try {
-      await dispatchPipeline(inputs);
+      await dispatchPipeline({ cola: "true" });
     } catch (err: any) {
       return NextResponse.json({ error: err.message }, { status: 500 });
     }

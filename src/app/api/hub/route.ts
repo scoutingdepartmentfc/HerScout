@@ -71,6 +71,7 @@ export async function GET(req: NextRequest) {
     db
       .from("ingestion_runs")
       .select("started_at, finished_at, status, matches_processed, players_updated")
+      .neq("status", "queued")
       .order("started_at", { ascending: false })
       .limit(1),
     // 6. Club scouting reports (tenant isolated)

@@ -26,6 +26,7 @@ Descargas automáticas (GitHub Action), mismo flujo:
 
 Por partes (panel /admin y GitHub Action .github/workflows/pipeline.yml):
   pasos --pasos todo|soccerdonna,opta,fotmob [--liga ESP1] [--todas-temporadas]
+  cola                    Las descargas pedidas desde /admin (ingestion_runs 'queued'), una tras otra hasta vaciarla
 
 Uso:
     python -m pipeline.sd_ligas pasos --pasos opta --liga ESP1
@@ -826,12 +827,54 @@ def fotos(store: Store, liga_code: Optional[str], limit: Optional[int] = None):
     marcar(store, liga_code, "last_fotmob_at")
 
 
+def cola(store: Store, sd: SDClient, refresco_dias: int):
+    """Descargas pedidas desde /admin (filas de `ingestion_runs` con status 'queued'), una detrás de otra y de la
+    más antigua a la más nueva, hasta vaciar la cola. GitHub solo guarda UNA ejecución en espera por grupo de
+    concurrencia (las demás se cancelan), así que cada botón deja su petición aquí y la ejecución que esté en
+    marcha recoge también las que lleguen mientras tanto. Si una falla, se apunta el error y se sigue."""
+    # Las que se quedaron 'running' de una ejecución cortada (timeout, cancelada): no la bloquean para siempre
+    limite = (datetime.now(timezone.utc) - timedelta(hours=6)).isoformat()
+    store.client.table("ingestion_runs").update(
+        {"status": "failed", "finished_at": now_iso(), "error_summary": "Ejecución cortada (timeout o cancelada)"}
+    ).eq("status", "running").eq("trigger_type", "admin").lt("started_at", limite).execute()
+    hechas = 0
+    while True:
+        pendientes = (store.client.table("ingestion_runs").select("id,details").eq("status", "queued")
+                      .order("started_at").limit(1).execute().data)
+        if not pendientes:
+            break
+        fila = pendientes[0]
+        # Reservarla solo si sigue en cola (otra ejecución podría haberla cogido)
+        cogida = (store.client.table("ingestion_runs").update({"status": "running", "started_at": now_iso()})
+                  .eq("id", fila["id"]).eq("status", "queued").execute().data)
+        if not cogida:
+            continue
+        d = fila.get("details") or {}
+        texto = str(d.get("pasos") or "todo").strip()
+        lista = PASOS if texto == "todo" else tuple(p.strip() for p in texto.split(",") if p.strip() in PASOS)
+        liga = d.get("liga") or None
+        logger.info(f"══ Cola: {texto} {liga or '(todas las ligas activas)'}"
+                    f"{' · todas las temporadas' if d.get('todas_temporadas') else ''} ══")
+        estado, error = "completed", None
+        try:
+            if not lista:
+                raise ValueError(f"Pasos no válidos: {texto}")
+            pasos(store, sd, lista, liga, None, refresco_dias, None, solo_ultima=not d.get("todas_temporadas"))
+        except Exception as e:
+            logger.exception(f"Cola: falló {texto} {liga or ''}: {e}")
+            estado, error = "failed", str(e)[:500]
+        store.update("ingestion_runs", {"status": estado, "finished_at": now_iso(), "error_summary": error},
+                     id=fila["id"])
+        hechas += 1
+    logger.info(f"Cola vacía ({hechas} descargas hechas)")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Jugadoras desde las ligas de Soccerdonna elegidas en /admin")
     parser.add_argument("accion", choices=["pasos", "catalogo", "descargar", "opta", "opta-jugadoras", "opta-partidos",
                                            "vincular", "escudos", "fotos", "todo",
                                            "actualizar-opta", "actualizar-soccerdonna", "recalcular", "retiradas", "completar",
-                                           "corregir-clubes"])
+                                           "corregir-clubes", "cola"])
     parser.add_argument("--pasos", default="todo",
                         help="pasos: 'todo' o lista separada por comas de soccerdonna,opta,fotmob")
     parser.add_argument("--retiradas", action="store_true", help="pasos: revisar también las retiradas (Soccerdonna)")
@@ -859,6 +902,8 @@ def main():
         return completar(store, limit=args.limit)
     if args.accion == "retiradas":
         return marcar_retiradas(store, sd, args.refresco_dias)
+    if args.accion == "cola":
+        return cola(store, sd, args.refresco_dias)
     escoba = None if args.sin_coche_escoba else args.max_minutos_escoba
     if args.accion == "pasos":
         lista = PASOS if args.pasos.strip() == "todo" else tuple(p.strip() for p in args.pasos.split(",") if p.strip())

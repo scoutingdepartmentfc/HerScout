@@ -128,14 +128,3 @@ jobs:
           echo "▶ python -m pipeline.sd_ligas $CMD $ARGS"
           python -m pipeline.sd_ligas $CMD $ARGS
 
-      # Coche escoba ceroacero.es: solo en la descarga completa, aunque falle el paso anterior. Rellena lo que
-      # siga vacío (foto, nacimiento, nacionalidad, pie, altura...). Máx. 60 min; continúa en la siguiente.
-      - name: Coche escoba (ceroacero.es)
-        if: ${{ !cancelled() && steps.plan.outputs.pasos == 'todo' }}
-        continue-on-error: true
-        env:
-          LIMITE: ${{ inputs.limite }}
-        run: |
-          ARGS="--refresh-days 30 --max-minutos 60"
-          [ -n "$LIMITE" ] && ARGS="$ARGS --limit $LIMITE"
-          python -m pipeline.ceroacero $ARGS

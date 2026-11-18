@@ -400,6 +400,11 @@ export async function GET(req: NextRequest) {
           const recentRows = playerRows.filter((r: any) => (r.seasons?.name || null) === recentSeason);
           const recentSum = (k: string) => recentRows.reduce((n: number, r: any) => n + (Number(r[k]) || 0), 0);
 
+          const getWeightedVal = (k: string) => {
+            const item = sumWeighted[k];
+            return item.mins > 0 ? item.sum / item.mins : null;
+          };
+
           const recentNotas = recentRows
             .map((r: any) => Number(r.nota_global))
             .filter((n: number) => Number.isFinite(n) && n > 0);
@@ -407,11 +412,6 @@ export async function GET(req: NextRequest) {
             recentNotas.length > 0
               ? recentNotas.reduce((a: number, b: number) => a + b, 0) / recentNotas.length
               : getWeightedVal("nota_global");
-
-          const getWeightedVal = (k: string) => {
-            const item = sumWeighted[k];
-            return item.mins > 0 ? item.sum / item.mins : null;
-          };
 
           // No current club (Soccerdonna / current_team_id): club of her latest match, only if within the last 3 months
           const fallbackTeam = !p.teams && !p.fm_team_name ? recentTeamByPlayer.get(p.id) || null : null;

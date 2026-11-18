@@ -50,6 +50,7 @@ interface PlayerRow {
   isCurrentSeason?: boolean;
   isAccumulated?: boolean;
   minutesPlayed?: number;
+  goals?: number;
   matchesPlayed?: number;
   notaGlobal?: number | null;
   /** Too few minutes/matches: per-90 rating shown with a warning and sorted after the rest */

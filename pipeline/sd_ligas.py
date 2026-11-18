@@ -901,59 +901,25 @@ def main():
 def flujo(store: Store, sd: SDClient, liga_code: Optional[str], limit: Optional[int], refresco_dias: int,
           max_matches: Optional[int], solo_ultima: bool = False, con_opta: bool = True, retiradas: bool = False,
           escudos_ligas: Optional[List[str]] = None, coche_escoba: Optional[float] = None):
-    """Proceso estándar de descarga, en este orden:
-
-    Ligas (elegidas en /admin con su liga de Soccerdonna):
-      1. Soccerdonna: plantillas de la liga → ficha de cada jugadora (nuevas, y las guardadas hace más de
-         `refresco_dias`). Así entran también los fichajes recientes.
-      2. Opta de esa misma liga (plantillas, partidos, eventing/matchstats, ratings).
-      3. Vincular Soccerdonna ↔ Opta: dentro de la liga (nombre + fecha o club) y entre ligas (la jugadora de Opta
-         que Soccerdonna tiene ahora en otra liga elegida).
-    Competiciones entre clubes de distintas ligas o copas sin liga propia (Champions...): van en el paso 2,
-      después de las ligas. Opta identifica a cada jugadora con el mismo ID en todas sus competiciones, así que
-      las que ya estaban en Supabase se enlazan solas; las nuevas siguen el paso 4.
-      4. Jugadoras con datos de Opta que siguen sin ficha: se buscan en Soccerdonna FUERA de su liga (buscador por
-         nombre, confirmando fecha/lugar de nacimiento, dorsal o club) y se enlazan.
-      5. Club según el último partido oficial (una plantilla desfasada no se lleva a una jugadora a otra liga).
-      6. (mensual) Retiradas. 7. Escudos. 8. Fotos de FotMob (y si no, 365scores / Opta).
-      9. Coche escoba ceroacero.es: rellena solo lo que siga vacío.
+    """Proceso limpio en 3 pasos:
+      1. Soccerdonna: clubes y plantillas de las ligas activas en /admin → ficha de cada jugadora, con fm_team_name
+         y current_league_name inamovibles.
+      2. FotMob: fotos de las jugadoras (con fallback a la foto de Soccerdonna recortada sin fondo blanco).
+      3. Opta: partidos, métricas (8 por demarcación + extras), ratings (porteras aisladas) y vinculación con las
+         jugadoras de Soccerdonna sin tocar su club ni su liga.
     """
-    descargar(store, sd, liga_code, limit, refresco_dias)
-    if con_opta:
-        opta(store, liga_code, max_matches, solo_ultima=solo_ultima)
-    vincular(store, liga_code)
-    completar(store, limit=limit)
-    corregir_clubes(store)
-    # Demarcación de las que no tienen partidos Opta: Soccerdonna/ceroacero → FotMob → genérica
-    try:
-        from .demarcaciones import rellenar as demarcaciones
-        demarcaciones(store)
-    except Exception as e:  # extra: no tumba la descarga
-        logger.warning(f"Demarcaciones: {e}")
+    descargar(store, sd, liga_code, limit, refresco_dias, con_fotos=False)
     if retiradas:
         marcar_retiradas(store, sd, refresco_dias)
-    for code in (escudos_ligas if escudos_ligas is not None else [liga_code]):
-        escudos(store, code)
-    # Fichas de Soccerdonna que acabaron en la jugadora equivocada (la misma ficha en dos jugadoras con distinto
-    # nombre): se deshacen y esas jugadoras se quedan sin el club, los datos y la foto que venían de ella
-    from .auditar_vinculos import revisar_fichas_sd
-    revisar_fichas_sd(store)
-    if con_opta:
-        marcar(store, liga_code, "last_opta_at")
     fotos(store, liga_code, limit)
-    # Agentes libres y jugadoras solo en plantillas antiguas: no salen en las plantillas de las ligas de arriba
-    from .fotos_jugadoras import fotos_sin_club
-    fotos_sin_club(store, limit)
-    marcar(store, liga_code, "last_fotmob_at")
-    if coche_escoba:
-        from .ceroacero import CeroaceroSync
-        try:  # si falla, lo descargado ya está guardado
-            CeroaceroSync(refresh_days=30, limit=limit, max_minutos=coche_escoba).run()
-        except Exception as e:
-            logger.warning(f"Coche escoba: omitido ({e})")
+    if con_opta:
+        opta(store, liga_code, max_matches, solo_ultima=solo_ultima)
+        vincular(store, liga_code)
+        marcar(store, liga_code, "last_opta_at")
+
 
 # Partes que se pueden lanzar por separado desde /admin (en este orden si van juntas)
-PASOS = ("soccerdonna", "opta", "fotmob")
+PASOS = ("soccerdonna", "fotmob", "opta")
 
 
 def marcar(store: Store, liga_code: Optional[str], campo: str):
@@ -969,31 +935,23 @@ def marcar(store: Store, liga_code: Optional[str], campo: str):
 def pasos(store: Store, sd: SDClient, lista, liga_code: Optional[str], limit: Optional[int], refresco_dias: int,
           max_matches: Optional[int], solo_ultima: bool = True, retiradas: bool = False,
           coche_escoba: Optional[float] = None):
-    """Descarga por partes (botones de /admin y GitHub Action). Las tres juntas = flujo estándar completo.
-      soccerdonna  Liga → clubes (nombre, escudo) → plantillas → ficha de cada jugadora. Sin fotos.
-      opta         Temporadas Opta de la liga → vincular equipos/jugadoras con Soccerdonna → club según último
-                   partido → escudos verificados.
-      fotmob       Fotos de las jugadoras sin foto de la liga (FotMob; si no, 365scores / Opta)."""
+    """Descarga por partes (botones de /admin y GitHub Action). Las tres juntas = flujo limpio completo.
+      soccerdonna  Liga → clubes (nombre, escudo) → plantillas → ficha de cada jugadora con club y liga inamovibles.
+      fotmob       Fotos de las jugadoras (FotMob; fallback Soccerdonna sin fondo blanco).
+      opta         Temporadas Opta de la liga → vincular con las jugadoras de Soccerdonna y calcular ratings."""
     if set(lista) == set(PASOS):
-        nuevas = ligas_nuevas(store, liga_code)
         return flujo(store, sd, liga_code, limit, refresco_dias, max_matches, solo_ultima=solo_ultima,
-                     retiradas=retiradas, escudos_ligas=[liga_code] if liga_code else nuevas, coche_escoba=coche_escoba)
+                     retiradas=retiradas)
     if "soccerdonna" in lista:
         descargar(store, sd, liga_code, limit, refresco_dias, con_fotos=False)
         if retiradas:
             marcar_retiradas(store, sd, refresco_dias)
+    if "fotmob" in lista:
+        fotos(store, liga_code, limit)
     if "opta" in lista:
         opta(store, liga_code, max_matches, solo_ultima=solo_ultima)
         vincular(store, liga_code)
-        corregir_clubes(store)
-        escudos(store, liga_code)
         marcar(store, liga_code, "last_opta_at")
-    if "fotmob" in lista:
-        fotos(store, liga_code, limit)
-        if not liga_code:
-            from .fotos_jugadoras import fotos_sin_club
-            fotos_sin_club(store, limit)
-        marcar(store, liga_code, "last_fotmob_at")
 
 
 if __name__ == "__main__":

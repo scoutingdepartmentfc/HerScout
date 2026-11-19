@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabase";
 import { getStoredVenueImages, venueKey } from "@/lib/venueImages";
+import { getSdLeagues, hasSdNameColumn, teamName } from "@/lib/sdNames";
 
 // Shared by /api/matches and /api/matches/league
 export const MATCH_SELECT = `
@@ -19,22 +20,31 @@ export async function matchSelect(): Promise<string> {
     const { error } = await (supabaseAdmin as any).from("matches").select("id, lineups").limit(0);
     lineupsColumn = !error;
   }
-  return lineupsColumn ? MATCH_SELECT : MATCH_SELECT.replace(LINEUP_COLS, "");
+  let select = lineupsColumn ? MATCH_SELECT : MATCH_SELECT.replace(LINEUP_COLS, "");
+  // Club de Soccerdonna vinculado a cada equipo Opta (su nombre manda sobre el de Opta)
+  if (await hasSdNameColumn()) select = select.replace(/\(id, name, badge_url\)/g, "(id, name, sd_name, badge_url)");
+  return select;
 }
 
 /** API shape of match rows, with the stadium photos already stored (unknown venues resolve lazily client-side). */
 export async function formatMatches(data: any[]) {
   const venueNames = data.map((m: any) => m.venue_name).filter(Boolean) as string[];
-  const venueImages = venueNames.length ? await getStoredVenueImages(venueNames) : new Map<string, string | null>();
-  return data.map((m: any) => ({
+  const [venueImages, sdLeagues] = await Promise.all([
+    venueNames.length ? getStoredVenueImages(venueNames) : Promise.resolve(new Map<string, string | null>()),
+    getSdLeagues(),
+  ]);
+  return data.map((m: any) => {
+    // Liga y equipos con el nombre de Soccerdonna (como en las fichas y en /admin); sin vínculo, el de Opta
+    const sd = m.competitions?.id ? sdLeagues.get(m.competitions.id) : undefined;
+    return {
     id: m.id,
     date: m.match_date,
     status: m.status,
     week: m.week,
-    competition: m.competitions?.name,
+    competition: sd?.name || m.competitions?.name,
     competitionId: m.competitions?.id,
     competitionCountry: m.competitions?.country,
-    competitionLogoUrl: m.competitions?.logo_url,
+    competitionLogoUrl: m.competitions?.logo_url || sd?.logoUrl,
     season: m.seasons?.name,
     venue: m.venue_name,
     // string = photo, null = known to have none, undefined = not looked up yet
@@ -42,7 +52,8 @@ export async function formatMatches(data: any[]) {
     timeConfirmed: m.time_confirmed !== false,
     // Only a flag here (lineups JSON is fetched on demand by /api/matches/[id]/lineups: less egress)
     hasLineups: !!(m.home_formation || m.away_formation),
-    home: { id: m.home_team?.id, name: m.home_team?.name, badgeUrl: m.home_team?.badge_url, score: m.home_score },
-    away: { id: m.away_team?.id, name: m.away_team?.name, badgeUrl: m.away_team?.badge_url, score: m.away_score },
-  }));
+    home: { id: m.home_team?.id, name: teamName(m.home_team), badgeUrl: m.home_team?.badge_url, score: m.home_score },
+    away: { id: m.away_team?.id, name: teamName(m.away_team), badgeUrl: m.away_team?.badge_url, score: m.away_score },
+    };
+  });
 }

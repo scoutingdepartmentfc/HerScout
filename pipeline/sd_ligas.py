@@ -91,6 +91,12 @@ def parecido_liga(sd_nombre: str, opta_nombre: str) -> float:
     return fuzz.token_set_ratio(a, b)
 
 
+def nombre_liga(nombre: str) -> str:
+    """Soccerdonna parte algunas ligas en torneos cortos (México: "Liga Femenil Apertura" / "Liga Femenil Clausura")
+    que Opta engloba en una sola competición: se guarda el nombre de la liga, sin Apertura/Clausura."""
+    return re.sub(r"\s+\b(Apertura|Clausura)\b", "", nombre).strip()
+
+
 def catalogo(store: Store, sd: SDClient):
     html = sd.get(CATALOGO) or ""
     ligas, pais, seccion = {}, None, None
@@ -109,7 +115,7 @@ def catalogo(store: Store, sd: SDClient):
             continue
         celdas = [_txt(c) for c in re.findall(r"<td[^>]*>(.*?)</td>", fila, re.S)]
         num = lambda i: int(re.sub(r"\D", "", celdas[i]) or 0) if len(celdas) > i else None
-        nombre = unescape(m.group(3)).strip()
+        nombre = nombre_liga(unescape(m.group(3)).strip())
         if seccion:
             nivel, equipos, jugadoras = seccion, num(2), num(3)
             pais_liga = region_internacional(nombre)
@@ -265,7 +271,7 @@ def descargar(store: Store, sd: SDClient, liga_code: Optional[str], limit: Optio
         if liga["name"] == liga["code"]:
             h1 = re.search(r"<h1[^>]*>(.*?)</h1>", sd.get(liga["url"], FRESCO_DIAS) or "", re.S)
             if h1 and _txt(h1.group(1)):
-                liga["name"] = _txt(h1.group(1))
+                liga["name"] = nombre_liga(_txt(h1.group(1)))
                 store.update("sd_leagues", {"name": liga["name"]}, code=liga["code"])
         logger.info(f"▶ {liga['name']} ({liga['country']}): {len(clubes)} clubes")
         logo = imagen_sd(store, sd, SD_MEDIUM.format(id=liga["code"].lower()), f"ligas/sd-{liga['code']}.jpg")
@@ -422,6 +428,8 @@ def opta(store: Store, liga_code: Optional[str], max_matches: Optional[int], sol
             fixtures = pipe.adapter.get_fixtures(comp["season_id"])
             pipe.guardar_calendario(comp, fixtures, hechos)
             pipe.procesar_partidos(comp, fixtures, hechos, perfiles)
+    if modo == "partidos":
+        vincular_equipos(store, liga_code)  # equipos Opta nuevos del calendario (ascendidos, otra temporada)
     if pipe.totales["matches"]:
         try:  # extra: si falla, los datos de la liga ya están guardados y la descarga sigue
             pipe.actualizar_similares()
@@ -531,6 +539,77 @@ def vincular(store: Store, liga_code: Optional[str]):
         # el club de hoy es el de Soccerdonna
         _unir(store, s_, o, club_de_soccerdonna=o["id"] not in activas or o.get("current_team_id") in eq_intl)
     logger.info(f"Vincular entre ligas: {len(pares)} jugadoras unidas con su ficha Opta de otra liga o temporada")
+    vincular_equipos(store, liga_code)
+
+
+MIN_VOTOS_EQUIPO = 5  # jugadoras unidas que coinciden en el club de Soccerdonna de un equipo Opta
+# Equipos Opta que se quedan con su nombre de Opta: Soccerdonna tiene mal el nombre de su club
+EQUIPOS_SIN_VINCULO = {
+    "69tjuryaqmkgb4gd6707s87op",  # Partick Thistle: Soccerdonna llama a su club "Heart of Midlothian WFC" (verein_7112)
+}
+# Erratas de Soccerdonna en el nombre del club
+NOMBRE_CLUB_SD = {"Real Socieadad": "Real Sociedad"}
+
+
+def _nombre_club(nombre: str) -> str:
+    """Nombre de club de Soccerdonna para mostrar: sin espacios sobrantes, erratas ni todo en mayúsculas."""
+    n = re.sub(r"\s+", " ", nombre or "").strip()
+    n = NOMBRE_CLUB_SD.get(n, n)
+    return n.title() if n.isupper() else n
+
+
+def vincular_equipos(store: Store, liga_code: Optional[str] = None):
+    """Equipo Opta → club de Soccerdonna (teams.sd_team_id, teams.sd_name), para mostrar los partidos con el nombre
+    del club de las fichas. El vínculo se vota con las jugadoras ya unidas: el club de Soccerdonna (fm_team_name)
+    que tienen al menos MIN_VOTOS_EQUIPO de las jugadoras del equipo Opta y 2/3 de los votos. Si no hay votos
+    suficientes, el club de Soccerdonna de su liga con EXACTAMENTE el mismo nombre normalizado (si es uno solo)."""
+    from .escudos import norm_club
+    ligas = ligas_opta(store, liga_code)
+    comps = {l["opta_competition_id"] for l in ligas}
+    codigos_de = {}
+    for l in ligas:
+        codigos_de.setdefault(l["opta_competition_id"], set()).add(l["code"])
+    try:
+        equipos = store.select_all("teams", "id,name,competition_id,sd_league_code,sd_team_id,sd_name")
+    except Exception as e:  # falta la migración 20261119180000_team_sd_link.sql
+        logger.warning(f"Vincular equipos: omitido ({e})")
+        return
+    clubes_sd = [t for t in equipos if t["id"].startswith("sd-")]
+    por_nombre: Dict[str, List[Dict[str, Any]]] = {}
+    for t in clubes_sd:
+        por_nombre.setdefault(t["name"], []).append(t)
+    votos: Dict[str, Dict[str, int]] = {}
+    for p in store.select_all("players", "current_team_id,fm_team_name,sd_id"):
+        if p.get("sd_id") and p.get("current_team_id") and p.get("fm_team_name"):
+            v = votos.setdefault(p["current_team_id"], {})
+            v[p["fm_team_name"]] = v.get(p["fm_team_name"], 0) + 1
+    hechos, sin = 0, []
+    for t in [t for t in equipos if t.get("competition_id") in comps and not t["id"].startswith("sd-")]:
+        codigos = codigos_de[t["competition_id"]]
+        if t["id"] in EQUIPOS_SIN_VINCULO:
+            if t.get("sd_team_id") or t.get("sd_name"):
+                store.update("teams", {"sd_team_id": None, "sd_name": None}, id=t["id"])
+            continue
+        club = None
+        v = votos.get(t["id"], {})
+        if v:
+            nombre, n = max(v.items(), key=lambda x: x[1])
+            if n >= MIN_VOTOS_EQUIPO and n * 3 >= sum(v.values()) * 2:
+                cands = por_nombre.get(nombre, [])
+                # El mismo nombre en otra liga (filial con el nombre del primer equipo): primero el de su liga
+                club = next((c for c in cands if c.get("sd_league_code") in codigos), cands[0] if len(cands) == 1 else None)
+        if not club:
+            mismos = [c for c in clubes_sd if c.get("sd_league_code") in codigos and norm_club(c["name"]) == norm_club(t["name"])]
+            club = mismos[0] if len(mismos) == 1 else None
+        if not club:
+            sin.append(t["name"])
+            continue
+        fila = {"sd_team_id": club["id"], "sd_name": _nombre_club(club["name"])}
+        if (t.get("sd_team_id"), t.get("sd_name")) != (fila["sd_team_id"], fila["sd_name"]):
+            store.update("teams", fila, id=t["id"])
+        hechos += 1
+    logger.info(f"Vincular equipos: {hechos} equipos Opta con su club de Soccerdonna"
+                f"{f'; sin vincular ({len(sin)}): ' + ', '.join(sorted(sin)) if sin else ''}")
 
 
 def _norm_club(nombre: Optional[str]) -> str:

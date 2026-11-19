@@ -2,6 +2,8 @@
 export function guessLeagueCountry(leagueName?: string | null): string | null {
   if (!leagueName) return null;
   const lower = leagueName.toLowerCase();
+  // Antes que España: "liga femenil" también contiene "liga f"
+  if (lower.includes("liga femenil")) return "Mexico";
   if (lower.includes("liga f") || lower.includes("primera división") || lower.includes("primera division") || lower.includes("copa de la reina") || lower.includes("spain") || lower.includes("españa") || lower.includes("segunda federación") || lower.includes("primera federación")) return "Spain";
   if (lower.includes("super league") || lower.includes("wsl") || lower.includes("england") || lower.includes("inglaterra") || lower.includes("championship")) return "England";
   if (lower.includes("bundesliga") || lower.includes("germany") || lower.includes("alemania") || lower.includes("dfb") || lower.includes("regionalliga")) return "Germany";

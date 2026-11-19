@@ -59,6 +59,7 @@ const KNOWN_COMPETITION_LOGOS: Record<string, string> = {
   // Mexico - Liga MX Femenil
   "7ut48s80k421xixh6ev5i6h62": `${SUPABASE_LIGAS_BASE}sd-MXAP.jpg`,
   "liga mx femenil": `${SUPABASE_LIGAS_BASE}sd-MXAP.jpg`,
+  "liga femenil": `${SUPABASE_LIGAS_BASE}sd-MXAP.jpg`,
   "liga mx": `${SUPABASE_LIGAS_BASE}sd-MXAP.jpg`,
 
   // Australia - A-League Women

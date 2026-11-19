@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { requireAdmin } from "@/lib/adminGuard";
+import { getSdLeagues } from "@/lib/sdNames";
 
 /**
  * Clubs with a HerScout subscription (organizations) and the leagues each one has contracted
@@ -46,8 +47,10 @@ export async function GET(req: NextRequest) {
         .order("name"),
       db.from("organization_members").select("organization_id"),
       db.from("organization_leagues").select("organization_id, competition_id"),
-      db.from("sd_leagues").select("name, country, opta_competition_id").eq("enabled", true).not("opta_competition_id", "is", null),
+      db.from("sd_leagues").select("opta_competition_id").eq("enabled", true).not("opta_competition_id", "is", null),
     ]);
+    // Same name per Opta competition as the matches API (src/lib/sdNames.ts), so the league filter matches
+    const sdLeagues = await getSdLeagues();
     for (const r of [orgs, members, clubLeagues, targets]) if (r.error) throw r.error;
 
     const seatsUsed = new Map<string, number>();
@@ -59,8 +62,9 @@ export async function GET(req: NextRequest) {
     // One entry per Opta competition (several Soccerdonna leagues can share one)
     const leagues = new Map<string, { competition_id: string; competition_name: string; country: string | null }>();
     for (const t of targets.data) {
-      if (!leagues.has(t.opta_competition_id))
-        leagues.set(t.opta_competition_id, { competition_id: t.opta_competition_id, competition_name: t.name, country: t.country });
+      const l = sdLeagues.get(t.opta_competition_id);
+      if (l && !leagues.has(t.opta_competition_id))
+        leagues.set(t.opta_competition_id, { competition_id: t.opta_competition_id, competition_name: l.name, country: l.country });
     }
 
     return NextResponse.json({

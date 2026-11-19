@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { isRetired } from "@/lib/utils";
+import { getSdLeagues, hasSdNameColumn, teamName } from "@/lib/sdNames";
 
 // Minimum minutes for the season leaderboard (fewer minutes = notes pulled towards the group average)
 const MIN_MINUTES_TRENDING = 450;
@@ -16,6 +17,8 @@ export async function GET(req: NextRequest) {
   const now = new Date();
   const in6Months = new Date(now.getFullYear(), now.getMonth() + 6, now.getDate()).toISOString().slice(0, 10);
 
+  const teamCols = (await hasSdNameColumn()) ? "name, sd_name, badge_url" : "name, badge_url";
+  const sdLeagues = await getSdLeagues();
   const [statsRes, playedRes, upcomingRes, contractsRes, runsRes, reportsRes] = await Promise.all([
     // 1. Top rated players of the downloaded seasons (Opta, notes 0-100)
     db
@@ -39,9 +42,9 @@ export async function GET(req: NextRequest) {
       .from("matches")
       .select(`
         id, match_date, status, home_score, away_score, venue_name,
-        home_team:teams!home_team_id(name, badge_url),
-        away_team:teams!away_team_id(name, badge_url),
-        competitions(name)
+        home_team:teams!home_team_id(${teamCols}),
+        away_team:teams!away_team_id(${teamCols}),
+        competitions(id, name)
       `)
       .eq("status", "Played")
       .order("match_date", { ascending: false })
@@ -51,9 +54,9 @@ export async function GET(req: NextRequest) {
       .from("matches")
       .select(`
         id, match_date, status, home_score, away_score, venue_name, time_confirmed,
-        home_team:teams!home_team_id(name, badge_url),
-        away_team:teams!away_team_id(name, badge_url),
-        competitions(name)
+        home_team:teams!home_team_id(${teamCols}),
+        away_team:teams!away_team_id(${teamCols}),
+        competitions(id, name)
       `)
       .neq("status", "Played")
       .gte("match_date", now.toISOString())
@@ -107,9 +110,9 @@ export async function GET(req: NextRequest) {
   const toMatch = (m: any) => ({
     id: m.id,
     date: m.match_date,
-    competition: m.competitions?.name,
-    homeTeam: m.home_team?.name,
-    awayTeam: m.away_team?.name,
+    competition: sdLeagues.get(m.competitions?.id)?.name || m.competitions?.name,
+    homeTeam: teamName(m.home_team),
+    awayTeam: teamName(m.away_team),
     homeBadge: m.home_team?.badge_url || null,
     awayBadge: m.away_team?.badge_url || null,
     homeScore: m.status === "Played" ? m.home_score : null,

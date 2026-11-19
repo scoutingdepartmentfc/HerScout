@@ -12,6 +12,7 @@ import { Bandera } from "@/components/scouting/Bandera";
 import { OptaLogo } from "@/components/scouting/OptaLogo";
 import { MatchLineupModal } from "@/components/scouting/MatchLineupModal";
 import { PlayerQuickView } from "@/components/scouting/PlayerQuickView";
+import { MatchCalendar, localDayKey } from "@/components/matches/MatchCalendar";
 import {
   Trophy, Clock, MapPin, Globe, Calendar as CalendarIcon,
   Bookmark, BookmarkCheck, ChevronLeft, ChevronRight,
@@ -322,7 +323,6 @@ export default function MatchesPage() {
 
   // Calendar state
   const [calCurrentDate, setCalCurrentDate] = useState(() => new Date());
-  const [selectedDay, setSelectedDay] = useState<string | null>(null);
   // Set of selected league names; empty Set means ALL
   const [selectedLeagues, setSelectedLeagues] = useState<Set<string>>(new Set());
   // One league selected in Results/Upcoming → server-side view by season + matchday
@@ -428,10 +428,6 @@ export default function MatchesPage() {
         if (!res.ok) throw new Error(json.error);
         if (!cancelled) {
           setMatches(json.matches || []);
-          if (tab === "calendar" && !selectedDay) {
-            const todayStr = new Date().toISOString().split("T")[0];
-            setSelectedDay(todayStr);
-          }
         }
       } catch (err: any) {
         if (!cancelled) setError(err.message || "Failed to load matches");
@@ -504,9 +500,7 @@ export default function MatchesPage() {
   };
 
   // Calendar Helpers
-  const { monthName, daysGrid, matchesByDay, availableCompetitions } = useMemo(() => {
-    const year = calCurrentDate.getFullYear();
-    const month = calCurrentDate.getMonth();
+  const { monthName, matchesByDay, availableCompetitions } = useMemo(() => {
     const monthName = calCurrentDate.toLocaleString("en-US", { month: "long", year: "numeric" });
 
     // Group matches by day "YYYY-MM-DD" applying active selectedLeagues filter if set
@@ -519,43 +513,17 @@ export default function MatchesPage() {
       if (selectedLeagues.size > 0 && (!m.competition || !selectedLeagues.has(m.competition))) {
         continue;
       }
-      const dayKey = m.date.slice(0, 10);
+      const dayKey = localDayKey(new Date(m.date));
       if (!matchesByDay[dayKey]) matchesByDay[dayKey] = [];
       matchesByDay[dayKey].push(m);
     }
 
-    // Days in current month
-    const firstDayIndex = new Date(year, month, 1).getDay(); // 0 is Sun
-    // Adjust so Monday is 0
-    const startOffset = (firstDayIndex + 6) % 7;
-    const totalDays = new Date(year, month + 1, 0).getDate();
-
-    const daysGrid: Array<{ day: number | null; dateStr: string | null }> = [];
-    for (let i = 0; i < startOffset; i++) {
-      daysGrid.push({ day: null, dateStr: null });
-    }
-    for (let d = 1; d <= totalDays; d++) {
-      const monthStr = String(month + 1).padStart(2, "0");
-      const dayStr = String(d).padStart(2, "0");
-      daysGrid.push({ day: d, dateStr: `${year}-${monthStr}-${dayStr}` });
-    }
-
     return {
       monthName,
-      daysGrid,
       matchesByDay,
       availableCompetitions: Array.from(compSet).sort(),
     };
   }, [calCurrentDate, matches, selectedLeagues]);
-
-  const selectedDayMatches = useMemo(() => {
-    if (!selectedDay) return [];
-    let list = matchesByDay[selectedDay] || [];
-    if (selectedLeagues.size > 0) {
-      list = list.filter((m) => m.competition && selectedLeagues.has(m.competition));
-    }
-    return list;
-  }, [selectedDay, matchesByDay, selectedLeagues]);
 
   // Scouting Agenda Filtered List
   const filteredAgendaMatches = useMemo(() => {
@@ -998,7 +966,6 @@ export default function MatchesPage() {
                 onClick={() => {
                   const today = new Date();
                   setCalCurrentDate(new Date(today.getFullYear(), today.getMonth(), 1));
-                  setSelectedDay(today.toISOString().split("T")[0]);
                 }}
               >
                 Today
@@ -1019,236 +986,16 @@ export default function MatchesPage() {
           {isLoading ? (
             <LoadingState message="Loading monthly calendar fixtures..." />
           ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-              {/* Calendar Grid (7 cols) */}
-              <div className="lg:col-span-8 xl:col-span-8 bg-gradient-to-b from-navy-950/90 to-navy-950/60 backdrop-blur-md rounded-2xl border border-white/10 p-4 shadow-2xl">
-                <div className="grid grid-cols-7 gap-2 mb-2 px-1">
-                  {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d, i) => (
-                    <div
-                      key={d}
-                      className={`text-center font-bold text-[11px] py-1 uppercase tracking-wider ${
-                        i >= 5 ? "text-primary/70" : "text-slate-400"
-                      }`}
-                    >
-                      {d}
-                    </div>
-                  ))}
-                </div>
-
-                <div className="grid grid-cols-7 gap-2">
-                  {daysGrid.map((cell, idx) => {
-                    if (!cell.day || !cell.dateStr) {
-                      return (
-                        <div
-                          key={`empty-${idx}`}
-                          className="min-h-[58px] rounded-xl bg-white/[0.015] border border-transparent"
-                        />
-                      );
-                    }
-
-                    const dayMatches = matchesByDay[cell.dateStr] || [];
-                    const isSelected = selectedDay === cell.dateStr;
-                    const isToday = cell.dateStr === new Date().toISOString().split("T")[0];
-                    const hasMatches = dayMatches.length > 0;
-
-                    // Group day matches by competition
-                    const dayCompMap = new Map<string, { count: number; compId?: string; logoUrl?: string | null }>();
-                    for (const m of dayMatches) {
-                      if (!m.competition) continue;
-                      const entry = dayCompMap.get(m.competition) || {
-                        count: 0,
-                        compId: m.competitionId,
-                        logoUrl: m.competitionLogoUrl,
-                      };
-                      entry.count += 1;
-                      dayCompMap.set(m.competition, entry);
-                    }
-                    const dayCompsList = Array.from(dayCompMap.entries());
-
-                    return (
-                      <div
-                        key={cell.dateStr}
-                        onClick={() => setSelectedDay(cell.dateStr)}
-                        className={`group relative p-1.5 sm:p-2 rounded-xl border transition-all duration-200 cursor-pointer flex flex-col justify-between ${
-                          !hasMatches
-                            ? "min-h-[58px] bg-navy-950/30 border-white/[0.03] opacity-60 hover:opacity-100 hover:bg-white/[0.04] hover:border-white/15"
-                            : "min-h-[92px] sm:min-h-[100px] bg-gradient-to-b from-navy-900/80 to-navy-950/90 border-white/10 hover:border-white/25 hover:from-white/[0.08] hover:to-navy-900/60 shadow-sm"
-                        } ${
-                          isSelected
-                            ? "!bg-primary/20 !border-primary ring-2 ring-primary/60 shadow-lg shadow-primary/20 !opacity-100"
-                            : isToday
-                            ? "!border-sky-400/50 bg-sky-500/10"
-                            : ""
-                        }`}
-                      >
-                        {/* Day number & Total day matches count */}
-                        <div className="flex items-center justify-between gap-1">
-                          <span
-                            className={`text-xs font-mono font-bold px-1.5 py-0.5 rounded-md transition-colors ${
-                              isToday
-                                ? "bg-primary text-slate-950 font-black shadow-xs"
-                                : isSelected
-                                ? "bg-primary/30 text-primary font-black"
-                                : hasMatches
-                                ? "text-slate-200 group-hover:text-white"
-                                : "text-slate-500 group-hover:text-slate-300"
-                            }`}
-                          >
-                            {cell.day}
-                          </span>
-                          {hasMatches && (
-                            <span
-                              className={`text-[10px] font-black px-1.5 py-0.2 rounded-full font-mono transition-transform group-hover:scale-105 ${
-                                isSelected
-                                  ? "bg-primary text-slate-950 font-black"
-                                  : "bg-sky-500/20 text-sky-300 border border-sky-500/40"
-                              }`}
-                              title={`${dayMatches.length} match${dayMatches.length > 1 ? "es" : ""}`}
-                            >
-                              {dayMatches.length}
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Competition Badges (Compact & clean grid) */}
-                        {hasMatches && (
-                          <div className="mt-1.5 flex flex-wrap gap-1 content-start">
-                            {dayCompsList.slice(0, 6).map(([compName, info]) => (
-                              <div
-                                key={compName}
-                                className="inline-flex items-center gap-1 pl-1 pr-1.5 py-0.5 rounded-md bg-black/60 border border-white/10 hover:border-white/30 backdrop-blur-xs transition-colors"
-                                title={`${compName}: ${info.count} match${info.count > 1 ? "es" : ""}`}
-                              >
-                                <LogoLiga
-                                  competitionId={info.compId}
-                                  competitionName={compName}
-                                  logoUrl={info.logoUrl}
-                                  size={13}
-                                  className="shrink-0"
-                                />
-                                <span className="text-[9px] font-black font-mono text-slate-200">
-                                  {info.count}
-                                </span>
-                              </div>
-                            ))}
-                            {dayCompsList.length > 6 && (
-                              <span
-                                className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-white/10 text-[9px] font-black font-mono text-slate-300 border border-white/10"
-                                title={`${dayCompsList.length - 6} more competition(s)`}
-                              >
-                                +{dayCompsList.length - 6}
-                              </span>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Day Details Sidebar */}
-              <div className="lg:col-span-4 xl:col-span-4 space-y-3">
-                <div className="flex items-center justify-between px-1">
-                  <h3 className="text-sm font-bold uppercase tracking-wider text-slate-300 flex items-center gap-2">
-                    <CalendarIcon className="w-4 h-4 text-primary" />
-                    <span>
-                      {selectedDay
-                        ? new Date(selectedDay + "T00:00:00").toLocaleDateString("en-GB", {
-                            weekday: "short",
-                            month: "short",
-                            day: "numeric",
-                            year: "numeric",
-                          })
-                        : "Select a day"}
-                    </span>
-                  </h3>
-                  <Badge variant="outline" size="sm">
-                    {selectedDayMatches.length} matches
-                  </Badge>
-                </div>
-
-                {selectedDayMatches.length === 0 ? (
-                  <div className="p-8 text-center rounded-2xl border border-dashed border-white/10 bg-navy-950/40 text-xs text-muted-foreground">
-                    No matches found for this day with current filters.
-                  </div>
-                ) : (
-                  <div className="space-y-2.5 max-h-[calc(100vh-250px)] overflow-y-auto pr-1">
-                    {selectedDayMatches.map((m) => {
-                      const { timeLabel } = formatMatchDateTime(m.date, m.timeConfirmed, played(m));
-                      const isBookmarked = !!agenda[m.id];
-                      return (
-                        <Card
-                          key={m.id}
-                          onClick={canOpen(m) ? () => setLineupMatch(m) : undefined}
-                          className={`group relative overflow-hidden transition-all duration-200 border-white/10 hover:border-white/25 shadow-md ${
-                            canOpen(m) ? "cursor-pointer" : ""
-                          }`}
-                        >
-                          <VenueBackdrop venue={m.venue} known={m.venueImage} />
-                          <CardContent className="relative p-3">
-                            <div className="flex items-center justify-between text-[11px] mb-2">
-                              <LeagueHeaderBadge
-                                competition={m.competition}
-                                competitionId={m.competitionId}
-                                competitionCountry={m.competitionCountry}
-                                competitionLogoUrl={m.competitionLogoUrl}
-                              />
-                              <div className="flex items-center gap-2">
-                                {canOpen(m) && (
-                                  <span title="Lineups available" className="text-emerald-300 bg-emerald-950/60 border border-emerald-500/30 px-1.5 py-0.5 rounded">
-                                    <Users className="h-3.5 w-3.5" />
-                                  </span>
-                                )}
-                                {timeLabel && (
-                                  <span className="font-mono text-white bg-black/40 border border-white/10 px-1.5 py-0.5 rounded font-bold">{timeLabel}</span>
-                                )}
-                                <button
-                                  onClick={(e) => toggleAgendaMatch(m, e)}
-                                  className={`p-1 rounded-md transition-colors ${
-                                    isBookmarked
-                                      ? "text-amber-400 bg-amber-400/20"
-                                      : "text-slate-300 hover:text-amber-400 hover:bg-white/15 bg-black/40 border border-white/10"
-                                  }`}
-                                  title={isBookmarked ? "Remove from Scouting Agenda" : "Add to Scouting Agenda"}
-                                >
-                                  {isBookmarked ? (
-                                    <BookmarkCheck className="w-4 h-4 fill-amber-400" />
-                                  ) : (
-                                    <Bookmark className="w-4 h-4" />
-                                  )}
-                                </button>
-                              </div>
-                            </div>
-
-                            <div className="space-y-1.5 py-1">
-                              {[m.home, m.away].map((side, i) => (
-                                <div key={i} className="flex items-center justify-between text-xs font-bold text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]">
-                                  <span className="flex items-center gap-2 min-w-0">
-                                    <EscudoEquipo teamId={side.id} badgeUrl={side.badgeUrl} name={side.name} size={18} />
-                                    <span className="truncate">{side.name}</span>
-                                  </span>
-                                  <span className={played(m) ? "font-mono font-black text-white text-sm drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]" : "text-slate-300 font-mono drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]"}>
-                                    {played(m) ? side.score ?? 0 : "-"}
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-
-                            {m.venue && (
-                              <div className="mt-2 pt-2 border-t border-white/20 flex items-center gap-1.5 text-[10px] text-slate-100 truncate">
-                                <MapPin className="w-3 h-3 shrink-0 text-slate-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]" />
-                                <span className="truncate font-medium drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">{m.venue}</span>
-                              </div>
-                            )}
-                          </CardContent>
-                        </Card>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            </div>
+            <MatchCalendar
+              year={calCurrentDate.getFullYear()}
+              month={calCurrentDate.getMonth()}
+              matchesByDay={matchesByDay}
+              tzShort={tzShort}
+              agenda={agenda}
+              canOpen={(m) => canOpen(m as MatchRow)}
+              onOpenMatch={(m) => setLineupMatch(m as MatchRow)}
+              onToggleAgenda={(m, e) => toggleAgendaMatch(m as MatchRow, e)}
+            />
           )}
         </div>
       ) : tab === "agenda" ? (

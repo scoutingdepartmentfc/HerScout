@@ -404,12 +404,19 @@ def opta(store: Store, liga_code: Optional[str], max_matches: Optional[int], sol
     """Temporadas Opta de cada liga de /admin con ID Opta: las elegidas + la última del catálogo (ver
     storage.competiciones_objetivo). `solo_ultima`: la más reciente y las elegidas aún sin descargar."""
     from .ingest import IngestionPipeline
-    from .storage import competiciones_objetivo
+    from .storage import competiciones_calendario, competiciones_objetivo
     comps = competiciones_objetivo(store, solo_admin=True, liga_code=liga_code, solo_ultima=solo_ultima)
-    if not comps:
+    # Ligas sin datos por jugadora en Opta (Dinamarca...): solo calendario con horarios y resultados
+    calendario = competiciones_calendario(store, liga_code) if modo in ("todo", "partidos") else []
+    if not comps and not calendario:
         logger.info("Opta: ninguna liga elegida tiene un ID de Opta con temporadas en el catálogo")
         return
     pipe = IngestionPipeline(skip_photos=True, max_matches_per_comp=max_matches)
+    for comp in calendario:
+        logger.info(f"▶ Opta (solo calendario) {comp['name']} {comp['season_name']} ({comp['season_id']})")
+        pipe.procesar_calendario(comp)
+    if calendario and modo != "partidos":  # con "partidos" se vincula al final
+        vincular_equipos(store, liga_code)
     for comp in comps:
         logger.info(f"▶ Opta ({modo}) {comp['name']} {comp['season_name']} ({comp['season_id']})"
                     f"{' [actual]' if comp['active'] else ''}")

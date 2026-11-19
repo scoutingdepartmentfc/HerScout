@@ -60,6 +60,21 @@ export async function GET(req: NextRequest) {
       ),
       selectAll((a, b) => db.from("teams").select("id, sd_league_code").not("sd_league_code", "is", null).range(a, b)),
     ]);
+    // Opta competitions with only results or lineups (no per-player data): the pipeline stores just their
+    // calendar (kick-off times and results), so /admin can tell them apart from IDs that are not in the catalog
+    const withPlayerData = new Set(catalog.map((c: any) => c.competition_id));
+    const resultsOnly = await selectAll((a, b) =>
+      db.from("opta_catalog")
+        .select("season_id, competition_id, competition_name, country, season_name, start_date, data_level")
+        .in("data_level", ["resultado", "alineacion"])
+        .range(a, b)
+    );
+    const calendarOnly: Record<string, any> = {};
+    for (const c of resultsOnly) {
+      if (withPlayerData.has(c.competition_id)) continue;
+      const prev = calendarOnly[c.competition_id];
+      if (!prev || (c.start_date || "") > (prev.start_date || "")) calendarOnly[c.competition_id] = c;
+    }
     if (leagues.error) throw leagues.error;
     // Seasons with per-player stats of each Opta competition, newest first; one entry per competition (latest)
     const optaSeasons: Record<string, any[]> = {};
@@ -76,7 +91,10 @@ export async function GET(req: NextRequest) {
       if (!String(p.id).startsWith("sd-")) s.opta++;
     }
     for (const t of teams) if (String(t.id).startsWith("sd-")) row(t.sd_league_code).teams++;
-    return NextResponse.json({ leagues: leagues.data, optaCompetitions, optaSeasons, stats, runsUrl: pipelineRunsUrl() });
+    return NextResponse.json({
+      leagues: leagues.data, optaCompetitions, optaCalendarOnly: Object.values(calendarOnly), optaSeasons, stats,
+      runsUrl: pipelineRunsUrl(),
+    });
   } catch (err: any) {
     return NextResponse.json({ error: err.message || "Could not load leagues" }, { status: 500 });
   }

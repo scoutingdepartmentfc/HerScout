@@ -39,6 +39,15 @@ interface OptaSeason {
   played_matches: number;
 }
 
+/** Opta competition with only results or lineups (no per-player data): calendar and results, no ratings. */
+interface OptaCalendarOnly {
+  competition_id: string;
+  competition_name: string;
+  country: string | null;
+  season_name: string | null;
+  data_level: string;
+}
+
 interface LeagueStats {
   players: number;
   photos: number;
@@ -49,7 +58,7 @@ interface LeagueStats {
 /** Parts of the download, in pipeline order (pipeline/sd_ligas.py `pasos`). */
 type Part = "todo" | "soccerdonna" | "opta" | "fotmob" | "catalogo";
 const PART_LABEL: Record<Part, string> = {
-  todo: "todo (Soccerdonna → Opta → fotos FotMob)",
+  todo: "todo (Soccerdonna → fotos FotMob → Opta)",
   soccerdonna: "Soccerdonna (clubes, plantillas y fichas)",
   opta: "Opta (stats y eventing + vinculación)",
   fotmob: "fotos FotMob",
@@ -105,10 +114,11 @@ function StatusCell({ value, detail, date, done, progress }: { value: string; de
 
 /** Free-text Opta competition ID, saved on blur/Enter; suggests the catalog competitions of the league's country. */
 function OptaIdInput({
-  league, competitions, saving, onSave,
+  league, competitions, calendarOnly, saving, onSave,
 }: {
   league: SdLeague;
   competitions: OptaSeason[];
+  calendarOnly: OptaCalendarOnly[];
   saving: boolean;
   onSave: (id: string) => void;
 }) {
@@ -116,6 +126,7 @@ function OptaIdInput({
   useEffect(() => setValue(league.opta_competition_id || ""), [league.opta_competition_id]);
   const current = (league.opta_competition_id || "").trim();
   const match = competitions.find((c) => c.competition_id === value.trim());
+  const onlyCalendar = match ? undefined : calendarOnly.find((c) => c.competition_id === value.trim());
   const target = (PAISES_OPTA[league.country || ""] || league.country || "").toLowerCase();
   const sameCountry = competitions.filter((c) => (c.country || "").toLowerCase() === target);
   const suggestions = sameCountry.length ? sameCountry : competitions;
@@ -147,6 +158,13 @@ function OptaIdInput({
               {c.competition_name} · {c.country}
             </option>
           ))}
+          {calendarOnly
+            .filter((c) => (c.country || "").toLowerCase() === target)
+            .map((c) => (
+              <option key={c.competition_id} value={c.competition_id}>
+                {c.competition_name} · {c.country} · solo calendario
+              </option>
+            ))}
         </datalist>
       </div>
       {value.trim() ? (
@@ -155,9 +173,14 @@ function OptaIdInput({
             {match.competition_name} · {match.country}
             {match.has_eventing ? " · eventing" : " · matchstats"}
           </div>
+        ) : onlyCalendar ? (
+          <div className="text-[10px] text-sky-300">
+            {onlyCalendar.competition_name} · {onlyCalendar.country} · solo calendario y resultados
+            {onlyCalendar.data_level === "alineacion" ? " (Opta tiene alineaciones, no stats)" : " (Opta no tiene stats)"}: sin notas
+          </div>
         ) : (
           <div className="text-[10px] text-amber-300 flex items-center gap-1">
-            <AlertTriangle className="w-3 h-3" /> No está en el catálogo Opta (sin temporadas)
+            <AlertTriangle className="w-3 h-3" /> No está en el catálogo Opta (revisa el ID)
           </div>
         )
       ) : (
@@ -170,13 +193,14 @@ function OptaIdInput({
 export function SoccerdonnaLeagues() {
   const [leagues, setLeagues] = useState<SdLeague[]>([]);
   const [optaCompetitions, setOptaCompetitions] = useState<OptaSeason[]>([]);
+  const [optaCalendarOnly, setOptaCalendarOnly] = useState<OptaCalendarOnly[]>([]);
   const [optaSeasons, setOptaSeasons] = useState<Record<string, OptaSeason[]>>({});
   const [stats, setStats] = useState<Record<string, LeagueStats>>({});
   const [runsUrl, setRunsUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
-  const [allSeasons, setAllSeasons] = useState(false);
+  const [allSeasons, setAllSeasons] = useState(true);
   const [newUrl, setNewUrl] = useState("");
   // Table filters: "all" shows the whole Soccerdonna catalog (active leagues first)
   const [view, setView] = useState<"active" | "all">("all");
@@ -194,6 +218,7 @@ export function SoccerdonnaLeagues() {
       if (!res.ok) throw new Error(data.error);
       setLeagues(data.leagues || []);
       setOptaCompetitions(data.optaCompetitions || []);
+      setOptaCalendarOnly(data.optaCalendarOnly || []);
       setOptaSeasons(data.optaSeasons || {});
       setStats(data.stats || {});
       setRunsUrl(data.runsUrl || null);
@@ -483,6 +508,7 @@ export function SoccerdonnaLeagues() {
                       <OptaIdInput
                         league={l}
                         competitions={optaCompetitions}
+                        calendarOnly={optaCalendarOnly}
                         saving={saving === `opta-${l.code}`}
                         onSave={(id) => send(`opta-${l.code}`, { action: "update", code: l.code, optaCompetitionId: id })}
                       />

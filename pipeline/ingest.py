@@ -236,7 +236,9 @@ class IngestionPipeline:
             matches.append({
                 'id': mi['id'], 'competition_id': comp['id'], 'season_id': comp['season_id'],
                 'home_team_id': meta['home']['id'], 'away_team_id': meta['away']['id'],
-                'match_date': meta['match_date'], 'status': md.get('matchStatus') or 'Fixture',
+                # Partido dado por ganado (Awarded, con su resultado): cuenta como jugado, no como pendiente
+                'match_date': meta['match_date'],
+                'status': 'Played' if md.get('matchStatus') == 'Awarded' else (md.get('matchStatus') or 'Fixture'),
                 'home_score': meta['home_score'], 'away_score': meta['away_score'], 'week': mi.get('week'),
                 'venue_id': venue.get('id'), 'venue_name': venue.get('longName') or venue.get('shortName'),
                 'time_confirmed': bool(mi.get('time')), 'updated_at': ts,
@@ -503,9 +505,9 @@ class IngestionPipeline:
             logger.warning(f"  Ligas: omitido ({e}). ¿Falta la migración 20261024000000_ligas.sql?")
 
     # ── Orquestación ─────────────────────────────────────────
-    def procesar_competicion(self, comp: Dict[str, Any], only_photos: bool = False):
+    def guardar_competicion(self, comp: Dict[str, Any], fixtures: List[Dict[str, Any]]):
+        """Filas de la competición y de la temporada (la activa queda como active_season_id)."""
         cid, sid = comp['id'], comp['season_id']
-        fixtures = self.adapter.get_fixtures(sid)
         tc = next((f['matchInfo'].get('tournamentCalendar') for f in fixtures
                    if f.get('matchInfo', {}).get('tournamentCalendar')), {}) or {}
         ts = now_iso()
@@ -519,6 +521,28 @@ class IngestionPipeline:
                                        'start_date': (tc.get('startDate') or '').replace('Z', '') or None,
                                        'end_date': (tc.get('endDate') or '').replace('Z', '') or None,
                                        'is_active': activa, 'updated_at': ts}])
+
+    def procesar_calendario(self, comp: Dict[str, Any]):
+        """Liga sin datos por jugadora en Opta (solo resultados o alineaciones): calendario con horarios y resultados,
+        sin estadísticas ni notas. Los equipos sin competición quedan en esta (para vincularlos con Soccerdonna)."""
+        fixtures = self.adapter.get_fixtures(comp['season_id'])
+        if not fixtures:
+            logger.warning(f"  Calendario: Opta no devuelve partidos de {comp['name']} {comp.get('season_name')}")
+            return
+        self.guardar_competicion(comp, fixtures)
+        self.guardar_calendario(comp, fixtures, set())
+        ids = {c.get('id') for f in fixtures for c in ((f.get('matchInfo') or {}).get('contestant') or []) if c.get('id')}
+        sueltos = [t['id'] for t in self.store.select_all('teams', 'id,competition_id')
+                   if t['id'] in ids and not t.get('competition_id')]
+        for tid in sueltos:
+            self.store.update('teams', {'competition_id': comp['id']}, id=tid)
+        jugados = sum(1 for f in fixtures if (f.get('liveData') or {}).get('matchDetails', {}).get('matchStatus') == 'Played')
+        logger.info(f"  Solo calendario: {len(fixtures)} partidos ({jugados} jugados), {len(ids)} equipos")
+
+    def procesar_competicion(self, comp: Dict[str, Any], only_photos: bool = False):
+        cid, sid = comp['id'], comp['season_id']
+        fixtures = self.adapter.get_fixtures(sid)
+        self.guardar_competicion(comp, fixtures)
 
         perfiles = self.sync_squads(comp)
         cache = pd.DataFrame() if self.rebuild else self.store.load_match_cache(sid)

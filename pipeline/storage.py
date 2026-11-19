@@ -270,6 +270,32 @@ def competiciones_objetivo(store: "Store", solo_admin: bool = False, liga_code: 
     return salida
 
 
+def competiciones_calendario(store: "Store", liga_code: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Ligas de /admin cuya competición Opta NO tiene datos por jugadora en ninguna temporada (solo resultados o
+    alineaciones, p. ej. Dinamarca): su temporada más reciente, para guardar el calendario (horarios y resultados)
+    sin notas. Las que sí tienen datos por jugadora van por competiciones_objetivo."""
+    if not store.online:
+        return []
+    ligas = [l for l in store.select_all('sd_leagues', 'code,enabled,opta_competition_id')
+             if l.get('opta_competition_id') and (l['code'] == liga_code if liga_code else l.get('enabled'))]
+    cids = {str(l['opta_competition_id']).strip() for l in ligas}
+    if not cids:
+        return []
+    por_comp: Dict[str, List[Dict[str, Any]]] = {}
+    for c in store.select_all('opta_catalog', 'season_id,competition_id,competition_name,country,season_name,'
+                                              'start_date,data_level'):
+        if c['competition_id'] in cids:
+            por_comp.setdefault(c['competition_id'], []).append(c)
+    salida = []
+    for cid, temporadas in por_comp.items():
+        if any((t.get('data_level') or '').startswith('jugadora') for t in temporadas):
+            continue
+        c = max(temporadas, key=lambda t: t.get('start_date') or '')
+        salida.append({'id': cid, 'name': c['competition_name'], 'country': c.get('country'), 'season_id': c['season_id'],
+                       'season_name': c.get('season_name'), 'active': True, 'solo_calendario': True})
+    return salida
+
+
 def dorsales_actuales(store: "Store", comps: List[Dict[str, Any]]) -> Dict[str, int]:
     """{player_id: dorsal} de las jugadoras activas en la plantilla de la temporada actual de cada liga.
     Para emparejar con FotMob/Soccerdonna (que muestran el dorsal de hoy) no vale el de otra temporada."""

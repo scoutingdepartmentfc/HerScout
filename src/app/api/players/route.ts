@@ -22,6 +22,7 @@ type BaseData = {
   leagueCountryByCode: Map<string, string>;
   leagueCountryByName: Map<string, string>;
   trendByPlayer: Map<string, "up" | "neutral" | "down">;
+  last5ByPlayer: Map<string, number[]>;
   // Every player (stats or not): the ones without season stats are listed without ratings
   allPlayers: any[];
   // Players without a current club: club of their latest match, only if played in the last 3 months
@@ -73,8 +74,12 @@ let baseCache: { timestamp: number; data: BaseData } | null = null;
 let baseInflight: Promise<BaseData> | null = null;
 const processedCache = new Map<string, { timestamp: number; value: ProcessedSeason }>();
 
-async function fetchTrends(db: any): Promise<Map<string, "up" | "neutral" | "down">> {
+async function fetchTrends(db: any): Promise<{
+  trendByPlayer: Map<string, "up" | "neutral" | "down">;
+  last5ByPlayer: Map<string, number[]>;
+}> {
   const trendByPlayer = new Map<string, "up" | "neutral" | "down">();
+  const last5ByPlayer = new Map<string, number[]>();
   try {
     const d = new Date();
     d.setMonth(d.getMonth() - 3);
@@ -120,11 +125,12 @@ async function fetchTrends(db: any): Promise<Map<string, "up" | "neutral" | "dow
         const trend = computeRatingTrend(targetMatches.map((m) => m.score));
         if (trend) trendByPlayer.set(playerId, trend);
       }
+      last5ByPlayer.set(playerId, matches.slice(-5).map((m) => Number(m.score.toFixed(2))));
     }
   } catch (trendErr) {
     console.warn("Could not compute player trends:", trendErr);
   }
-  return trendByPlayer;
+  return { trendByPlayer, last5ByPlayer };
 }
 
 async function loadBaseData(db: any): Promise<BaseData> {
@@ -210,13 +216,14 @@ async function loadBaseData(db: any): Promise<BaseData> {
       }
     };
 
-    const [statsCountRes, sdLRes, trendByPlayer, allPlayers, teamsRes] = await Promise.all([
+    const [statsCountRes, sdLRes, trendsRes, allPlayers, teamsRes] = await Promise.all([
       statsCountPromise,
       db.from("sd_leagues").select("code, name, country"),
-      fetchTrends(db).catch(() => new Map()),
+      fetchTrends(db).catch(() => ({ trendByPlayer: new Map(), last5ByPlayer: new Map() })),
       fetchAllPlayers(),
       db.from("teams").select("id, name, badge_url, league_name").not("league_name", "is", null),
     ]);
+    const { trendByPlayer, last5ByPlayer } = trendsRes;
 
     const totalStats = Math.max(statsCountRes?.count || 0, PAGE);
     const offsets: number[] = [];
@@ -264,7 +271,7 @@ async function loadBaseData(db: any): Promise<BaseData> {
       leagueName: t.league_name || null,
     }));
 
-    const data: BaseData = { rows, leagueCountryByCode, leagueCountryByName, trendByPlayer, allPlayers, recentTeamByPlayer, teamsMaster };
+    const data: BaseData = { rows, leagueCountryByCode, leagueCountryByName, trendByPlayer, last5ByPlayer, allPlayers, recentTeamByPlayer, teamsMaster };
     baseCache = { timestamp: Date.now(), data };
     processedCache.clear();
     return data;
@@ -327,7 +334,7 @@ export async function GET(req: NextRequest) {
     if (cachedProcessed && cachedProcessed.timestamp === baseCache?.timestamp) {
       processed = cachedProcessed.value;
     } else {
-      const { rows, leagueCountryByCode, leagueCountryByName, trendByPlayer, allPlayers, recentTeamByPlayer, teamsMaster } = base;
+      const { rows, leagueCountryByCode, leagueCountryByName, trendByPlayer, last5ByPlayer, allPlayers, recentTeamByPlayer, teamsMaster } = base;
 
       // Extract available season names from all rows for the filter dropdown
       const availableSeasons = Array.from(
@@ -579,6 +586,7 @@ export async function GET(req: NextRequest) {
 
       for (const p of list) {
         p.trend = trendByPlayer.get(p.id) ?? null;
+        p.last5Ratings = last5ByPlayer.get(p.id) ?? [];
       }
 
       processed = {

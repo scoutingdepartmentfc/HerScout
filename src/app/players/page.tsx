@@ -68,6 +68,35 @@ interface PlayerRow {
   recentMinutes?: number | null;
   recentGoals?: number | null;
   trend?: "up" | "neutral" | "down" | null;
+  last5Ratings?: number[];
+}
+
+function FormBars({ ratings }: { ratings?: number[] }) {
+  if (!ratings || ratings.length === 0) return <span className="text-slate-500 text-xs">—</span>;
+  const barColor = (r: number) => {
+    if (r >= 7.5) return "bg-emerald-500";
+    if (r >= 6.5) return "bg-lime-500";
+    if (r >= 5.5) return "bg-slate-400";
+    return "bg-rose-500";
+  };
+  return (
+    <div
+      className="inline-flex items-end justify-center gap-[3px] h-5 px-1"
+      title={`Últimos ${ratings.length} partidos: ${ratings.map((r) => r.toFixed(1)).join(" · ")}`}
+    >
+      {ratings.map((r, i) => {
+        const h = Math.max(4, Math.min(20, Math.round(((r - 3) / 7) * 16 + 4)));
+        return (
+          <span
+            key={i}
+            style={{ height: `${h}px` }}
+            className={`w-[5px] rounded-t-full ${barColor(r)} transition-all`}
+            title={r.toFixed(1)}
+          />
+        );
+      })}
+    </div>
+  );
 }
 
 function fmtMarketValue(v?: number | null) {
@@ -396,6 +425,8 @@ function PlayersDirectoryContent() {
   const [searchTerm, setSearchTerm] = useState("");
   const [positionFilter, setPositionFilter] = useState("all");
   const [selectedTeams, setSelectedTeams] = useState<string[]>([]);
+  const [teamsModalOpen, setTeamsModalOpen] = useState(false);
+  const [teamModalSearch, setTeamModalSearch] = useState("");
   const [selectedLeagues, setSelectedLeagues] = useState<string[]>([]);
   const [seasonFilter, setSeasonFilter] = useState("all");
   const [minRatingFilter, setMinRatingFilter] = useState<string>("all");
@@ -949,24 +980,27 @@ function PlayersDirectoryContent() {
                 />
               </div>
 
-              {/* Club / Team (Multi-select with Badge) */}
+              {/* Club / Team (Modal with large badges) */}
               <div>
-                <MultiSelectDropdown
-                  label="Clubs / Teams"
-                  options={filteredAvailableTeams}
-                  selectedIds={selectedTeams}
-                  onChange={setSelectedTeams}
-                  placeholder="All teams"
-                  renderIcon={(opt) => (
-                    <EscudoEquipo
-                      teamId={opt.teamId}
-                      badgeUrl={opt.badgeUrl}
-                      name={opt.name}
-                      size={26}
-                      className="shrink-0"
-                    />
-                  )}
-                />
+                <label className="text-[10px] font-semibold text-slate-300 uppercase tracking-wider block mb-1">
+                  Clubs / Teams
+                </label>
+                <button
+                  type="button"
+                  onClick={() => { setTeamModalSearch(""); setTeamsModalOpen(true); }}
+                  className="w-full h-9 px-3 rounded-lg bg-navy-950/70 border border-border/80 hover:border-primary/60 text-left text-xs text-slate-200 flex items-center justify-between gap-2 transition-colors"
+                >
+                  <span className="truncate">
+                    {selectedTeams.length === 0
+                      ? "All teams"
+                      : selectedTeams.length === 1
+                        ? selectedTeams[0]
+                        : `${selectedTeams.length} teams selected`}
+                  </span>
+                  <span className="text-[10px] text-slate-400 shrink-0">
+                    {filteredAvailableTeams.length}
+                  </span>
+                </button>
               </div>
 
               {/* Rating Threshold (Min OVR) */}
@@ -1376,6 +1410,12 @@ function PlayersDirectoryContent() {
                   >
                     Goals {sortBy === "recent_goals" && (sortOrder === "desc" ? "↓" : "↑")}
                   </TableHead>
+                  <TableHead
+                    className="text-center font-semibold text-slate-300 select-none whitespace-nowrap"
+                    title="Rating de los últimos 5 partidos"
+                  >
+                    Form
+                  </TableHead>
                   <TableHead className="text-right font-semibold text-white">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -1563,6 +1603,9 @@ function PlayersDirectoryContent() {
                     <TableCell className="text-center font-mono text-xs font-semibold text-white" title={player.recentSeason || undefined}>
                       {player.recentGoals ?? "—"}
                     </TableCell>
+                    <TableCell className="text-center">
+                      <FormBars ratings={player.last5Ratings} />
+                    </TableCell>
 
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1.5">
@@ -1602,6 +1645,94 @@ function PlayersDirectoryContent() {
       </Card>
       </div>
       </div>
+      {teamsModalOpen && (
+        <div
+          className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setTeamsModalOpen(false)}
+        >
+          <div
+            className="w-full max-w-4xl max-h-[85vh] rounded-2xl border border-border/80 bg-[#0b1222] shadow-2xl flex flex-col overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-4 border-b border-border/60 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="text-base font-bold text-white">Clubs / Teams</h3>
+                <p className="text-xs text-slate-400">
+                  {selectedTeams.length > 0
+                    ? `${selectedTeams.length} selected · ${filteredAvailableTeams.length} available`
+                    : `${filteredAvailableTeams.length} clubs available`}
+                </p>
+              </div>
+              <div className="flex items-center gap-2 flex-1 max-w-sm">
+                <div className="relative flex-1">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={teamModalSearch}
+                    onChange={(e) => setTeamModalSearch(e.target.value)}
+                    placeholder="Search club..."
+                    autoFocus
+                    className="w-full h-9 pl-9 pr-3 rounded-lg bg-navy-950 border border-border/80 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+                {selectedTeams.length > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSelectedTeams([])}
+                    className="text-xs text-slate-300 hover:text-white"
+                  >
+                    Clear
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  onClick={() => setTeamsModalOpen(false)}
+                >
+                  Done
+                </Button>
+              </div>
+            </div>
+
+            <div className="p-4 overflow-y-auto grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+              {filteredAvailableTeams
+                .filter((t) => !teamModalSearch.trim() || t.name.toLowerCase().includes(teamModalSearch.trim().toLowerCase()))
+                .map((opt) => {
+                  const selected = selectedTeams.includes(opt.id);
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() =>
+                        setSelectedTeams((prev) =>
+                          prev.includes(opt.id) ? prev.filter((id) => id !== opt.id) : [...prev, opt.id]
+                        )
+                      }
+                      className={`group flex flex-col items-center text-center gap-2.5 p-3.5 rounded-xl border transition-all ${
+                        selected
+                          ? "bg-emerald-500/15 border-emerald-400 shadow-[0_0_16px_rgba(16,185,129,0.2)]"
+                          : "bg-navy-950/60 border-border/60 hover:border-slate-500 hover:bg-navy-900/70"
+                      }`}
+                    >
+                      <div className="w-12 h-12 rounded-xl bg-white/5 flex items-center justify-center p-1.5 group-hover:scale-105 transition-transform">
+                        <EscudoEquipo
+                          teamId={opt.teamId}
+                          badgeUrl={opt.badgeUrl}
+                          name={opt.name}
+                          size={44}
+                          className="shrink-0"
+                        />
+                      </div>
+                      <span className={`text-sm font-semibold leading-snug line-clamp-2 ${selected ? "text-emerald-300" : "text-white"}`}>
+                        {opt.name}
+                      </span>
+                    </button>
+                  );
+                })}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

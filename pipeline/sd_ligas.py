@@ -184,6 +184,48 @@ def clubes_liga(sd: SDClient, url: str) -> List[Dict[str, Any]]:
     return list(vistos.values())
 
 
+COPA_INTERNACIONAL = "International club cup"
+
+
+def es_copa_internacional(liga: Dict[str, Any]) -> bool:
+    """Champions League, Europa Cup, AFC... (sección "Internationaler Vereinspokal" del catálogo): sus clubes ya
+    tienen liga, así que la copa nunca es la liga ni el club de una jugadora."""
+    return (liga.get("level") or "") == COPA_INTERNACIONAL
+
+
+def clubes_copa(sd: SDClient, url: str) -> List[Dict[str, Any]]:
+    """Clubes de una copa internacional desde su página de participantes (teilnehmer/pokalwettbewerb_X), con el
+    nombre de la liga de cada club ("FC Barcelona" → "Primera División Femenina")."""
+    ruta = re.sub(r"/startseite/(?:pokal)?wettbewerb_", "/teilnehmer/pokalwettbewerb_", url)
+    html = sd.get(ruta, FRESCO_DIAS) or ""
+    vistos = {}
+    for slug, cid, nombre, liga in re.findall(r'href="/(?:en|de)/([^/]+)/startseite/verein_(\d+)\.html" class="[^"]*">'
+                                              r'([^<]+)</a>(?:\s*<br\s*/?>\s*([^<]*))?', html):
+        vistos.setdefault(int(cid), {"slug": slug, "sd_id": int(cid), "name": unescape(nombre).strip(),
+                                     "liga": unescape(liga or "").strip() or None})
+    if not vistos:  # sin página de participantes: los clubes de la portada (clasificación, últimos partidos)
+        for slug, cid, nombre in re.findall(r'href="/(?:en|de)/([^/]+)/startseite/verein_(\d+)\.html" '
+                                            r'(?:class|style)="s10" (?:alt|title)="([^"]+)"', sd.get(url, FRESCO_DIAS) or ""):
+            vistos.setdefault(int(cid), {"slug": slug, "sd_id": int(cid), "name": unescape(nombre).strip(), "liga": None})
+    return list(vistos.values())
+
+
+def liga_de_club(catalogo: Dict[str, Dict[str, Any]], prof: Optional[Dict[str, Any]],
+                 club: Dict[str, Any]) -> Dict[str, Any]:
+    """Liga nacional de una jugadora que llega por una copa internacional: la de su ficha de Soccerdonna (código del
+    catálogo) o, si no, la que dice la página de participantes, cuando ese nombre es de una sola liga (hay dos
+    "Women's Super League": Inglaterra y Suiza)."""
+    codigo = ((prof or {}).get("liga_actual_codigo") or "").upper()
+    liga = catalogo.get(codigo)
+    if not liga or es_copa_internacional(liga):
+        mismas = [l for l in catalogo.values() if not es_copa_internacional(l)
+                  and club.get("liga") and normalizar(l.get("name") or "") == normalizar(club["liga"])]
+        liga = mismas[0] if len(mismas) == 1 else None
+    if liga:
+        return {"code": liga["code"], "name": liga["name"], "logo_url": liga.get("logo_url"), "country": liga.get("country")}
+    return {"code": None, "name": club.get("liga") or (prof or {}).get("liga_actual_nombre"), "logo_url": None, "country": None}
+
+
 def plantilla(sd: SDClient, club: Dict[str, Any]) -> List[Dict[str, Any]]:
     html = sd.get(f"/en/{club['slug']}/kader/verein_{club['sd_id']}.html", FRESCO_DIAS) or ""
     vistas = {}
@@ -198,9 +240,9 @@ def club_preferido(store: Store, sd: SDClient, ligas: List[Dict[str, Any]]) -> D
     "Tier 2"). Se miran todas las ligas activas de los países que se descargan, también si solo se baja una (el
     filial solo no puede quitarle el primer equipo). Las plantillas quedan en caché para la descarga."""
     from .cz_ligas import es_ceroacero
-    paises = {l["country"] for l in ligas}
+    paises = {l["country"] for l in ligas if not es_copa_internacional(l)}
     todas = [l for l in store.select_all("sd_leagues", "code,country,url,enabled,level")
-             if l.get("url") and not es_ceroacero(l) and l["country"] in paises
+             if l.get("url") and not es_ceroacero(l) and not es_copa_internacional(l) and l["country"] in paises
              and (l["enabled"] or l["code"] in {x["code"] for x in ligas})]
     nivel = lambda l: (l.get("level") or "Z") if (l.get("level") or "").startswith("Tier") else "Z"
     vistas: Dict[int, Dict[int, str]] = {}
@@ -237,10 +279,12 @@ def catalogo_logo(store: Store, code: str) -> Dict[str, Any]:
 
 def descargar(store: Store, sd: SDClient, liga_code: Optional[str], limit: Optional[int],
               refresco_dias: int = REFRESCO_DIAS, con_fotos: bool = True):
-    ligas = [l for l in store.select_all("sd_leagues", "code,name,country,url,enabled")
+    ligas = [l for l in store.select_all("sd_leagues", "code,name,country,url,enabled,level")
              if (l["code"] == liga_code if liga_code else l["enabled"])]
     if not ligas:
         raise SystemExit("No hay ligas de Soccerdonna marcadas en /admin")
+    # Copas internacionales (Champions...) al final: las jugadoras de los clubes de ligas activas ya están al día
+    ligas.sort(key=es_copa_internacional)
     # Ligas solo de Opta (sin página en Soccerdonna, p. ej. Brasil y Argentina): sus jugadoras salen de las
     # plantillas Opta en el paso opta() y aquí no hay nada que leer
     for l in [l for l in ligas if not l.get("url")]:
@@ -259,14 +303,18 @@ def descargar(store: Store, sd: SDClient, liga_code: Optional[str], limit: Optio
     fotmob.cargar_asignados(store)
     tot = {"jugadoras": 0, "nuevas": 0, "al_dia": 0, "fotos": 0, "sin_ficha": 0, "otro_club": 0}
     # Jugadoras ya guardadas (también las unidas a su ficha Opta: se actualiza esa fila, no se crea otra "sd-")
-    guardadas = {p["sd_id"]: p for p in store.select_all("players", "id,sd_id,sd_updated_at,photo_url,fm_team_name")
-                 if p.get("sd_id")}
+    guardadas = {p["sd_id"]: p for p in store.select_all("players", "id,sd_id,sd_updated_at,photo_url,fm_team_name,"
+                                                                    "sd_league_code") if p.get("sd_id")}
     ids = {k: p["id"] for k, p in guardadas.items()}
-    catalogo_sd = {l["code"]: l for l in store.select_all("sd_leagues", "code,name,level,logo_url")}
+    catalogo_sd = {l["code"]: l for l in store.select_all("sd_leagues", "code,name,country,level,logo_url,enabled")}
+    # Ligas nacionales que se descargan: sus jugadoras no las toca una copa internacional
+    activas = {c for c, l in catalogo_sd.items() if l.get("enabled") and not es_copa_internacional(l)} | \
+              {l["code"] for l in ligas if not es_copa_internacional(l)}
     limite = time.time() - refresco_dias * 86400
     club_de = club_preferido(store, sd, ligas)
     for liga in ligas:
-        clubes = clubes_liga(sd, liga["url"])
+        copa = es_copa_internacional(liga)
+        clubes = clubes_copa(sd, liga["url"]) if copa else clubes_liga(sd, liga["url"])
         # Liga añadida en /admin por URL: aún no tiene nombre (se guarda el código); se lee del <h1>
         if liga["name"] == liga["code"]:
             h1 = re.search(r"<h1[^>]*>(.*?)</h1>", sd.get(liga["url"], FRESCO_DIAS) or "", re.S)
@@ -286,14 +334,32 @@ def descargar(store: Store, sd: SDClient, liga_code: Optional[str], limit: Optio
             "updated_at": now_iso(),
         } for c in clubes]
     # raw_soccerdonna_teams removed in clean_start_schema
-        store.upsert("teams", [{"id": r["id"], "name": r["name"], "country": r["country"],
-                                "badge_url": r["badge_url"],
-                                "sd_league_code": liga["code"], "league_name": liga["name"], "league_logo_url": logo,
-                                "updated_at": r["updated_at"]} for r in raw_sd_teams])
+        if copa:
+            # Los clubes que ya tenemos siguen en su liga; los nuevos entran con la liga de la página de
+            # participantes (se corrige con la ficha de sus jugadoras al leer su plantilla)
+            existentes = {t["id"] for t in store.select_all("teams", "id")}
+            nuevos = []
+            for r, c in zip(raw_sd_teams, clubes):
+                if r["id"] in existentes:
+                    continue
+                l = liga_de_club(catalogo_sd, None, c)
+                nuevos.append({"id": r["id"], "name": r["name"], "country": l["country"], "badge_url": r["badge_url"],
+                               "sd_league_code": l["code"], "league_name": l["name"], "league_logo_url": l["logo_url"],
+                               "updated_at": r["updated_at"]})
+            for grupo in _homogeneo(nuevos):
+                store.upsert("teams", grupo)
+            nuevos_ids = {r["id"] for r in nuevos}
+            logger.info(f"  Copa internacional: {len(clubes) - len(nuevos)} clubes ya conocidos, {len(nuevos)} nuevos")
+        else:
+            store.upsert("teams", [{"id": r["id"], "name": r["name"], "country": r["country"],
+                                    "badge_url": r["badge_url"],
+                                    "sd_league_code": liga["code"], "league_name": liga["name"], "league_logo_url": logo,
+                                    "updated_at": r["updated_at"]} for r in raw_sd_teams])
         hechas = 0
         for club in clubes:
             club_badge = imagen_sd(store, sd, SD_MEDIUM.format(id=club["sd_id"]), f"sd/{club['sd_id']}.jpg")
             pendiente: Dict[str, List[Dict[str, Any]]] = {}
+            votos_liga: Dict[str, int] = {}
             for j in plantilla(sd, club):
                 if limit and hechas >= limit:
                     break
@@ -303,6 +369,11 @@ def descargar(store: Store, sd: SDClient, liga_code: Optional[str], limit: Optio
                     tot["otro_club"] += 1
                     continue
                 previa = guardadas.get(j["sd_id"])
+                # Copa internacional: la jugadora de un club de una liga que ya se descarga es de esa liga (allí se
+                # actualiza su ficha); aquí solo entran las que no tenemos y las que solo llegaron por la copa
+                if copa and previa and previa.get("sd_league_code") in activas:
+                    tot["en_su_liga"] = tot.get("en_su_liga", 0) + 1
+                    continue
                 if previa and previa.get("sd_updated_at"):
                     hecha = datetime.fromisoformat(previa["sd_updated_at"].replace("Z", "+00:00")).timestamp()
                     # Ficha reciente, pero si aparece en la plantilla de otro club (fichaje, o era agente libre)
@@ -310,6 +381,8 @@ def descargar(store: Store, sd: SDClient, liga_code: Optional[str], limit: Optio
                     mismo_club = normalizar_club(previa.get("fm_team_name")) == normalizar_club(club["name"])
                     if hecha > limite and mismo_club:
                         tot["al_dia"] += 1
+                        if copa:  # su liga es la de su ficha, no la copa: se deja como está
+                            continue
                         # Asegura que el club y liga de Soccerdonna estén siempre rellenos e inamovibles
                         store.update("players", {
                             "sd_league_code": liga["code"],
@@ -339,11 +412,16 @@ def descargar(store: Store, sd: SDClient, liga_code: Optional[str], limit: Optio
                     if dem:
                         row["primary_position"] = dem
                         row["grupo_demarcacion"] = get_grupo_demarcacion(dem)
-                # Club y liga siempre inamovibles desde la plantilla y liga de Soccerdonna que se descarga
+                # Club y liga siempre inamovibles desde la plantilla y liga de Soccerdonna que se descarga (con una
+                # copa internacional, la liga nacional de su ficha)
+                l = liga_de_club(catalogo_sd, prof, club) if copa else \
+                    {"code": liga["code"], "name": liga["name"], "logo_url": logo}
+                if copa and l["code"]:
+                    votos_liga[l["code"]] = votos_liga.get(l["code"], 0) + 1
                 row.update(
-                    sd_league_code=liga["code"],
-                    current_league_name=liga["name"],
-                    current_league_logo_url=logo,
+                    sd_league_code=l["code"],
+                    current_league_name=l["name"],
+                    current_league_logo_url=l["logo_url"],
                     fm_team_name=club["name"],
                     fm_team_badge_url=club_badge,
                     country=(prof["nacionalidades"] or [None])[0],
@@ -388,6 +466,12 @@ def descargar(store: Store, sd: SDClient, liga_code: Optional[str], limit: Optio
                 filas_t = list({tuple(r.get(c) for c in claves): r for r in pendiente.get(tabla, [])}.values())
                 for grupo in _homogeneo(filas_t):
                     store.upsert(tabla, grupo, on_conflict=pk)
+            # Club nuevo de una copa internacional: su liga, la que dicen las fichas de sus jugadoras
+            if copa and votos_liga and f"sd-{club['sd_id']}" in nuevos_ids:
+                l = catalogo_sd[max(votos_liga, key=votos_liga.get)]
+                store.update("teams", {"sd_league_code": l["code"], "league_name": l["name"],
+                                       "league_logo_url": l.get("logo_url"), "country": l.get("country")},
+                             id=f"sd-{club['sd_id']}")
             logger.info(f"  {club['name']}: {tot} ({sd.peticiones} peticiones)")
             if limit and hechas >= limit:
                 break
@@ -889,7 +973,7 @@ def escudos(store: Store, liga_code: Optional[str]):
 
 
 def fotos(store: Store, liga_code: Optional[str], limit: Optional[int] = None):
-    ligas = [l for l in store.select_all("sd_leagues", "code,name,enabled,opta_competition_id")
+    ligas = [l for l in store.select_all("sd_leagues", "code,name,enabled,opta_competition_id,level,url")
              if (l["code"] == liga_code if liga_code else l["enabled"])]
     equipos = store.select_all("teams", "id,name,competition_id,sd_league_code")
     fotmob = FotMobClient()
@@ -898,6 +982,10 @@ def fotos(store: Store, liga_code: Optional[str], limit: Optional[int] = None):
     for liga in ligas:
         clubes = {t["id"]: t["name"] for t in equipos if t.get("sd_league_code") == liga["code"]
                   or (liga.get("opta_competition_id") and t.get("competition_id") == liga["opta_competition_id"])}
+        if es_copa_internacional(liga) and liga.get("url"):  # sus clubes son de otras ligas
+            nombres = {t["id"]: t["name"] for t in equipos}
+            clubes.update({f"sd-{c['sd_id']}": c["name"] for c in clubes_copa(sd, liga["url"])
+                           if f"sd-{c['sd_id']}" in nombres})
         # FotMob reconoce mejor a la jugadora buscando dentro de su liga
         comp = store.select_all("competitions", "id,fotmob_id", id=liga["opta_competition_id"]) if liga.get("opta_competition_id") else []
         liga_fm = comp[0].get("fotmob_id") if comp else None

@@ -34,9 +34,10 @@ function parsePasos(raw: unknown): string | null {
   return ordered.length === PARTS.length ? "todo" : ordered.join(",");
 }
 
-/** https://www.soccerdonna.de/de/super-league/startseite/wettbewerb_SLV.html → { code: "SLV", url: "/en/super-league/..." } */
+/** https://www.soccerdonna.de/de/super-league/startseite/wettbewerb_SLV.html → { code: "SLV", url: "/en/super-league/..." }
+ *  Cups too: …/startseite/pokalwettbewerb_CL.html → "CL" (same code as in the catalog) */
 function parseLeagueUrl(raw: string): { code: string; url: string } | null {
-  const m = String(raw || "").trim().match(/soccerdonna\.de\/(?:de|en)\/([^/\s]+)\/[a-z]+\/wettbewerb_([A-Za-z0-9]+)\.html/i);
+  const m = String(raw || "").trim().match(/soccerdonna\.de\/(?:de|en)\/([^/\s]+)\/[a-z0-9]+\/(?:pokal)?wettbewerb_([A-Za-z0-9]+)\.html/i);
   if (!m) return null;
   const code = m[2].toUpperCase();
   return { code, url: `/en/${m[1]}/startseite/wettbewerb_${code}.html` };

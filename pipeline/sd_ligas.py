@@ -511,14 +511,27 @@ def opta(store: Store, liga_code: Optional[str], max_matches: Optional[int], sol
             cache = pipe.store.load_match_cache(comp["season_id"])
             pipe.guardar_plantilla(comp, cache)
             if not cache.empty:
-                pipe.procesar_temporada(comp, perfiles, cache)
+                pipe.recalcular_temporada(comp, cache, perfiles)
         elif modo == "partidos":
+            # Igual que IngestionPipeline.procesar_competicion: solo los partidos jugados aún sin procesar
+            sid = comp["season_id"]
             perfiles = pipe.sync_squads(comp)
-            cache = pipe.store.load_match_cache(comp["season_id"])
-            hechos = set(cache["match_id"].unique()) if not cache.empty else set()
-            fixtures = pipe.adapter.get_fixtures(comp["season_id"])
+            cache = pipe.store.load_match_cache(sid)
+            fixtures = pipe.adapter.get_fixtures(sid)
+            en_stats = lambda: {r["match_id"] for r in store.select_all("player_match_stats", "match_id", season_id=sid)}
+            hechos = (set(cache["match_id"].unique()) & en_stats()) if not cache.empty else set()
+            nuevos = sorted((m for m in fixtures
+                             if m.get("liveData", {}).get("matchDetails", {}).get("matchStatus") == "Played"
+                             and m["matchInfo"]["id"] not in hechos), key=lambda m: m["matchInfo"].get("date", ""))
+            if max_matches:
+                nuevos = nuevos[:max_matches]
+            logger.info(f"  Partidos: {len(hechos)} ya procesados, {len(nuevos)} nuevos a procesar")
+            if nuevos:
+                cache = pipe.procesar_partidos(comp, nuevos, perfiles, cache)
+                hechos = (set(cache["match_id"].unique()) & en_stats()) if not cache.empty else set()
             pipe.guardar_calendario(comp, fixtures, hechos)
-            pipe.procesar_partidos(comp, fixtures, hechos, perfiles)
+            if nuevos and not cache.empty:
+                pipe.recalcular_temporada(comp, cache, perfiles)
     if modo == "partidos":
         vincular_equipos(store, liga_code)  # equipos Opta nuevos del calendario (ascendidos, otra temporada)
     if pipe.totales["matches"]:

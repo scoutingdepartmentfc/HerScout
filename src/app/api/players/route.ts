@@ -6,6 +6,7 @@ import { computeRatingTrend, PlayerTrend } from "@/lib/ratingTrend";
 import { NO_CLUB_DATA, preferOptaClub } from "@/lib/playerClub";
 import { isLowSample, lowSampleLast } from "@/lib/sampleSize";
 import { leagueId, playerInLeagues } from "@/lib/leagueId";
+import { isCurrentSeason, minutesWeighted } from "@/lib/currentSeason";
 
 /** Country shown for international competitions in the league filter (grouped apart from countries) */
 const INTERNATIONAL_COUNTRY = "Internacional";
@@ -144,7 +145,7 @@ async function loadBaseData(db: any): Promise<BaseData> {
         player_id,
         season_id,
         competition_id,
-        seasons:season_id ( name, is_active, start_date ),
+        seasons:season_id ( name, is_active, start_date, end_date ),
         competitions:competition_id ( name, country, logo_url ),
         demarcacion,
         grupo_demarcacion,
@@ -411,8 +412,13 @@ export async function GET(req: NextRequest) {
           }
 
           // Most recent season in scope (all its competitions added up): matches, minutes and goals
+          // With every season in scope: the current season of each competition she plays (league + cups +
+          // international), whatever each one calls it ("2026" / "2026/2027"); otherwise the latest season's name
           const recentSeason = latestRow.seasons?.name || null;
-          const recentRows = playerRows.filter((r: any) => (r.seasons?.name || null) === recentSeason);
+          const currentRows = season === "all" ? playerRows.filter((r: any) => isCurrentSeason(r.seasons)) : [];
+          const recentRows = currentRows.length
+            ? currentRows
+            : playerRows.filter((r: any) => (r.seasons?.name || null) === recentSeason);
           const recentSum = (k: string) => recentRows.reduce((n: number, r: any) => n + (Number(r[k]) || 0), 0);
 
           const getWeightedVal = (k: string) => {
@@ -420,13 +426,10 @@ export async function GET(req: NextRequest) {
             return item.mins > 0 ? item.sum / item.mins : null;
           };
 
-          const recentNotas = recentRows
-            .map((r: any) => Number(r.nota_global))
-            .filter((n: number) => Number.isFinite(n) && n > 0);
+          // General rating: all competitions of that season, weighted by minutes
           const latestNotaGlobal =
-            recentNotas.length > 0
-              ? recentNotas.reduce((a: number, b: number) => a + b, 0) / recentNotas.length
-              : getWeightedVal("nota_global");
+            minutesWeighted(recentRows.filter((r: any) => Number(r.nota_global) > 0), "nota_global") ??
+            getWeightedVal("nota_global");
 
           // No current club (Soccerdonna / current_team_id): club of her latest match, only if within the last 3 months
           const fallbackTeam = !p.teams && !p.fm_team_name ? recentTeamByPlayer.get(p.id) || null : null;

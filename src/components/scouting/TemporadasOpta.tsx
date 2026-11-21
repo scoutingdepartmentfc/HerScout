@@ -69,7 +69,7 @@ export function TemporadasOpta({
   }
 
   // Separate total accumulated vs individual seasons, and sort individual ones by rating (highest to lowest)
-  const totalItem = seasons.find((s) => s.esTotal);
+  const totalItems = seasons.filter((s) => s.esTotal); // current season, all seasons
   const individualItems = seasons.filter((s) => !s.esTotal);
 
   const sortedIndividual = [...individualItems].sort((a, b) => {
@@ -81,7 +81,7 @@ export function TemporadasOpta({
 
   // Ordered list for the horizontal bar chart:
   // Total summary first (pinned / distinguished), followed by all competitions from highest to lowest score
-  const chartItems = totalItem ? [totalItem, ...sortedIndividual] : sortedIndividual;
+  const chartItems = [...totalItems, ...sortedIndividual];
 
   return (
     <div className="rounded-xl border border-border/60 bg-[#070e1e] p-4 space-y-4 shadow-xl">

@@ -95,15 +95,33 @@ export default function PlayerProfilePage() {
   // Seasons with Opta data (latest first); the selected one drives ratings, metrics and match log
   // Default: all seasons accumulated (allSeasons) when available, or the first season
   const seasons: any[] = data.seasonStats || [];
-  const options: any[] = data.allSeasons ? [data.allSeasons, ...seasons] : seasons;
-  const selected = (seasonKey ? options.find((s) => claveTemporada(s) === seasonKey) : (seasons[0] || options[0])) || null;
+  // Default: the current season with all her competitions together (general rating = minutes-weighted average)
+  const options: any[] = [data.currentSeason, data.allSeasons, ...seasons].filter(Boolean);
+  const selected =
+    (seasonKey ? options.find((s) => claveTemporada(s) === seasonKey) : data.currentSeason || seasons[0] || options[0]) ||
+    null;
   const selectedKey = selected ? claveTemporada(selected) : null;
   const stats = selected && !selected.sinNotas ? selected : null;
   const metricas = stats?.radar_data?.metricas || {};
-  const matchLog = (data.matchLog || []).filter(
-    (m: any) =>
-      !selected || selected.esTotal || (m.seasonId === selected.season_id && m.competitionId === selected.competition_id)
-  );
+  // Match Ratings, by default: every match of the CURRENT season in every competition (domestic league, cups,
+  // international club cups, national teams). Current = the competition's active season, unless it ended over
+  // 150 days ago (stale "active" seasons of leagues no longer downloaded); 150 days keeps calendar-year leagues
+  // (NWSL, Damallsvenskan) in their off-season. Picking a season in the selector shows only that one.
+  const seasonInfo = new Map<string, any>(seasons.map((s: any) => [s.season_id, s.seasons]));
+  const currentCutoff = Date.now() - 150 * 24 * 3600 * 1000;
+  const isCurrentSeason = (seasonId: string) => {
+    const si = seasonInfo.get(seasonId);
+    return !!si?.is_active && (!si.end_date || new Date(si.end_date).getTime() >= currentCutoff);
+  };
+  const allMatches: any[] = data.matchLog || [];
+  const currentMatches = allMatches.filter((m: any) => isCurrentSeason(m.seasonId));
+  const showCurrent = !!selected?.esActual || (!seasonKey && !data.currentSeason && currentMatches.length > 0);
+  const matchLog = showCurrent
+    ? currentMatches
+    : allMatches.filter(
+        (m: any) =>
+          !selected || selected.esTotal || (m.seasonId === selected.season_id && m.competitionId === selected.competition_id)
+      );
   const marketValues = data.marketValues || [];
   const transfers = data.transfers || [];
   const nationalTeams = data.nationalTeams || [];
@@ -634,7 +652,9 @@ export default function PlayerProfilePage() {
                 <span>Match Ratings</span>
               </CardTitle>
               <CardDescription className="text-xs mt-0.5">
-                {selected ? `${selected.competitions?.name || ""} ${selected.seasons?.name || ""} · ` : ""}
+                {showCurrent
+                  ? "Current season · all competitions · "
+                  : selected ? `${selected.competitions?.name || ""} ${selected.seasons?.name || ""} · ` : ""}
                 Rating for every match played (0–10), latest first
               </CardDescription>
             </div>

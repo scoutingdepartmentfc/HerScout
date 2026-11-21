@@ -246,7 +246,11 @@ class SDClient:
             club_actual_badge = None
 
         # Liga actual e icono de liga desde Soccerdonna
-        m_liga = re.search(r'href="([^"]*wettbewerb_([^\.]+)\.html)"[^>]*>([^<]+)</a>', html)
+        # Desde el nombre (<h1>) hasta el menú de la web ("Competitions", "Bundesliga", "Champions League"): si su
+        # club no tiene liga en Soccerdonna, el primer enlace a una liga era el "Bundesliga" del menú
+        ini = max(html.find("<h1"), 0)
+        fin = html.find("wettbewerbeDE.html", ini)
+        m_liga = re.search(r'href="([^"]*wettbewerb_([^\.]+)\.html)"[^>]*>([^<]+)</a>', html[ini:fin if fin > 0 else None])
         liga_actual_nombre = unescape(m_liga.group(3)) if m_liga else None
         liga_actual_codigo = m_liga.group(2).lower() if m_liga else None
         liga_actual_logo = None

@@ -93,6 +93,9 @@ COMPETICIONES_INTERNACIONALES = {
 COMPETICIONES_SELECCIONES = {
     '43029a6fvhou87zehkd5u8fyt': "UEFA Women's Championship",
     '9mr92dlx7ryaxhi07sgt90ish': "UEFA U19 Championship Women",
+    '4x9xyyv419q82evpbl37j77gt': "FIFA U17 Women's World Cup",
+    'dcgbs1vkp9y3y31li7s95i51f': "FIFA U20 Women's World Cup",
+    '14bdhdgyjd4pqapxjhfq267ge': "CAF Women's Africa Cup of Nations",
 }
 COMPETICIONES_INTERNACIONALES.update(COMPETICIONES_SELECCIONES)
 # Regiones de opta_catalog.country que no son un país (competición internacional)
@@ -109,6 +112,9 @@ NIVEL_LIGA.update({
     '2irmeeywhndovbhbgkz37v9qs': 44.0,  # All-Island Cup
     '43029a6fvhou87zehkd5u8fyt': 68.0,  # UEFA Women's Championship (Eurocopa)
     '9mr92dlx7ryaxhi07sgt90ish': 50.0,  # Europeo Sub-19
+    '4x9xyyv419q82evpbl37j77gt': 48.0,  # Mundial Sub-17
+    'dcgbs1vkp9y3y31li7s95i51f': 54.0,  # Mundial Sub-20
+    '14bdhdgyjd4pqapxjhfq267ge': 50.0,  # Copa Africana de Naciones (WAFCON)
     '1tn3f9q6oy40vivvsq3ik5awa': 42.0,  # Baltic Women's League
     '8dxigebf8ankjp0ncupwte0b8': 40.0,  # OFC WCL
 })

@@ -185,12 +185,20 @@ def clubes_liga(sd: SDClient, url: str) -> List[Dict[str, Any]]:
 
 
 COPA_INTERNACIONAL = "International club cup"
+SELECCIONES = {"National team", "Youth national team", "National team qualifiers"}
 
 
 def es_copa_internacional(liga: Dict[str, Any]) -> bool:
-    """Champions League, Europa Cup, AFC... (sección "Internationaler Vereinspokal" del catálogo): sus clubes ya
-    tienen liga, así que la copa nunca es la liga ni el club de una jugadora."""
-    return (liga.get("level") or "") == COPA_INTERNACIONAL
+    """Champions League, Europa Cup, AFC... (sección "Internationaler Vereinspokal" del catálogo) y torneos de
+    selecciones (Mundial Sub-17, Sub-20...): sus equipos ya tienen liga (o son selecciones), así que la competición
+    nunca es la liga ni el club de una jugadora."""
+    return (liga.get("level") or "") == COPA_INTERNACIONAL or es_selecciones_sd(liga)
+
+
+def es_selecciones_sd(liga: Dict[str, Any]) -> bool:
+    """Torneo de selecciones de Soccerdonna (Mundial Sub-17...): sus "clubes" son selecciones; el club de cada
+    jugadora es el de su ficha."""
+    return (liga.get("level") or "") in SELECCIONES
 
 
 def clubes_copa(sd: SDClient, url: str) -> List[Dict[str, Any]]:
@@ -223,13 +231,15 @@ def liga_de_club(catalogo: Dict[str, Dict[str, Any]], prof: Optional[Dict[str, A
         liga = mismas[0] if len(mismas) == 1 else None
     if liga:
         return {"code": liga["code"], "name": liga["name"], "logo_url": liga.get("logo_url"), "country": liga.get("country")}
-    return {"code": None, "name": club.get("liga") or (prof or {}).get("liga_actual_nombre"), "logo_url": None, "country": None}
+    # El nombre de la ficha, salvo si es otra competición internacional ("U-17 World Cup", "Freundschaftsspiele")
+    nombre = (prof or {}).get("liga_actual_nombre") if not (codigo in catalogo and es_copa_internacional(catalogo[codigo])) else None
+    return {"code": None, "name": club.get("liga") or nombre, "logo_url": None, "country": None}
 
 
 def plantilla(sd: SDClient, club: Dict[str, Any]) -> List[Dict[str, Any]]:
     html = sd.get(f"/en/{club['slug']}/kader/verein_{club['sd_id']}.html", FRESCO_DIAS) or ""
     vistas = {}
-    for slug, pid, nombre in re.findall(r'href="/en/([^/]+)/profil/spieler_(\d+)\.html" class="fb s10" title="([^"]+)"', html):
+    for slug, pid, nombre in re.findall(r'href="/en/([^/]+)/profil/spieler_(\d+)\.html"\s+class="fb s10" title="([^"]+)"', html):
         vistas.setdefault(int(pid), {"slug": slug, "sd_id": int(pid), "name": unescape(nombre)})
     return list(vistas.values())
 
@@ -312,8 +322,10 @@ def descargar(store: Store, sd: SDClient, liga_code: Optional[str], limit: Optio
               {l["code"] for l in ligas if not es_copa_internacional(l)}
     limite = time.time() - refresco_dias * 86400
     club_de = club_preferido(store, sd, ligas)
+    equipos_sd = {t["id"] for t in store.select_all("teams", "id")} if any(map(es_selecciones_sd, ligas)) else set()
     for liga in ligas:
         copa = es_copa_internacional(liga)
+        selec = es_selecciones_sd(liga)  # el club de la jugadora sale de su ficha, nunca la selección
         clubes = clubes_copa(sd, liga["url"]) if copa else clubes_liga(sd, liga["url"])
         # Liga añadida en /admin por URL: aún no tiene nombre (se guarda el código); se lee del <h1>
         if liga["name"] == liga["code"]:
@@ -334,7 +346,10 @@ def descargar(store: Store, sd: SDClient, liga_code: Optional[str], limit: Optio
             "updated_at": now_iso(),
         } for c in clubes]
     # raw_soccerdonna_teams removed in clean_start_schema
-        if copa:
+        if selec:
+            nuevos_ids: set = set()
+            logger.info(f"  Selecciones: {len(clubes)} (el club de cada jugadora, el de su ficha)")
+        elif copa:
             # Los clubes que ya tenemos siguen en su liga; los nuevos entran con la liga de la página de
             # participantes (se corrige con la ficha de sus jugadoras al leer su plantilla)
             existentes = {t["id"] for t in store.select_all("teams", "id")}
@@ -379,7 +394,7 @@ def descargar(store: Store, sd: SDClient, liga_code: Optional[str], limit: Optio
                     # Ficha reciente, pero si aparece en la plantilla de otro club (fichaje, o era agente libre)
                     # se vuelve a leer ya: el cambio de club no espera al refresco de `refresco_dias`
                     mismo_club = normalizar_club(previa.get("fm_team_name")) == normalizar_club(club["name"])
-                    if hecha > limite and mismo_club:
+                    if hecha > limite and (mismo_club or selec):
                         tot["al_dia"] += 1
                         if copa:  # su liga es la de su ficha, no la copa: se deja como está
                             continue
@@ -418,19 +433,25 @@ def descargar(store: Store, sd: SDClient, liga_code: Optional[str], limit: Optio
                     {"code": liga["code"], "name": liga["name"], "logo_url": logo}
                 if copa and l["code"]:
                     votos_liga[l["code"]] = votos_liga.get(l["code"], 0) + 1
+                # Selecciones: club de su ficha (sin dorsal: el de la selección no es el del club)
+                cid = prof.get("club_actual_id") if selec else club["sd_id"]
+                nombre_club = (prof.get("club_actual_nombre") if selec else club["name"]) or None
+                badge = club_badge if not selec else \
+                    (imagen_sd(store, sd, SD_MEDIUM.format(id=cid), f"sd/{cid}.jpg") if cid else None)
                 row.update(
                     sd_league_code=l["code"],
                     current_league_name=l["name"],
                     current_league_logo_url=l["logo_url"],
-                    fm_team_name=club["name"],
-                    fm_team_badge_url=club_badge,
+                    fm_team_name=nombre_club,
+                    fm_team_badge_url=badge,
                     country=(prof["nacionalidades"] or [None])[0],
-                    shirt_number=prof.get("dorsal"),
+                    shirt_number=None if selec else prof.get("dorsal"),
                 )
-                if p["id"].startswith("sd-"):  # las unidas a Opta conservan el equipo Opta (estadísticas)
-                    row["current_team_id"] = f"sd-{club['sd_id']}"
+                # Las unidas a Opta conservan el equipo Opta (estadísticas); con selecciones, solo un club que tengamos
+                if p["id"].startswith("sd-") and cid and (not selec or f"sd-{cid}" in equipos_sd):
+                    row["current_team_id"] = f"sd-{cid}"
                 foto = None if not con_fotos or (previa and previa.get("photo_url")) else \
-                    foto_fotmob(store, fotmob, {**p, "birth_date": row.get("birth_date")}, club["name"])
+                    foto_fotmob(store, fotmob, {**p, "birth_date": row.get("birth_date")}, nombre_club or club["name"])
                 if foto:
                     row.update(photo_url=foto, photo_updated_at=now_iso())
                     tot["fotos"] += 1

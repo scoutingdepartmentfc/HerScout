@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
+import { isCurrentSeason } from "@/lib/currentSeason";
 import { requireAdmin } from "@/lib/adminGuard";
 
 // Fields that can be edited by hand from the profile (stored in players.manual_overrides)
@@ -272,6 +273,16 @@ export async function GET(
     // All seasons together (default view): matches, minutes and Opta coverage are summed; ratings, metric
     // values and metric notes are averaged weighted by the minutes of each season that has them.
     const allSeasons = seasonStats.length > 1 ? agregarTemporadas(seasonStats) : null;
+    // Current season (default view): every competition she plays this season (domestic league, cups, international
+    // club cups, national teams) together; the general rating is their average weighted by minutes
+    const actuales = seasonStats.filter((s) => isCurrentSeason(s.seasons));
+    const currentSeason = actuales.length
+      ? agregarTemporadas(actuales, {
+          id: "current",
+          label: "Current season",
+          competitionsName: actuales.length === 1 ? actuales[0].competitions?.name : undefined,
+        })
+      : null;
 
     // Calculate played positions from matchLog to know all positions she actually plays
     const posCounts: Record<string, { min: number; pj: number }> = {};
@@ -355,6 +366,7 @@ export async function GET(
       scraped,
       seasonStats,
       allSeasons,
+      currentSeason,
       matchLog,
       marketValues: marketValues.data || [],
       transfers: transfers.data || [],
@@ -373,7 +385,10 @@ export async function GET(
 const NOTAS = ["nota_global", "nota_ataque", "nota_construccion", "nota_defensa", "nota_balon_parado",
   "nota_disponibilidad", "percentile_general"];
 
-function agregarTemporadas(seasons: any[]) {
+function agregarTemporadas(
+  seasons: any[],
+  opts: { id: string; label: string; competitionsName?: string } = { id: "all", label: "" }
+) {
   const conNotas = seasons.filter((s) => !s.sinNotas);
   const mins = (s: any) => Number(s.minutes_played) || 0;
   const media = (vals: [number, number][]) => {
@@ -413,13 +428,16 @@ function agregarTemporadas(seasons: any[]) {
   const principal = [...conNotas].sort((a, b) => mins(b) - mins(a))[0];
 
   return {
-    id: "all",
-    competition_id: "all",
-    season_id: "all",
+    id: opts.id,
+    competition_id: opts.id,
+    season_id: opts.id,
     esTotal: true,
+    esActual: opts.id === "current",
     sinNotas: conNotas.length === 0,
-    competitions: { name: `${new Set(seasons.map((s) => s.competition_id)).size} competitions` },
-    seasons: { name: `All seasons (${seasons.length})` },
+    competitions: {
+      name: opts.competitionsName || `${new Set(seasons.map((s) => s.competition_id)).size} competitions`,
+    },
+    seasons: { name: opts.id === "current" ? opts.label : `All seasons (${seasons.length})` },
     grupo_demarcacion: principal?.grupo_demarcacion ?? null,
     matches_played: seasons.reduce((n, s) => n + (Number(s.matches_played) || 0), 0),
     minutes_played: seasons.reduce((n, s) => n + mins(s), 0),

@@ -189,6 +189,7 @@ class SDClient:
             if not m:
                 continue
             cid, cname = int(m.group(1)), unescape(m.group(2))
+            m_slug = re.search(r'/en/([^/"]+)/startseite/verein_%d\.html' % cid, fila)
             sim = fuzz.token_set_ratio(club_norm, normalizar_club(cname))
             
             # Bonificación para equipos con competición nacional principal (ej: ESP1, Primera División)
@@ -205,13 +206,13 @@ class SDClient:
             if es_filial:
                 score -= 35
 
-            cands.append((score, sim, cid, cname))
+            cands.append((score, sim, cid, cname, m_slug.group(1) if m_slug else "x"))
         if not cands:
             return None
         cands.sort(key=lambda x: (x[0], x[1]), reverse=True)
         best = cands[0]
         if best[1] >= 65:
-            return {"id": best[2], "name": best[3], "badge_url": SD_BADGE.format(id=best[2])}
+            return {"id": best[2], "name": best[3], "slug": best[4], "badge_url": SD_BADGE.format(id=best[2])}
         return None
 
     # ── Perfil ───────────────────────────────────────────────
@@ -245,12 +246,11 @@ class SDClient:
         else:
             club_actual_badge = None
 
-        # Liga actual e icono de liga desde Soccerdonna
-        # Desde el nombre (<h1>) hasta el menú de la web ("Competitions", "Bundesliga", "Champions League"): si su
-        # club no tiene liga en Soccerdonna, el primer enlace a una liga era el "Bundesliga" del menú
-        ini = max(html.find("<h1"), 0)
-        fin = html.find("wettbewerbeDE.html", ini)
-        m_liga = re.search(r'href="([^"]*wettbewerb_([^\.]+)\.html)"[^>]*>([^<]+)</a>', html[ini:fin if fin > 0 else None])
+        # Liga actual e icono de liga: el enlace que sigue al club en la cabecera ("MSV Duisburg, Regionalliga West
+        # (Germany)"). Club sin liga en Soccerdonna (Sudamérica, África...): no hay; el primer enlace de la página
+        # sería un torneo de selecciones de su historial o el "Bundesliga" del menú de la web
+        m_liga = re.search(r'verein_\d+\.html"[^>]*>[^<]*</a>\s*,\s*<a href="([^"]*wettbewerb_([^\.]+)\.html)"[^>]*>([^<]+)</a>',
+                           html)
         liga_actual_nombre = unescape(m_liga.group(3)) if m_liga else None
         liga_actual_codigo = m_liga.group(2).lower() if m_liga else None
         liga_actual_logo = None
@@ -574,6 +574,10 @@ class SoccerdonnaSync:
         else:
             self.asignadas[c["sd_id"]] = p["id"]
         filas = filas_jugadora(p, c, prof, self.sd.traspasos(c["slug"], c["sd_id"]), now_iso())
+        # Sin liga actual (jugadora que solo conocemos por Opta, p. ej. de una copa internacional): la de su ficha
+        if not p.get("current_league_name") and prof.get("liga_actual_nombre"):
+            filas["players"][0].update(current_league_name=prof["liga_actual_nombre"],
+                                       current_league_logo_url=prof.get("liga_actual_logo"))
         if es_duplicado:
             filas["players"][0].pop("sd_id", None)
         # Fotos: FotMob tiene PRIORIDAD. Solo guardamos foto de Soccerdonna si no tiene foto
@@ -613,7 +617,8 @@ class SoccerdonnaSync:
         jugadoras = []
         for p in self.store.select_all(
                 "players", "id,name,first_name,last_name,match_name,birth_date,height,preferred_foot,"
-                           "place_of_birth,photo_url,current_team_id,sd_updated_at,sd_id,sd_league_code"):
+                           "place_of_birth,photo_url,current_team_id,sd_updated_at,sd_id,sd_league_code,"
+                           "current_league_name"):
             if p.get("sd_league_code") in cz_codigos:
                 continue
             p["shirt_number"] = dorsales.get(p["id"])

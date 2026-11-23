@@ -8,7 +8,6 @@ import { useRouter } from "next/navigation";
 import { ShieldAlert, LogOut } from "lucide-react";
 import { ClubsManager } from "@/components/admin/ClubsManager";
 import { SoccerdonnaLeagues } from "@/components/admin/SoccerdonnaLeagues";
-import { InternationalCompetitions } from "@/components/admin/InternationalCompetitions";
 
 export default function AdminPage() {
   const router = useRouter();
@@ -47,9 +46,6 @@ export default function AdminPage() {
 
       {/* Players: Soccerdonna leagues to download (with FotMob photos) */}
       <SoccerdonnaLeagues />
-
-      {/* International club competitions (Champions League...): add up to each player, keep her club */}
-      <InternationalCompetitions />
 
     </div>
   );

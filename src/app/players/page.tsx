@@ -1422,24 +1422,26 @@ function PlayersDirectoryContent() {
               <TableBody className="divide-y divide-border/30">
                 {visiblePlayers.map((player) => (
                   <TableRow key={player.id} className="h-14 hover:bg-navy-900/50 transition-colors">
-                    <TableCell className="p-0 pl-3">
-                      <Link href={`/players/${player.id}`} className="flex items-center gap-3 group h-14">
-                        <div className="w-14 h-14 bg-navy-950/80 border-r border-white/10 flex items-center justify-center overflow-hidden shrink-0 group-hover:border-primary/50 transition-colors">
+                    <TableCell className="py-1.5 pl-3 pr-2">
+                      <Link href={`/players/${player.id}`} className="flex items-center gap-3 group">
+                        <div className="relative w-11 h-11 rounded-xl bg-gradient-to-b from-slate-800/70 via-navy-900/95 to-navy-950 ring-1 ring-white/15 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] flex items-end justify-center overflow-hidden shrink-0 group-hover:ring-amber-400/50 group-hover:shadow-[0_0_14px_-3px_rgba(251,191,36,0.35)] transition-all duration-200">
+                          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_20%,rgba(255,255,255,0.09),transparent_68%)]" />
                           {player.photoUrl ? (
                             <img
                               src={player.photoUrl}
                               alt={player.name}
-                              className="w-full h-full object-contain object-bottom group-hover:scale-105 transition-transform duration-200"
+                              className="relative z-10 w-full h-full object-contain object-bottom drop-shadow-[0_2px_6px_rgba(0,0,0,0.65)] group-hover:scale-105 transition-transform duration-200"
                               loading="lazy"
                               onError={(e) => {
                                 (e.target as HTMLElement).style.display = "none";
                               }}
                             />
                           ) : (
-                            <div className="w-full h-full p-1.5 flex items-center justify-center text-slate-500 group-hover:text-slate-300 transition-colors">
-                              <PlayerSilhouette className="w-full h-full scale-125 object-contain" />
+                            <div className="relative z-10 w-full h-full p-1.5 flex items-end justify-center text-slate-500/75 group-hover:text-slate-300/90 transition-colors">
+                              <PlayerSilhouette className="w-full h-full scale-110 object-contain" />
                             </div>
                           )}
+                          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-2.5 z-20 bg-gradient-to-t from-navy-950/75 to-transparent" />
                         </div>
                         <div className="py-1">
                           <span

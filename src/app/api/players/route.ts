@@ -74,6 +74,7 @@ type ProcessedSeason = {
 let baseCache: { timestamp: number; data: BaseData } | null = null;
 let baseInflight: Promise<BaseData> | null = null;
 const processedCache = new Map<string, { timestamp: number; value: ProcessedSeason }>();
+const cacheResetStore = globalThis as { __herscoutPlayersCacheResetAt?: number };
 
 async function fetchTrends(db: any): Promise<{
   trendByPlayer: Map<string, "up" | "neutral" | "down">;
@@ -136,7 +137,8 @@ async function fetchTrends(db: any): Promise<{
 
 async function loadBaseData(db: any): Promise<BaseData> {
   const now = Date.now();
-  if (baseCache && now - baseCache.timestamp < CACHE_TTL_MS) return baseCache.data;
+  const resetAt = cacheResetStore.__herscoutPlayersCacheResetAt ?? 0;
+  if (baseCache && baseCache.timestamp >= resetAt && now - baseCache.timestamp < CACHE_TTL_MS) return baseCache.data;
   if (baseInflight) return baseInflight;
 
   baseInflight = (async () => {
@@ -435,11 +437,12 @@ export async function GET(req: NextRequest) {
           const fallbackTeam = !p.teams && !p.fm_team_name ? recentTeamByPlayer.get(p.id) || null : null;
           const teamName = p.fm_team_name || p.teams?.name || NO_CLUB_DATA;
           const hasClub = !!(p.fm_team_name || p.teams);
-          const leagueName = p.current_league_name || null;
+          const leagueName = p.current_league_name || latestRow.competitions?.name || null;
           const leagueCountry =
             (p.sd_league_code ? leagueCountryByCode.get(p.sd_league_code) : null) ||
             (leagueName ? leagueCountryByName.get(leagueName.toLowerCase()) : null) ||
             (p.teams?.league_name ? leagueCountryByName.get(p.teams.league_name.toLowerCase()) : null) ||
+            latestRow.competitions?.country ||
             p.teams?.country ||
             null;
 

@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useMemo, useRef, Suspense } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
 import { StadiumPitch, EmptyPitchSlot, PitchScaleContext, usePitchScale } from "@/components/builder/StadiumPitch";
 import { PitchCard } from "@/components/builder/PitchCard";
@@ -17,7 +18,6 @@ import {
 } from "lucide-react";
 import { METRICS_HIERARCHY, GOALKEEPER_HIERARCHY, CategoryDef } from "@/lib/metricsHierarchy";
 import { guessLeagueCountry, sortLeaguesByCountryAndTier } from "@/lib/leagueCountry";
-import { leagueId, leagueMatches, parseLeagueId } from "@/lib/leagueId";
 
 /* ─────────────────────────── Demarcaciones y sistemas ─────────────────────────── */
 
@@ -90,7 +90,15 @@ const TEAM_DRAG_TYPE = "application/x-herscout-team";
 // Tamaño de diseño de cada posición (se escala para que el campo se vea entero)
 const STARTER_W = 136;
 const STARTER_H = 194;
-const LIST_W = 280;
+const LIST_W = 350;
+
+function shortPlayerName(name: string): string {
+  const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length <= 1) return name;
+  const first = parts[0];
+  if (first.length <= 2 && first.endsWith(".")) return parts.join(" ");
+  return `${first[0]}. ${parts.slice(1).join(" ")}`;
+}
 const LIST_ROW_H = 48;
 /** Filas visibles de cada lista (las 10 se ven desplazándose dentro de la lista) */
 const LIST_VISIBLE_ROWS = 5;
@@ -146,7 +154,7 @@ const readStore = <T,>(key: string, fallback: T): T => {
 const writeStore = (key: string, value: unknown) => {
   try {
     localStorage.setItem(key, JSON.stringify(value));
-  } catch {}
+  } catch { }
 };
 const fmtSaveDate = (iso: string) =>
   new Date(iso).toLocaleString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
@@ -320,7 +328,11 @@ function BuilderContent() {
   const [filtersOpen, setFiltersOpen] = useState(true);
   const [view, setView] = useState<ViewMode>("starters");
   const [zone, setZone] = useState<ZoneId>("all");
+  const router = useRouter();
   const [myTeam, setMyTeam] = useState<MyTeam>({});
+  const [isDirty, setIsDirty] = useState(false);
+  const [pendingHref, setPendingHref] = useState<string | null>(null);
+  const skipDirtyRef = useRef(true);
   const [notes, setNotes] = useState<Record<string, string>>({});
   /** Color de cada jugadora en la pizarra */
   const [colors, setColors] = useState<Record<string, string>>({});
@@ -433,12 +445,12 @@ function BuilderContent() {
       if (saved.formation && FORMATIONS[saved.formation as FormationKey]) setFormation(saved.formation);
       if (saved.metricSort) setMetricSort(saved.metricSort);
       if (saved.scopes) setScopes({ ...emptyScopes(), ...saved.scopes });
-    } catch {}
+    } catch { }
   }, []);
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify({ formation, metricSort, scopes }));
-    } catch {}
+    } catch { }
   }, [formation, metricSort, scopes]);
 
   useEffect(() => {
@@ -454,14 +466,16 @@ function BuilderContent() {
           _mv: p.marketValue ? Math.round(Number(p.marketValue) / 1000) : null,
         }));
         setAllPlayers(list);
-        // Una liga es nombre + país (id "nombre::país", como en Player Database): "Women's Super League" de
-        // Inglaterra y la de Suiza son dos opciones, cada una en su país
-        const byId = new Map<string, { id: string; name: string; country: string | null }>();
+        // The builder filters leagues by name: a name shared by several countries
+        // ("Women's Super League" = England and Switzerland) becomes one option without a flag
+        const byName = new Map<string, { id: string; name: string; country: string | null }>();
         for (const l of json.filters?.leaguesDetailed || []) {
-          const id = l.id || leagueId(l.name, l.country);
-          if (!byId.has(id)) byId.set(id, { id, name: l.name, country: l.country || guessLeagueCountry(l.name) });
+          const country = l.country || guessLeagueCountry(l.name);
+          const prev = byName.get(l.name);
+          if (!prev) byName.set(l.name, { id: l.name, name: l.name, country });
+          else if (prev.country !== country) prev.country = null;
         }
-        setLeagueOptions(sortLeaguesByCountryAndTier(Array.from(byId.values())));
+        setLeagueOptions(sortLeaguesByCountryAndTier(Array.from(byName.values())));
         setTeamOptions((json.filters?.teamsDetailed || []).map((t: any) => ({ id: t.name, name: t.name, badgeUrl: t.badgeUrl })));
       } catch (err) {
         console.error("Failed to fetch players for 11 Builder", err);
@@ -495,17 +509,14 @@ function BuilderContent() {
   const counts = useMemo(() => {
     const leagues: Record<string, number> = {}, teams: Record<string, number> = {}, countries: Record<string, number> = {};
     for (const p of allPlayers) {
-      if (p.leagueName) {
-        const id = leagueId(p.leagueName, p.leagueCountry);
-        leagues[id] = (leagues[id] || 0) + 1;
-      }
+      if (p.leagueName) leagues[p.leagueName] = (leagues[p.leagueName] || 0) + 1;
       if (p.teamName) teams[p.teamName] = (teams[p.teamName] || 0) + 1;
       if (p.country) countries[p.country] = (countries[p.country] || 0) + 1;
     }
     return { leagues, teams, countries };
   }, [allPlayers]);
 
-  const leagueOpts = useMemo(() => leagueOptions.map((o) => ({ ...o, count: counts.leagues[o.id] ?? counts.leagues[o.name] ?? 0 })), [leagueOptions, counts]);
+  const leagueOpts = useMemo(() => leagueOptions.map((o) => ({ ...o, count: counts.leagues[o.name] || 0 })), [leagueOptions, counts]);
   const teamOpts = useMemo(() => teamOptions.map((o) => ({ ...o, count: counts.teams[o.name] || 0 })), [teamOptions, counts]);
   const countryOpts = useMemo(
     () => Object.keys(counts.countries).sort().map((c) => ({ id: c, name: c, country: c, count: counts.countries[c] })),
@@ -564,7 +575,10 @@ function BuilderContent() {
 
   // ¿Pasa la jugadora un conjunto de filtros para un puesto del grupo `slotGroup`?
   const passes = (p: any, f: FilterSet, slotGroup: GroupId, isGlobal: boolean): boolean => {
-    if (f.leagues.length && !f.leagues.some((id) => leagueMatches(id, p.leagueName, p.leagueCountry))) return false;
+    if (f.leagues.length) {
+      const pl = (p.leagueName || "").toLowerCase();
+      if (!f.leagues.some((l) => pl === l.toLowerCase() || pl.includes(l.toLowerCase()))) return false;
+    }
     if (f.teams.length && !f.teams.includes(p.teamName)) return false;
     if (f.countries.length && !f.countries.includes(p.country)) return false;
     if (f.feet.length && !f.feet.includes(p.preferredFoot)) return false;
@@ -753,6 +767,12 @@ function BuilderContent() {
       setCurrentSaveId(game.id);
       setSaveDialog(false);
       setSavesError(null);
+      setIsDirty(false);
+      if (pendingHref) {
+        const dest = pendingHref;
+        setPendingHref(null);
+        router.push(dest);
+      }
     } catch (e: any) {
       window.alert(e.message || "Could not save the team");
     } finally {
@@ -760,6 +780,7 @@ function BuilderContent() {
     }
   };
   const loadGame = (g: SavedTeam) => {
+    skipDirtyRef.current = true;
     setFormation(g.formation);
     setMyTeam(g.team);
     setNotes(g.notes || {});
@@ -767,7 +788,41 @@ function BuilderContent() {
     setTeamNote(g.teamNote || "");
     setCurrentSaveId(g.id);
     setGamesOpen(false);
+    setIsDirty(false);
   };
+
+  useEffect(() => {
+    if (skipDirtyRef.current) {
+      skipDirtyRef.current = false;
+      return;
+    }
+    setIsDirty(true);
+  }, [myTeam, formation, notes, colors, teamNote]);
+
+  useEffect(() => {
+    if (!isDirty) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    const onDocClick = (e: MouseEvent) => {
+      const a = (e.target as HTMLElement | null)?.closest("a[href]") as HTMLAnchorElement | null;
+      if (!a || a.target === "_blank" || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      const href = a.getAttribute("href");
+      if (!href || href.startsWith("#") || href.startsWith("mailto:") || href.startsWith("tel:")) return;
+      if (a.origin !== window.location.origin) return;
+      if (a.pathname === window.location.pathname && a.search === window.location.search) return;
+      e.preventDefault();
+      e.stopPropagation();
+      setPendingHref(`${a.pathname}${a.search}${a.hash}`);
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    document.addEventListener("click", onDocClick, true);
+    return () => {
+      window.removeEventListener("beforeunload", onBeforeUnload);
+      document.removeEventListener("click", onDocClick, true);
+    };
+  }, [isDirty]);
   const deleteGame = async (id: string) => {
     const res = await fetch(`/api/builder/teams?id=${encodeURIComponent(id)}`, { method: "DELETE" });
     if (!res.ok) {
@@ -837,7 +892,7 @@ function BuilderContent() {
     if (!f.leagues || f.leagues.length === 0) return teamOpts;
     const allowedTeams = new Set<string>();
     allPlayers.forEach((p) => {
-      if (p.teamName && f.leagues.some((id) => leagueMatches(id, p.leagueName, p.leagueCountry))) {
+      if (p.leagueName && f.leagues.includes(p.leagueName) && p.teamName) {
         allowedTeams.add(p.teamName.toLowerCase());
       }
     });
@@ -849,10 +904,10 @@ function BuilderContent() {
     const allowedLeagues = new Set<string>();
     allPlayers.forEach((p) => {
       if (p.teamName && f.teams.includes(p.teamName) && p.leagueName) {
-        allowedLeagues.add(leagueId(p.leagueName, p.leagueCountry).toLowerCase());
+        allowedLeagues.add(p.leagueName.toLowerCase());
       }
     });
-    return leagueOpts.filter((l) => allowedLeagues.has(l.id.toLowerCase()) || f.leagues.includes(l.id));
+    return leagueOpts.filter((l) => allowedLeagues.has(l.name.toLowerCase()));
   }, [leagueOpts, f.teams, allPlayers]);
 
   // Chips de filtros activos (todas las pestañas)
@@ -861,7 +916,7 @@ function BuilderContent() {
     const tag = s === "all" ? "All" : GROUP_BY_ID[s].label;
     const color = s === "all" ? "#10b981" : GROUP_BY_ID[s].color;
     const out: { id: string; scope: ScopeId; tag: string; color: string; text: string; clear: () => void }[] = [];
-    if (fs.leagues.length) out.push({ id: `${s}-lg`, scope: s, tag, color, text: fs.leagues.length === 1 ? parseLeagueId(fs.leagues[0]).name : `${fs.leagues.length} leagues`, clear: () => updateScope(s, { leagues: [] }) });
+    if (fs.leagues.length) out.push({ id: `${s}-lg`, scope: s, tag, color, text: fs.leagues.length === 1 ? fs.leagues[0] : `${fs.leagues.length} leagues`, clear: () => updateScope(s, { leagues: [] }) });
     if (fs.teams.length) out.push({ id: `${s}-tm`, scope: s, tag, color, text: fs.teams.length === 1 ? fs.teams[0] : `${fs.teams.length} teams`, clear: () => updateScope(s, { teams: [] }) });
     if (fs.countries.length) out.push({ id: `${s}-ct`, scope: s, tag, color, text: fs.countries.length === 1 ? fs.countries[0] : `${fs.countries.length} countries`, clear: () => updateScope(s, { countries: [] }) });
     if (fs.feet.length) out.push({ id: `${s}-ft`, scope: s, tag, color, text: fs.feet.map((x) => FEET.find((y) => y.id === x)?.label).join(" / "), clear: () => updateScope(s, { feet: [] }) });
@@ -905,9 +960,8 @@ function BuilderContent() {
               <button
                 key={s}
                 onClick={() => toggleScope(s)}
-                className={`relative h-7 px-2.5 rounded-lg text-[11px] font-bold flex items-center gap-1.5 border transition-all ${
-                  on ? "text-white shadow-lg" : "text-slate-400 border-white/5 bg-black/20 hover:text-slate-200 hover:border-white/15"
-                }`}
+                className={`relative h-7 px-2.5 rounded-lg text-[11px] font-bold flex items-center gap-1.5 border transition-all ${on ? "text-white shadow-lg" : "text-slate-400 border-white/5 bg-black/20 hover:text-slate-200 hover:border-white/15"
+                  }`}
                 style={on ? { borderColor: `${color}80`, background: `${color}22`, boxShadow: `0 0 18px ${color}25` } : undefined}
                 title={g ? `Filters for ${g.label} (click several positions to edit them together)` : "Filters for the whole pitch"}
               >
@@ -973,9 +1027,8 @@ function BuilderContent() {
                     <button
                       key={ft.id}
                       onClick={() => updateActive({ feet: on ? f.feet.filter((x) => x !== ft.id) : [...f.feet, ft.id] })}
-                      className={`h-8 rounded-lg text-[11px] font-semibold border transition-all ${
-                        on ? "bg-emerald-500/15 border-emerald-500/50 text-emerald-300" : "bg-black/20 border-white/10 text-slate-400 hover:text-white hover:border-white/20"
-                      }`}
+                      className={`h-8 rounded-lg text-[11px] font-semibold border transition-all ${on ? "bg-emerald-500/15 border-emerald-500/50 text-emerald-300" : "bg-black/20 border-white/10 text-slate-400 hover:text-white hover:border-white/20"
+                        }`}
                     >
                       {ft.label}
                     </button>
@@ -1218,11 +1271,10 @@ function BuilderContent() {
               <button
                 key={fk}
                 onClick={() => setFormation(fk)}
-                className={`h-8 rounded-lg text-xs font-black tabular-nums border transition-all ${
-                  formation === fk
-                    ? "bg-emerald-500 text-gray-950 border-emerald-400 shadow-lg shadow-emerald-500/20"
-                    : "bg-black/20 text-slate-300 border-white/10 hover:border-emerald-500/40 hover:text-white"
-                }`}
+                className={`h-8 rounded-lg text-xs font-black tabular-nums border transition-all ${formation === fk
+                  ? "bg-emerald-500 text-gray-950 border-emerald-400 shadow-lg shadow-emerald-500/20"
+                  : "bg-black/20 text-slate-300 border-white/10 hover:border-emerald-500/40 hover:text-white"
+                  }`}
               >
                 {fk}
               </button>
@@ -1242,9 +1294,8 @@ function BuilderContent() {
                 aria-selected={view === id}
                 onClick={() => setView(id)}
                 title={id === "starters" ? "Only the nº 1 of each position" : "The 10 players of each position (scroll each list)"}
-                className={`h-7 rounded-md text-[11px] font-bold flex items-center justify-center gap-1.5 transition-colors ${
-                  view === id ? "bg-white/15 text-white" : "text-slate-400 hover:text-white"
-                }`}
+                className={`h-7 rounded-md text-[11px] font-bold flex items-center justify-center gap-1.5 transition-colors ${view === id ? "bg-white/15 text-white" : "text-slate-400 hover:text-white"
+                  }`}
               >
                 {icon} {label}
               </button>
@@ -1331,6 +1382,52 @@ function BuilderContent() {
           </p>
         </ColumnSection>
       </aside>
+
+      {pendingHref && (
+        <Modal onClose={() => setPendingHref(null)} className="max-w-sm p-5">
+          <div className="flex items-center gap-2 mb-2">
+            <Save className="w-4 h-4 text-amber-400" />
+            <h3 className="text-sm font-bold text-white">Unsaved changes</h3>
+          </div>
+          <p className="text-xs text-slate-300 mb-4">
+            You have unsaved changes in 11 Builder. Do you want to save before leaving?
+          </p>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setPendingHref(null)}
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-300 hover:bg-white/10"
+            >
+              Stay
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const dest = pendingHref;
+                setIsDirty(false);
+                setPendingHref(null);
+                router.push(dest);
+              }}
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold text-rose-300 bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30"
+            >
+              Leave without saving
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (currentSave) {
+                  saveGame(currentSave.name, false);
+                } else {
+                  setSaveDialog(true);
+                }
+              }}
+              className="px-3 py-1.5 rounded-lg text-xs font-bold text-navy-950 bg-emerald-400 hover:bg-emerald-300"
+            >
+              Save &amp; Leave
+            </button>
+          </div>
+        </Modal>
+      )}
 
       {/* Posición del 11 (vista de titulares): sus 10 jugadoras */}
       {roleDialog && team[roleDialog] && (
@@ -1584,13 +1681,12 @@ function HeaderButton({
     <button
       onClick={onClick}
       title={label}
-      className={`w-full inline-flex items-center justify-center gap-1.5 h-8 px-2.5 rounded-lg border text-[11px] font-semibold transition-colors ${
-        primary
-          ? "border-emerald-400/60 bg-emerald-500/15 text-emerald-200 hover:bg-emerald-500/25"
-          : active
+      className={`w-full inline-flex items-center justify-center gap-1.5 h-8 px-2.5 rounded-lg border text-[11px] font-semibold transition-colors ${primary
+        ? "border-emerald-400/60 bg-emerald-500/15 text-emerald-200 hover:bg-emerald-500/25"
+        : active
           ? "border-emerald-400/50 text-emerald-300 bg-emerald-500/10"
           : "border-white/10 bg-black/20 text-slate-300 hover:text-white hover:border-white/25"
-      }`}
+        }`}
     >
       {icon} <span className="truncate">{label}</span>
     </button>
@@ -1619,11 +1715,10 @@ function SmallButton({ onClick, icon, label, danger }: { onClick: () => void; ic
   return (
     <button
       onClick={onClick}
-      className={`inline-flex items-center gap-1 h-7 px-2 rounded-md border text-[11px] font-semibold transition-colors ${
-        danger
-          ? "border-rose-400/30 text-rose-300 hover:bg-rose-500/15"
-          : "border-white/10 text-slate-200 hover:text-white hover:border-white/30 bg-black/20"
-      }`}
+      className={`inline-flex items-center gap-1 h-7 px-2 rounded-md border text-[11px] font-semibold transition-colors ${danger
+        ? "border-rose-400/30 text-rose-300 hover:bg-rose-500/15"
+        : "border-white/10 text-slate-200 hover:text-white hover:border-white/30 bg-black/20"
+        }`}
     >
       {icon} {label}
     </button>
@@ -1637,9 +1732,8 @@ function ZoneButton({ on, onClick, label, color, title }: { on: boolean; onClick
       onClick={onClick}
       title={title}
       aria-pressed={on}
-      className={`h-7 px-2 rounded-lg text-[11px] font-bold border flex items-center justify-center gap-1.5 transition-all ${
-        on ? "text-white" : "text-slate-400 border-white/10 bg-black/20 hover:text-white hover:border-white/20"
-      }`}
+      className={`h-7 px-2 rounded-lg text-[11px] font-bold border flex items-center justify-center gap-1.5 transition-all ${on ? "text-white" : "text-slate-400 border-white/10 bg-black/20 hover:text-white hover:border-white/20"
+        }`}
       style={on ? { borderColor: `${c}99`, background: `${c}26` } : undefined}
     >
       {color && <span className="w-1.5 h-1.5 rounded-full" style={{ background: color }} />}
@@ -1878,11 +1972,10 @@ function RoleList({
                 }}
                 onDragOver={(e) => isTeamDrag(e) && e.preventDefault()}
                 onDrop={(e) => drop(e, i)}
-                className={`group relative shrink-0 flex items-center gap-1.5 px-1.5 rounded-xl cursor-grab active:cursor-grabbing transition-all ${
-                  i === 0
-                    ? "bg-white/[0.14] border border-white/20 shadow-sm"
-                    : "hover:bg-white/[0.08] border border-transparent hover:border-white/10"
-                }`}
+                className={`group relative shrink-0 flex items-center gap-1.5 px-1.5 rounded-xl cursor-grab active:cursor-grabbing transition-all ${i === 0
+                  ? "bg-white/[0.14] border border-white/20 shadow-sm"
+                  : "hover:bg-white/[0.08] border border-transparent hover:border-white/10"
+                  }`}
                 style={{
                   height: LIST_ROW_H - 2,
                   ...(colors[p.id] ? { background: `${colors[p.id]}26`, boxShadow: `inset 4px 0 0 ${colors[p.id]}` } : {}),
@@ -1898,7 +1991,7 @@ function RoleList({
 
                 {/* Big face avatar */}
                 <div className="relative shrink-0">
-                  <Avatar p={p} size={36} />
+                  <Avatar p={p} size={30} />
                   {notes[p.id] && (
                     <StickyNote
                       className="absolute -top-1 -right-1 w-3.5 h-3.5 text-amber-300 drop-shadow"
@@ -1913,22 +2006,40 @@ function RoleList({
                   className="min-w-0 flex-1 text-left leading-tight py-0.5"
                   title={`${p.name}${p.teamName ? ` · ${p.teamName}` : ""}${notes[p.id] ? `\n\n${notes[p.id]}` : ""}`}
                 >
-                  <div
-                    style={{ fontFamily: "var(--font-barlow-condensed), ui-sans-serif, system-ui" }}
-                    className={`text-[14px] uppercase tracking-wider leading-tight truncate ${
-                      i === 0 ? "font-black text-white" : "font-semibold text-slate-100"
-                    }`}
-                  >
-                    {p.name}
-                  </div>
+                  {(() => {
+                    const disp = shortPlayerName(p.matchName || p.name);
+                    const sizeCls =
+                      disp.length > 22
+                        ? "text-[9.5px] tracking-normal"
+                        : disp.length > 17
+                          ? "text-[10.5px] tracking-wide"
+                          : disp.length > 13
+                            ? "text-[12px] tracking-wide"
+                            : "text-[14px] tracking-wider";
+                    return (
+                      <>
+                        <div
+                          style={{ fontFamily: "var(--font-barlow-condensed), ui-sans-serif, system-ui" }}
+                          className={`${sizeCls} uppercase leading-[1.05] break-words ${i === 0 ? "font-black text-white" : "font-semibold text-slate-100"}`}
+                        >
+                          {disp}
+                        </div>
+                        {p.teamName && (
+                          <div className="text-[10px] text-slate-400 truncate leading-tight mt-0.5">
+                            {p.teamName}
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
                 </button>
 
-                {/* Big Club Crest on the side */}
-                <div className="shrink-0 flex items-center justify-center p-1 rounded-lg bg-white/[0.06] border border-white/10 shadow-sm">
+                {/* Club Crest */}
+                <div className="shrink-0 flex items-center justify-center p-0.5 rounded-lg bg-white/[0.06] border border-white/10 shadow-sm">
                   <EscudoEquipo
                     badgeUrl={p.badgeUrl}
                     name={p.teamName}
-                    size={28}
+                    size={22}
                   />
                 </div>
 
@@ -1942,9 +2053,8 @@ function RoleList({
 
                 {/* Quick actions popup */}
                 <div
-                  className={`${
-                    actionsAlways ? "flex" : "hidden group-hover:flex absolute right-1.5 top-1/2 -translate-y-1/2 shadow-xl"
-                  } items-center gap-0.5 rounded-lg bg-[#0a1224]/98 border border-white/25 p-0.5 shrink-0 z-30`}
+                  className={`${actionsAlways ? "flex" : "hidden group-hover:flex absolute right-1.5 top-1/2 -translate-y-1/2 shadow-xl"
+                    } items-center gap-0.5 rounded-lg bg-[#0a1224]/98 border border-white/25 p-0.5 shrink-0 z-30`}
                 >
                   <IconButton onClick={() => onMove(p.id, i - 1)} disabled={i === 0} label="Move up">
                     <ChevronUp className="w-3.5 h-3.5" />
@@ -2002,9 +2112,8 @@ function IconButton({
       disabled={disabled}
       title={label}
       aria-label={label}
-      className={`w-5 h-5 rounded flex items-center justify-center transition-colors disabled:opacity-25 disabled:pointer-events-none ${
-        danger ? "text-slate-400 hover:text-rose-300 hover:bg-rose-500/15" : "text-slate-300 hover:text-white hover:bg-white/10"
-      }`}
+      className={`w-5 h-5 rounded flex items-center justify-center transition-colors disabled:opacity-25 disabled:pointer-events-none ${danger ? "text-slate-400 hover:text-rose-300 hover:bg-rose-500/15" : "text-slate-300 hover:text-white hover:bg-white/10"
+        }`}
     >
       {children}
     </button>
@@ -2044,26 +2153,17 @@ function AddPlayerDialog({
 
   // Opciones de los desplegables (de toda la base de datos)
   const options = useMemo(() => {
-    // Ligas por nombre + país: si dos países comparten nombre, se ve el país al lado
-    const leagues = new Map<string, { id: string; name: string; country: string | null }>(), countries = new Set<string>();
+    const leagues = new Set<string>(), countries = new Set<string>();
     for (const p of allPlayers) {
-      if (p.leagueName) {
-        const id = leagueId(p.leagueName, p.leagueCountry);
-        if (!leagues.has(id)) leagues.set(id, { id, name: p.leagueName, country: p.leagueCountry || null });
-      }
+      if (p.leagueName) leagues.add(p.leagueName);
       if (p.country) countries.add(p.country);
     }
-    const veces = new Map<string, number>();
-    leagues.forEach((l) => veces.set(l.name, (veces.get(l.name) || 0) + 1));
-    const list = Array.from(leagues.values())
-      .map((l) => ({ id: l.id, label: (veces.get(l.name) || 0) > 1 && l.country ? `${l.name} (${l.country})` : l.name }))
-      .sort((a, b) => a.label.localeCompare(b.label));
-    return { leagues: list, countries: Array.from(countries).sort() };
+    return { leagues: Array.from(leagues).sort(), countries: Array.from(countries).sort() };
   }, [allPlayers]);
   // Equipos (de la liga elegida, si hay)
   const teamOptions = useMemo(() => {
     const teams = new Set<string>();
-    for (const p of allPlayers) if (p.teamName && (!league || leagueMatches(league, p.leagueName, p.leagueCountry))) teams.add(p.teamName);
+    for (const p of allPlayers) if (p.teamName && (!league || p.leagueName === league)) teams.add(p.teamName);
     return Array.from(teams).sort((a, b) => a.localeCompare(b));
   }, [allPlayers, league]);
 
@@ -2073,7 +2173,7 @@ function AddPlayerDialog({
     const list = (source === "suggested" ? suggested : allPlayers).filter((p) => {
       if (nq && !normalize(`${p.name} ${p.matchName || ""} ${p.teamName || ""} ${p.leagueName || ""} ${p.country || ""}`).includes(nq)) return false;
       if (group && p.grupoDemarcacion !== group) return false;
-      if (league && !leagueMatches(league, p.leagueName, p.leagueCountry)) return false;
+      if (league && p.leagueName !== league) return false;
       if (teamName && p.teamName !== teamName) return false;
       if (country && p.country !== country) return false;
       if (foot && p.preferredFoot !== foot) return false;
@@ -2133,9 +2233,8 @@ function AddPlayerDialog({
             <button
               key={id}
               onClick={() => setSource(id)}
-              className={`h-7 px-2.5 rounded-md text-[11px] font-bold border ${
-                source === id ? "border-emerald-400/50 bg-emerald-500/15 text-emerald-200" : "border-white/10 text-slate-400 hover:text-white"
-              }`}
+              className={`h-7 px-2.5 rounded-md text-[11px] font-bold border ${source === id ? "border-emerald-400/50 bg-emerald-500/15 text-emerald-200" : "border-white/10 text-slate-400 hover:text-white"
+                }`}
             >
               {text}
             </button>
@@ -2159,7 +2258,7 @@ function AddPlayerDialog({
             <span className={label}>League</span>
             <select value={league} onChange={(e) => { setLeague(e.target.value); setTeamName(""); }} className={field}>
               <option value="">All leagues</option>
-              {options.leagues.map((l) => <option key={l.id} value={l.id}>{l.label}</option>)}
+              {options.leagues.map((l) => <option key={l} value={l}>{l}</option>)}
             </select>
           </label>
           <label>
@@ -2279,9 +2378,8 @@ function GamesPanel({
             {[...saves].sort((a, b) => b.savedAt.localeCompare(a.savedAt)).map((g) => (
               <li
                 key={g.id}
-                className={`flex items-center gap-2 p-2 rounded-lg border ${
-                  g.id === currentId ? "border-emerald-400/40 bg-emerald-500/10" : "border-transparent hover:bg-white/[0.05]"
-                }`}
+                className={`flex items-center gap-2 p-2 rounded-lg border ${g.id === currentId ? "border-emerald-400/40 bg-emerald-500/10" : "border-transparent hover:bg-white/[0.05]"
+                  }`}
               >
                 <button onClick={() => onLoad(g)} className="min-w-0 flex-1 text-left">
                   <div className="text-xs font-bold text-white truncate">{g.name}</div>

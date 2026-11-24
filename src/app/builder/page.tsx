@@ -12,10 +12,12 @@ import { EscudoEquipo } from "@/components/scouting/EscudoEquipo";
 import { LoadingState } from "@/components/ui/StatusStates";
 import {
   SlidersHorizontal, Trophy, X, ChevronRight, ChevronDown, ChevronLeft, ChevronUp, Eye, Plus, Search, Loader2, RotateCcw,
-  Layers, Info, Trash2, StickyNote, Save, FolderOpen, FilePlus2, LayoutGrid, ListOrdered, Replace, Wand2, Crown, Eraser,
+  Layers, Info, Trash2, StickyNote, Save, FolderOpen, FilePlus2, LayoutGrid, ListOrdered, Replace, Wand2, Crown, Eraser, Palette,
+  NotebookPen,
 } from "lucide-react";
 import { METRICS_HIERARCHY, GOALKEEPER_HIERARCHY, CategoryDef } from "@/lib/metricsHierarchy";
 import { guessLeagueCountry, sortLeaguesByCountryAndTier } from "@/lib/leagueCountry";
+import { leagueId, leagueMatches, parseLeagueId } from "@/lib/leagueId";
 
 /* ─────────────────────────── Demarcaciones y sistemas ─────────────────────────── */
 
@@ -75,9 +77,11 @@ const ROLE_META: Record<string, RoleMeta> = {
 /* ─────────────────────────── Mi 11 ─────────────────────────── */
 
 /** Jugadoras por posición (la primera es la titular) */
-const TEAM_SLOT_MAX = 5;
+const TEAM_SLOT_MAX = 10;
 const TEAM_STORAGE_KEY = "herscout.builder.myTeam.v1";
 const NOTES_STORAGE_KEY = "herscout.builder.notes.v1";
+const COLORS_STORAGE_KEY = "herscout.builder.colors.v1";
+const TEAM_NOTE_STORAGE_KEY = "herscout.builder.teamNote.v1";
 const SAVES_STORAGE_KEY = "herscout.builder.saves.v1";
 const UI_STORAGE_KEY = "herscout.builder.ui.v1";
 /** Arrastrar una jugadora del 11: reordenar o llevarla a otra posición */
@@ -88,7 +92,9 @@ const STARTER_W = 136;
 const STARTER_H = 194;
 const LIST_W = 280;
 const LIST_ROW_H = 48;
-const LIST_H = TEAM_SLOT_MAX * LIST_ROW_H + 12;
+/** Filas visibles de cada lista (las 10 se ven desplazándose dentro de la lista) */
+const LIST_VISIBLE_ROWS = 5;
+const LIST_H = LIST_VISIBLE_ROWS * LIST_ROW_H + 12;
 
 type ViewMode = "starters" | "lists";
 type ZoneId = "all" | "def" | "mid" | "att" | GroupId;
@@ -102,7 +108,7 @@ const ZONES: { id: ZoneId; label: string }[] = [
 const lineZone = (li: number, n: number): "gk" | "def" | "mid" | "att" =>
   li === n - 1 ? "gk" : li === n - 2 ? "def" : li === 0 ? "att" : "mid";
 
-/** 11 Builder guardado: sistema, las 5 de cada posición y anotaciones */
+/** 11 Builder guardado (tabla builder_teams): sistema, las 10 de cada posición, notas y colores */
 interface SavedTeam {
   id: string;
   name: string;
@@ -110,7 +116,24 @@ interface SavedTeam {
   formation: FormationKey;
   team: MyTeam;
   notes: Record<string, string>;
+  teamNote?: string;
+  colors?: Record<string, string>;
+  createdByName?: string | null;
+  createdByEmail?: string | null;
+  updatedByName?: string | null;
 }
+
+/** Colores para marcar jugadoras en la pizarra */
+const MARK_COLORS = [
+  { id: "#ef4444", label: "Red" },
+  { id: "#f97316", label: "Orange" },
+  { id: "#facc15", label: "Yellow" },
+  { id: "#22c55e", label: "Green" },
+  { id: "#3b82f6", label: "Blue" },
+  { id: "#a855f7", label: "Purple" },
+  { id: "#ec4899", label: "Pink" },
+  { id: "#f8fafc", label: "White" },
+];
 
 const readStore = <T,>(key: string, fallback: T): T => {
   try {
@@ -234,6 +257,17 @@ const GK_SAFE_KEYS = new Set<string>([
 
 const hierarchyForScope = (scope: ScopeId): CategoryDef[] => (scope === "Porteros" ? GOALKEEPER_HIERARCHY : METRICS_HIERARCHY);
 
+// Claves de cada jerarquía: al editar varias demarcaciones a la vez, una métrica de porteras no se aplica a las
+// de campo (las dejaría sin candidatas) ni una de campo a las porteras
+const hierarchyKeys = (h: CategoryDef[]) =>
+  new Set<string>(h.flatMap((c) => [c.noteKey, ...c.subcategories.flatMap((sc) => [`_sub_${sc.id}`, ...sc.metrics.map((m) => m.key)])]));
+const GK_KEYS = hierarchyKeys(GOALKEEPER_HIERARCHY);
+const FIELD_KEYS = hierarchyKeys(METRICS_HIERARCHY);
+const COMMON_KEYS = new Set<string>(["nota_global", "nota_fisico"]);
+const keyAppliesTo = (scope: ScopeId, key: string) =>
+  scope === "all" || !!BASIC_BY_KEY[key] || COMMON_KEYS.has(key) ||
+  (scope === "Porteros" ? GK_KEYS.has(key) : FIELD_KEYS.has(key));
+
 // Etiqueta de cualquier clave (para chips y selects)
 const LABELS: Record<string, string> = (() => {
   const out: Record<string, string> = { nota_global: "Overall rating", nota_fisico: "Physical (EA)" };
@@ -266,7 +300,16 @@ function BuilderContent() {
   const [formation, setFormation] = useState<FormationKey>("4-3-3");
   const [metricSort, setMetricSort] = useState<string>("nota_global");
   const [scopes, setScopes] = useState<Record<ScopeId, FilterSet>>(emptyScopes);
-  const [activeScope, setActiveScope] = useState<ScopeId>("all");
+  // Demarcaciones cuyos filtros se editan: "all" (todo el campograma) o una o varias a la vez
+  const [activeScopes, setActiveScopes] = useState<ScopeId[]>(["all"]);
+  const activeScope: ScopeId = activeScopes[0];
+  const setActiveScope = (s: ScopeId) => setActiveScopes([s]);
+  const toggleScope = (s: ScopeId) =>
+    setActiveScopes((prev) => {
+      if (s === "all" || prev.includes("all")) return [s];
+      const next = prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s];
+      return next.length ? next : ["all"];
+    });
   const [allPlayers, setAllPlayers] = useState<any[]>([]);
   const [leagueOptions, setLeagueOptions] = useState<{ id: string; name: string; country?: string | null }[]>([]);
   const [teamOptions, setTeamOptions] = useState<{ id: string; name: string; badgeUrl?: string | null }[]>([]);
@@ -279,7 +322,14 @@ function BuilderContent() {
   const [zone, setZone] = useState<ZoneId>("all");
   const [myTeam, setMyTeam] = useState<MyTeam>({});
   const [notes, setNotes] = useState<Record<string, string>>({});
+  /** Color de cada jugadora en la pizarra */
+  const [colors, setColors] = useState<Record<string, string>>({});
+  /** Nota general del equipo */
+  const [teamNote, setTeamNote] = useState("");
+  const [teamNoteOpen, setTeamNoteOpen] = useState(false);
   const [saves, setSaves] = useState<SavedTeam[]>([]);
+  const [savesError, setSavesError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const [currentSaveId, setCurrentSaveId] = useState<string | null>(null);
   const [saveDialog, setSaveDialog] = useState(false);
   const [gamesOpen, setGamesOpen] = useState(false);
@@ -288,11 +338,14 @@ function BuilderContent() {
   const isWide = useMediaQuery("(min-width: 1024px)");
   const teamLoaded = useRef(false);
 
-  // Equipo en curso, anotaciones, 11 guardados y vista se guardan en este navegador
+  // Equipo en curso (sin guardar), anotaciones, colores y vista: en este navegador. Los 11 guardados: en la base
+  // de datos (/api/builder/teams), con quién los guardó
   useEffect(() => {
     setMyTeam(readStore<MyTeam>(TEAM_STORAGE_KEY, {}));
     setNotes(readStore<Record<string, string>>(NOTES_STORAGE_KEY, {}));
-    setSaves(readStore<SavedTeam[]>(SAVES_STORAGE_KEY, []));
+    setColors(readStore<Record<string, string>>(COLORS_STORAGE_KEY, {}));
+    setTeamNote(readStore<string>(TEAM_NOTE_STORAGE_KEY, ""));
+    setCurrentSaveId(readStore<string | null>(`${SAVES_STORAGE_KEY}.current`, null));
     const ui = readStore<{ view?: ViewMode; zone?: ZoneId; filtersOpen?: boolean }>(UI_STORAGE_KEY, {});
     if (ui.view === "starters" || ui.view === "lists") setView(ui.view);
     if (ui.zone) setZone(ui.zone);
@@ -306,11 +359,57 @@ function BuilderContent() {
     if (teamLoaded.current) writeStore(NOTES_STORAGE_KEY, notes);
   }, [notes]);
   useEffect(() => {
-    if (teamLoaded.current) writeStore(SAVES_STORAGE_KEY, saves);
-  }, [saves]);
+    if (teamLoaded.current) writeStore(COLORS_STORAGE_KEY, colors);
+  }, [colors]);
+  useEffect(() => {
+    if (teamLoaded.current) writeStore(TEAM_NOTE_STORAGE_KEY, teamNote);
+  }, [teamNote]);
+  useEffect(() => {
+    if (teamLoaded.current) writeStore(`${SAVES_STORAGE_KEY}.current`, currentSaveId);
+  }, [currentSaveId]);
+
+  // 11 guardados en la base de datos. Los que había en este navegador (versión anterior) se suben una vez.
+  const loadSaves = async () => {
+    try {
+      const res = await fetch("/api/builder/teams", { cache: "no-store" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Could not load the saved teams");
+      setSaves(data.teams || []);
+      setSavesError(null);
+      return true;
+    } catch (e: any) {
+      setSavesError(e.message || "Could not load the saved teams");
+      return false;
+    }
+  };
+  useEffect(() => {
+    (async () => {
+      if (!(await loadSaves())) return;
+      const local = readStore<SavedTeam[]>(SAVES_STORAGE_KEY, []);
+      if (!local.length) return;
+      for (const g of local) {
+        await fetch("/api/builder/teams", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: g.name, formation: g.formation, team: g.team, notes: g.notes || {}, colors: {}, teamNote: "" }),
+        });
+      }
+      localStorage.removeItem(SAVES_STORAGE_KEY);
+      await loadSaves();
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   useEffect(() => {
     if (teamLoaded.current) writeStore(UI_STORAGE_KEY, { view, zone, filtersOpen });
   }, [view, zone, filtersOpen]);
+
+  const setColor = (id: string, color: string | null) =>
+    setColors((prev) => {
+      const next = { ...prev };
+      if (color) next[id] = color;
+      else delete next[id];
+      return next;
+    });
 
   const setNote = (id: string, text: string) =>
     setNotes((prev) => {
@@ -355,16 +454,14 @@ function BuilderContent() {
           _mv: p.marketValue ? Math.round(Number(p.marketValue) / 1000) : null,
         }));
         setAllPlayers(list);
-        // The builder filters leagues by name: a name shared by several countries
-        // ("Women's Super League" = England and Switzerland) becomes one option without a flag
-        const byName = new Map<string, { id: string; name: string; country: string | null }>();
+        // Una liga es nombre + país (id "nombre::país", como en Player Database): "Women's Super League" de
+        // Inglaterra y la de Suiza son dos opciones, cada una en su país
+        const byId = new Map<string, { id: string; name: string; country: string | null }>();
         for (const l of json.filters?.leaguesDetailed || []) {
-          const country = l.country || guessLeagueCountry(l.name);
-          const prev = byName.get(l.name);
-          if (!prev) byName.set(l.name, { id: l.name, name: l.name, country });
-          else if (prev.country !== country) prev.country = null;
+          const id = l.id || leagueId(l.name, l.country);
+          if (!byId.has(id)) byId.set(id, { id, name: l.name, country: l.country || guessLeagueCountry(l.name) });
         }
-        setLeagueOptions(sortLeaguesByCountryAndTier(Array.from(byName.values())));
+        setLeagueOptions(sortLeaguesByCountryAndTier(Array.from(byId.values())));
         setTeamOptions((json.filters?.teamsDetailed || []).map((t: any) => ({ id: t.name, name: t.name, badgeUrl: t.badgeUrl })));
       } catch (err) {
         console.error("Failed to fetch players for 11 Builder", err);
@@ -398,14 +495,17 @@ function BuilderContent() {
   const counts = useMemo(() => {
     const leagues: Record<string, number> = {}, teams: Record<string, number> = {}, countries: Record<string, number> = {};
     for (const p of allPlayers) {
-      if (p.leagueName) leagues[p.leagueName] = (leagues[p.leagueName] || 0) + 1;
+      if (p.leagueName) {
+        const id = leagueId(p.leagueName, p.leagueCountry);
+        leagues[id] = (leagues[id] || 0) + 1;
+      }
       if (p.teamName) teams[p.teamName] = (teams[p.teamName] || 0) + 1;
       if (p.country) countries[p.country] = (countries[p.country] || 0) + 1;
     }
     return { leagues, teams, countries };
   }, [allPlayers]);
 
-  const leagueOpts = useMemo(() => leagueOptions.map((o) => ({ ...o, count: counts.leagues[o.name] || 0 })), [leagueOptions, counts]);
+  const leagueOpts = useMemo(() => leagueOptions.map((o) => ({ ...o, count: counts.leagues[o.id] ?? counts.leagues[o.name] ?? 0 })), [leagueOptions, counts]);
   const teamOpts = useMemo(() => teamOptions.map((o) => ({ ...o, count: counts.teams[o.name] || 0 })), [teamOptions, counts]);
   const countryOpts = useMemo(
     () => Object.keys(counts.countries).sort().map((c) => ({ id: c, name: c, country: c, count: counts.countries[c] })),
@@ -464,10 +564,7 @@ function BuilderContent() {
 
   // ¿Pasa la jugadora un conjunto de filtros para un puesto del grupo `slotGroup`?
   const passes = (p: any, f: FilterSet, slotGroup: GroupId, isGlobal: boolean): boolean => {
-    if (f.leagues.length) {
-      const pl = (p.leagueName || "").toLowerCase();
-      if (!f.leagues.some((l) => pl === l.toLowerCase() || pl.includes(l.toLowerCase()))) return false;
-    }
+    if (f.leagues.length && !f.leagues.some((id) => leagueMatches(id, p.leagueName, p.leagueCountry))) return false;
     if (f.teams.length && !f.teams.includes(p.teamName)) return false;
     if (f.countries.length && !f.countries.includes(p.country)) return false;
     if (f.feet.length && !f.feet.includes(p.preferredFoot)) return false;
@@ -499,7 +596,7 @@ function BuilderContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [allPlayers, scopes.all, remote]
   );
-  /* ───── El 11: 5 jugadoras por posición ───── */
+  /* ───── El 11: 10 jugadoras por posición ───── */
   const roles = useMemo(() => FORMATIONS[formation].flat(), [formation]);
   const playersById = useMemo(() => new Map(allPlayers.map((p) => [p.id, p])), [allPlayers]);
   const allByRating = useMemo(
@@ -507,7 +604,7 @@ function BuilderContent() {
     [allPlayers]
   );
 
-  // Posiciones que siguen a los filtros: titular y 4 alternativas. La titular se elige por pasadas
+  // Posiciones que siguen a los filtros: titular y 9 alternativas. La titular se elige por pasadas
   // (1. demarcación y lado, 2. misma demarcación, 3. afines) y las demás por rondas, para que no se
   // repitan entre posiciones (dos centrales → cada una con las suyas) ni con las listas ya editadas.
   const autoTeam = useMemo(() => {
@@ -630,30 +727,53 @@ function BuilderContent() {
 
   /* ───── 11 guardados ───── */
   const currentSave = saves.find((g) => g.id === currentSaveId) || null;
-  const saveGame = (name: string, asNew: boolean) => {
+  const saveGame = async (name: string, asNew: boolean) => {
     const snapshot: MyTeam = Object.fromEntries(roles.map((r) => [r, team[r].map(toTeamPlayer)]));
-    const game: SavedTeam = {
-      id: !asNew && currentSave ? currentSave.id : `g${Date.now()}`,
-      name: name.trim() || `Team ${fmtSaveDate(new Date().toISOString())}`,
-      savedAt: new Date().toISOString(),
-      formation,
-      team: snapshot,
-      notes,
-    };
-    setSaves((prev) => [game, ...prev.filter((g) => g.id !== game.id)]);
-    // Lo guardado deja de cambiar con los filtros
-    setMyTeam((prev) => ({ ...prev, ...snapshot }));
-    setCurrentSaveId(game.id);
-    setSaveDialog(false);
+    // Solo las notas y colores de las jugadoras que están en el 11
+    const ids = new Set(Object.values(snapshot).flat().map((p) => p.id));
+    const pick = (m: Record<string, string>) => Object.fromEntries(Object.entries(m).filter(([id]) => ids.has(id)));
+    const update = !asNew && currentSave;
+    setSaving(true);
+    try {
+      const res = await fetch("/api/builder/teams", {
+        method: update ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...(update ? { id: currentSave.id } : {}),
+          name: name.trim() || `Team ${fmtSaveDate(new Date().toISOString())}`,
+          formation, team: snapshot, notes: pick(notes), colors: pick(colors), teamNote,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Could not save the team");
+      const game: SavedTeam = data.team;
+      setSaves((prev) => [game, ...prev.filter((g) => g.id !== game.id)]);
+      // Lo guardado deja de cambiar con los filtros
+      setMyTeam((prev) => ({ ...prev, ...snapshot }));
+      setCurrentSaveId(game.id);
+      setSaveDialog(false);
+      setSavesError(null);
+    } catch (e: any) {
+      window.alert(e.message || "Could not save the team");
+    } finally {
+      setSaving(false);
+    }
   };
   const loadGame = (g: SavedTeam) => {
     setFormation(g.formation);
     setMyTeam(g.team);
     setNotes(g.notes || {});
+    setColors(g.colors || {});
+    setTeamNote(g.teamNote || "");
     setCurrentSaveId(g.id);
     setGamesOpen(false);
   };
-  const deleteGame = (id: string) => {
+  const deleteGame = async (id: string) => {
+    const res = await fetch(`/api/builder/teams?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      return window.alert(data.error || "Could not delete the team");
+    }
     setSaves((prev) => prev.filter((g) => g.id !== id));
     if (currentSaveId === id) setCurrentSaveId(null);
   };
@@ -661,6 +781,8 @@ function BuilderContent() {
     if (customCount && !window.confirm("Start a new 11 from the current filters? Unsaved changes will be lost.")) return;
     setMyTeam({});
     setNotes({});
+    setColors({});
+    setTeamNote("");
     setCurrentSaveId(null);
   };
 
@@ -698,6 +820,14 @@ function BuilderContent() {
       return { ...prev, [scope]: { ...prev[scope], ranges, extraMetrics: prev[scope].extraMetrics.filter((k) => k !== key) } };
     });
 
+  // Lo que se toca en el panel se aplica a todas las demarcaciones elegidas
+  const multiScope = activeScopes.length > 1;
+  const updateActive = (patch: Partial<FilterSet>) => activeScopes.forEach((s) => updateScope(s, patch));
+  const setRangeActive = (key: string, value: Range | null) =>
+    activeScopes.forEach((s) => (!multiScope || keyAppliesTo(s, key)) && setRange(s, key, value));
+  const clearActive = () => setScopes((prev) => ({ ...prev, ...Object.fromEntries(activeScopes.map((s) => [s, emptyFilters()])) }));
+  const panelScope: ScopeId = multiScope ? "all" : activeScope;
+
   const totalActive = SCOPES.reduce((n, s) => n + activeCount(scopes[s]), 0);
   const f = scopes[activeScope];
   const scopeColor = activeScope === "all" ? "#10b981" : GROUP_BY_ID[activeScope].color;
@@ -707,7 +837,7 @@ function BuilderContent() {
     if (!f.leagues || f.leagues.length === 0) return teamOpts;
     const allowedTeams = new Set<string>();
     allPlayers.forEach((p) => {
-      if (p.leagueName && f.leagues.includes(p.leagueName) && p.teamName) {
+      if (p.teamName && f.leagues.some((id) => leagueMatches(id, p.leagueName, p.leagueCountry))) {
         allowedTeams.add(p.teamName.toLowerCase());
       }
     });
@@ -719,10 +849,10 @@ function BuilderContent() {
     const allowedLeagues = new Set<string>();
     allPlayers.forEach((p) => {
       if (p.teamName && f.teams.includes(p.teamName) && p.leagueName) {
-        allowedLeagues.add(p.leagueName.toLowerCase());
+        allowedLeagues.add(leagueId(p.leagueName, p.leagueCountry).toLowerCase());
       }
     });
-    return leagueOpts.filter((l) => allowedLeagues.has(l.name.toLowerCase()));
+    return leagueOpts.filter((l) => allowedLeagues.has(l.id.toLowerCase()) || f.leagues.includes(l.id));
   }, [leagueOpts, f.teams, allPlayers]);
 
   // Chips de filtros activos (todas las pestañas)
@@ -731,7 +861,7 @@ function BuilderContent() {
     const tag = s === "all" ? "All" : GROUP_BY_ID[s].label;
     const color = s === "all" ? "#10b981" : GROUP_BY_ID[s].color;
     const out: { id: string; scope: ScopeId; tag: string; color: string; text: string; clear: () => void }[] = [];
-    if (fs.leagues.length) out.push({ id: `${s}-lg`, scope: s, tag, color, text: fs.leagues.length === 1 ? fs.leagues[0] : `${fs.leagues.length} leagues`, clear: () => updateScope(s, { leagues: [] }) });
+    if (fs.leagues.length) out.push({ id: `${s}-lg`, scope: s, tag, color, text: fs.leagues.length === 1 ? parseLeagueId(fs.leagues[0]).name : `${fs.leagues.length} leagues`, clear: () => updateScope(s, { leagues: [] }) });
     if (fs.teams.length) out.push({ id: `${s}-tm`, scope: s, tag, color, text: fs.teams.length === 1 ? fs.teams[0] : `${fs.teams.length} teams`, clear: () => updateScope(s, { teams: [] }) });
     if (fs.countries.length) out.push({ id: `${s}-ct`, scope: s, tag, color, text: fs.countries.length === 1 ? fs.countries[0] : `${fs.countries.length} countries`, clear: () => updateScope(s, { countries: [] }) });
     if (fs.feet.length) out.push({ id: `${s}-ft`, scope: s, tag, color, text: fs.feet.map((x) => FEET.find((y) => y.id === x)?.label).join(" / "), clear: () => updateScope(s, { feet: [] }) });
@@ -769,17 +899,17 @@ function BuilderContent() {
           {SCOPES.map((s) => {
             const g = s === "all" ? null : GROUP_BY_ID[s];
             const n = activeCount(scopes[s]);
-            const on = activeScope === s;
+            const on = activeScopes.includes(s);
             const color = g?.color || "#10b981";
             return (
               <button
                 key={s}
-                onClick={() => setActiveScope(s)}
+                onClick={() => toggleScope(s)}
                 className={`relative h-7 px-2.5 rounded-lg text-[11px] font-bold flex items-center gap-1.5 border transition-all ${
                   on ? "text-white shadow-lg" : "text-slate-400 border-white/5 bg-black/20 hover:text-slate-200 hover:border-white/15"
                 }`}
                 style={on ? { borderColor: `${color}80`, background: `${color}22`, boxShadow: `0 0 18px ${color}25` } : undefined}
-                title={g ? `Filters for ${g.label} only` : "Filters for all positions"}
+                title={g ? `Filters for ${g.label} (click several positions to edit them together)` : "Filters for the whole pitch"}
               >
                 {g ? <span className="w-1.5 h-1.5 rounded-full" style={{ background: color }} /> : <Layers className="w-3 h-3" />}
                 {g ? g.short : "All"}
@@ -798,8 +928,18 @@ function BuilderContent() {
             <span>Applied to <b className="text-slate-200">all positions</b>. Outfield metrics don't affect goalkeepers. <span className="text-slate-300 tabular-nums">{globalCount}</span> candidates.</span>
           ) : (
             <span>
-              Only for <b style={{ color: scopeColor }}>{GROUP_BY_ID[activeScope].label}</b>, on top of the “All” filters.{" "}
-              <span className="text-slate-300 tabular-nums">{candidatesByGroup[activeScope]?.filter((p) => p.grupoDemarcacion === activeScope).length ?? 0}</span> candidates.
+              Only for{" "}
+              {activeScopes.map((sc, i) => (
+                <React.Fragment key={sc}>
+                  {i > 0 && (i === activeScopes.length - 1 ? " and " : ", ")}
+                  <b style={{ color: GROUP_BY_ID[sc as GroupId].color }}>{GROUP_BY_ID[sc as GroupId].label}</b>
+                </React.Fragment>
+              ))}
+              , on top of the “All” filters.{" "}
+              <span className="text-slate-300 tabular-nums">
+                {activeScopes.reduce((n, sc) => n + (candidatesByGroup[sc as GroupId]?.filter((p) => p.grupoDemarcacion === sc).length ?? 0), 0)}
+              </span>{" "}
+              candidates.{multiScope ? " Changes apply to all of them." : ""}
             </span>
           )}
         </div>
@@ -811,8 +951,8 @@ function BuilderContent() {
           <Section title="Sort this position by">
             <MetricSelect
               value={f.sortBy}
-              onChange={(v) => updateScope(activeScope, { sortBy: v })}
-              scope={activeScope}
+              onChange={(v) => updateActive({ sortBy: v })}
+              scope={panelScope}
               allowInherit
               loading={loadingKeys.has(f.sortBy)}
             />
@@ -821,9 +961,9 @@ function BuilderContent() {
 
         <Section title="Competition & profile">
           <div className="grid grid-cols-1 gap-2">
-            <MultiSelectFilter label="Leagues" placeholder="All leagues" options={filteredLeagueOpts} selectedIds={f.leagues} onChange={(v) => updateScope(activeScope, { leagues: v })} showFlag />
-            <MultiSelectFilter label="Teams" placeholder="All teams" options={filteredTeamOpts} selectedIds={f.teams} onChange={(v) => updateScope(activeScope, { teams: v })} />
-            <MultiSelectFilter label="Nationality" placeholder="All nations" options={countryOpts} selectedIds={f.countries} onChange={(v) => updateScope(activeScope, { countries: v })} showFlag />
+            <MultiSelectFilter label="Leagues" placeholder="All leagues" options={filteredLeagueOpts} selectedIds={f.leagues} onChange={(v) => updateActive({ leagues: v })} showFlag />
+            <MultiSelectFilter label="Teams" placeholder="All teams" options={filteredTeamOpts} selectedIds={f.teams} onChange={(v) => updateActive({ teams: v })} />
+            <MultiSelectFilter label="Nationality" placeholder="All nations" options={countryOpts} selectedIds={f.countries} onChange={(v) => updateActive({ countries: v })} showFlag />
             <div>
               <span className="text-[10px] font-semibold text-slate-300 uppercase tracking-wider block mb-1">Preferred foot</span>
               <div className="grid grid-cols-3 gap-1.5">
@@ -832,7 +972,7 @@ function BuilderContent() {
                   return (
                     <button
                       key={ft.id}
-                      onClick={() => updateScope(activeScope, { feet: on ? f.feet.filter((x) => x !== ft.id) : [...f.feet, ft.id] })}
+                      onClick={() => updateActive({ feet: on ? f.feet.filter((x) => x !== ft.id) : [...f.feet, ft.id] })}
                       className={`h-8 rounded-lg text-[11px] font-semibold border transition-all ${
                         on ? "bg-emerald-500/15 border-emerald-500/50 text-emerald-300" : "bg-black/20 border-white/10 text-slate-400 hover:text-white hover:border-white/20"
                       }`}
@@ -858,7 +998,7 @@ function BuilderContent() {
                   max={hi}
                   step={bf.step}
                   value={f.ranges[bf.key] || null}
-                  onChange={(v) => setRange(activeScope, bf.key, v)}
+                  onChange={(v) => setRangeActive(bf.key, v)}
                   format={bf.format}
                   color={bf.color}
                 />
@@ -869,31 +1009,36 @@ function BuilderContent() {
 
         <Section title="Performance (ratings 0–100)">
           <div className="space-y-1.5">
-            <RangeSlider label="Overall rating" min={0} max={100} value={f.ranges.nota_global || null} onChange={(v) => setRange(activeScope, "nota_global", v)} color="#fbbf24" />
-            <RangeSlider label="Physical (EA)" min={0} max={100} value={f.ranges.nota_fisico || null} onChange={(v) => setRange(activeScope, "nota_fisico", v)} color="#fb923c" />
+            <RangeSlider label="Overall rating" min={0} max={100} value={f.ranges.nota_global || null} onChange={(v) => setRangeActive("nota_global", v)} color="#fbbf24" />
+            <RangeSlider label="Physical (EA)" min={0} max={100} value={f.ranges.nota_fisico || null} onChange={(v) => setRangeActive("nota_fisico", v)} color="#fb923c" />
           </div>
           <div className="mt-2 space-y-2">
-            {hierarchyForScope(activeScope).map((cat) => (
+            {hierarchyForScope(panelScope).map((cat) => (
               <CategoryBlock
                 key={cat.id}
                 cat={cat}
                 filters={f}
                 loadingKeys={loadingKeys}
-                onRange={(k, v) => setRange(activeScope, k, v)}
-                onAddMetric={(k) => addMetric(activeScope, k)}
-                onRemoveMetric={(k) => removeMetric(activeScope, k)}
-                dimmed={activeScope === "all" && cat.id !== "disponibilidad" ? "Does not apply to goalkeepers" : undefined}
+                onRange={(k, v) => setRangeActive(k, v)}
+                onAddMetric={(k) => activeScopes.forEach((sc) => addMetric(sc, k))}
+                onRemoveMetric={(k) => activeScopes.forEach((sc) => removeMetric(sc, k))}
+                dimmed={
+                  (activeScope === "all" || activeScopes.includes("Porteros")) && panelScope === "all" && cat.id !== "disponibilidad"
+                    ? "Does not apply to goalkeepers"
+                    : undefined
+                }
               />
             ))}
           </div>
         </Section>
 
-        {activeCount(f) > 0 && (
+        {activeScopes.some((sc) => activeCount(scopes[sc]) > 0) && (
           <button
-            onClick={() => setScopes((prev) => ({ ...prev, [activeScope]: emptyFilters() }))}
+            onClick={clearActive}
             className="w-full h-8 rounded-lg border border-white/10 text-[11px] text-slate-300 hover:text-white hover:border-white/25 flex items-center justify-center gap-1.5"
           >
-            <RotateCcw className="w-3 h-3" /> Clear {activeScope === "all" ? "“All”" : GROUP_BY_ID[activeScope].label} filters
+            <RotateCcw className="w-3 h-3" /> Clear{" "}
+            {activeScope === "all" ? "“All”" : activeScopes.map((sc) => GROUP_BY_ID[sc as GroupId].short).join(" + ")} filters
           </button>
         )}
       </div>
@@ -929,6 +1074,7 @@ function BuilderContent() {
       list: team[role] || [],
       auto: !myTeam[role],
       notes,
+      colors,
       onOpenPlayer: (p: any) => setSelected({ player: p, role }),
       onAdd: () => setAddTarget({ role }),
       onNoCandidates: () => openFiltersFor(group),
@@ -1013,7 +1159,7 @@ function BuilderContent() {
           <Trophy className="w-5 h-5 text-emerald-400" />
           <span className="text-base font-extrabold tracking-tight">{formation}</span>
           <div className="flex rounded-lg border border-white/10 bg-black/30 p-0.5 ml-auto">
-            {([["starters", "Nº 1"], ["lists", "Top 5"]] as const).map(([id, text]) => (
+            {([["starters", "Nº 1"], ["lists", "Top 10"]] as const).map(([id, text]) => (
               <button
                 key={id}
                 onClick={() => setView(id)}
@@ -1088,14 +1234,14 @@ function BuilderContent() {
           <div className="grid grid-cols-2 rounded-lg border border-white/10 bg-black/30 p-0.5" role="tablist" aria-label="View">
             {([
               ["starters", <LayoutGrid key="i" className="w-3.5 h-3.5" />, "Nº 1 only"],
-              ["lists", <ListOrdered key="i" className="w-3.5 h-3.5" />, "Top 5 lists"],
+              ["lists", <ListOrdered key="i" className="w-3.5 h-3.5" />, "Top 10 lists"],
             ] as const).map(([id, icon, label]) => (
               <button
                 key={id}
                 role="tab"
                 aria-selected={view === id}
                 onClick={() => setView(id)}
-                title={id === "starters" ? "Only the nº 1 of each position" : "The 5 players of each position"}
+                title={id === "starters" ? "Only the nº 1 of each position" : "The 10 players of each position (scroll each list)"}
                 className={`h-7 rounded-md text-[11px] font-bold flex items-center justify-center gap-1.5 transition-colors ${
                   view === id ? "bg-white/15 text-white" : "text-slate-400 hover:text-white"
                 }`}
@@ -1152,8 +1298,10 @@ function BuilderContent() {
             title={currentSave ? `Saved ${fmtSaveDate(currentSave.savedAt)}` : "Not saved yet"}
           >
             {currentSave ? currentSave.name : "Unsaved 11"}
-            <span className="block text-[10px] font-normal text-slate-500">
-              {currentSave ? `Saved ${fmtSaveDate(currentSave.savedAt)}` : "Not saved yet"}
+            <span className="block text-[10px] font-normal text-slate-500 truncate">
+              {currentSave
+                ? `Saved ${fmtSaveDate(currentSave.savedAt)}${currentSave.updatedByName || currentSave.createdByName ? ` by ${currentSave.updatedByName || currentSave.createdByName}` : ""}`
+                : "Not saved yet"}
             </span>
           </div>
           <div className="grid grid-cols-2 gap-1.5 mt-1.5">
@@ -1167,7 +1315,13 @@ function BuilderContent() {
             <HeaderButton onClick={newGame} icon={<FilePlus2 className="w-3.5 h-3.5" />} label="New" />
             <HeaderButton onClick={rebuildFromFilters} icon={<Wand2 className="w-3.5 h-3.5" />} label="From filters" />
             <HeaderButton onClick={clearAll} icon={<Eraser className="w-3.5 h-3.5" />} label="Empty" />
+            <HeaderButton
+              onClick={() => setTeamNoteOpen(true)}
+              icon={<NotebookPen className="w-3.5 h-3.5" />}
+              label={teamNote.trim() ? "Notes •" : "Notes"}
+            />
           </div>
+          {savesError && <p className="mt-1.5 text-[10px] leading-snug text-rose-300">{savesError}</p>}
           {gamesOpen && (
             <GamesPanel saves={saves} currentId={currentSaveId} onLoad={loadGame} onDelete={deleteGame} onClose={() => setGamesOpen(false)} />
           )}
@@ -1178,9 +1332,9 @@ function BuilderContent() {
         </ColumnSection>
       </aside>
 
-      {/* Posición del 11 (vista de titulares): sus 5 jugadoras */}
+      {/* Posición del 11 (vista de titulares): sus 10 jugadoras */}
       {roleDialog && team[roleDialog] && (
-        <Modal onClose={() => setRoleDialog(null)} className="max-w-sm p-4">
+        <Modal onClose={() => setRoleDialog(null)} className="max-w-xl p-5">
           <div className="flex items-center gap-2 mb-1">
             <span className="text-sm font-black uppercase" style={{ color: GROUP_BY_ID[ROLE_META[roleDialog].group].color }}>
               {roleDialog}
@@ -1200,6 +1354,7 @@ function BuilderContent() {
               list={team[roleDialog]}
               auto={!myTeam[roleDialog]}
               notes={notes}
+              colors={colors}
               actionsAlways
               onOpenPlayer={(p) => setSelected({ player: p, role: roleDialog })}
               onAdd={() => setAddTarget({ role: roleDialog })}
@@ -1314,6 +1469,32 @@ function BuilderContent() {
                   {LABELS[metricSort] || metricSort}: <b className="text-white">{getVal(sp, metricSort)?.toFixed(1) ?? "—"}</b>
                 </p>
               )}
+              <div>
+                <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-slate-300">
+                  <Palette className="w-3 h-3" /> Colour on the board
+                </span>
+                <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                  {MARK_COLORS.map((c) => {
+                    const on = colors[sp.id] === c.id;
+                    return (
+                      <button
+                        key={c.id}
+                        onClick={() => setColor(sp.id, on ? null : c.id)}
+                        title={c.label}
+                        aria-label={c.label}
+                        aria-pressed={on}
+                        className={`w-6 h-6 rounded-full border-2 transition-transform hover:scale-110 ${on ? "border-white scale-110" : "border-white/20"}`}
+                        style={{ background: c.id }}
+                      />
+                    );
+                  })}
+                  {colors[sp.id] && (
+                    <button onClick={() => setColor(sp.id, null)} className="ml-1 text-[10px] text-slate-400 hover:text-white">
+                      No colour
+                    </button>
+                  )}
+                </div>
+              </div>
               <label className="block">
                 <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-amber-300">
                   <StickyNote className="w-3 h-3" /> Notes
@@ -1338,8 +1519,29 @@ function BuilderContent() {
           </Modal>
         );
       })()}
+      {teamNoteOpen && (
+        <Modal onClose={() => setTeamNoteOpen(false)} className="max-w-lg p-5 space-y-3">
+          <div className="flex items-center gap-2">
+            <NotebookPen className="w-4 h-4 text-amber-300" />
+            <h3 className="text-sm font-black uppercase tracking-wider text-white">Team notes</h3>
+            <button onClick={() => setTeamNoteOpen(false)} className="ml-auto p-1 rounded-full text-slate-400 hover:text-white hover:bg-white/10" aria-label="Close">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <textarea
+            autoFocus
+            value={teamNote}
+            onChange={(e) => setTeamNote(e.target.value)}
+            placeholder="Plan, ideas, priorities… (saved with the 11)"
+            rows={10}
+            className="w-full rounded-lg bg-black/30 border border-white/10 focus:border-amber-400/60 outline-none p-3 text-sm text-slate-100 placeholder:text-slate-500 resize-y"
+          />
+          <p className="text-[10px] text-slate-500">Player notes and colours: click a player on the pitch.</p>
+        </Modal>
+      )}
       {saveDialog && (
         <SaveDialog
+          saving={saving}
           current={currentSave}
           defaultName={currentSave?.name || `11 ${new Date().toLocaleDateString("en-GB")}`}
           onSave={saveGame}
@@ -1485,6 +1687,8 @@ interface SlotProps {
   /** Sigue a los filtros (aún no editada) */
   auto: boolean;
   notes: Record<string, string>;
+  /** Color de cada jugadora en la pizarra */
+  colors: Record<string, string>;
   onOpenPlayer: (p: any) => void;
   onAdd: () => void;
   onNoCandidates: () => void;
@@ -1492,7 +1696,7 @@ interface SlotProps {
 }
 
 /** Vista de titulares: la carta del nº 1 y, debajo, la posición con sus alternativas */
-function StarterSlot({ role, color, list, auto, notes, onOpenPlayer, onAdd, onNoCandidates, onDropPlayer, onEdit }: SlotProps & { onEdit: () => void }) {
+function StarterSlot({ role, color, list, auto, notes, colors, onOpenPlayer, onAdd, onNoCandidates, onDropPlayer, onEdit }: SlotProps & { onEdit: () => void }) {
   const scale = usePitchScale();
   const [over, setOver] = useState(false);
   const starter = list[0];
@@ -1513,7 +1717,16 @@ function StarterSlot({ role, color, list, auto, notes, onOpenPlayer, onAdd, onNo
       className="relative w-full h-full flex flex-col items-center justify-between"
     >
       {starter ? (
-        <div className="rounded-xl transition-shadow" style={over ? { boxShadow: `0 0 0 3px ${color}` } : undefined}>
+        <div
+          className="rounded-xl transition-shadow"
+          style={
+            over
+              ? { boxShadow: `0 0 0 3px ${color}` }
+              : colors[starter.id]
+                ? { boxShadow: `0 0 0 3px ${colors[starter.id]}, 0 0 22px ${colors[starter.id]}88` }
+                : undefined
+          }
+        >
           <PitchScaleContext.Provider value={1}>
             <PitchCard
               player={starter}
@@ -1547,9 +1760,12 @@ function StarterSlot({ role, color, list, auto, notes, onOpenPlayer, onAdd, onNo
       >
         <span className="text-[10px] font-black" style={{ color }}>{role}</span>
         <div className="flex-1 flex justify-center -space-x-1.5">
-          {list.slice(1).map((p) => (
+          {list.slice(1, 5).map((p) => (
             <Avatar key={p.id} p={p} size={16} />
           ))}
+          {list.length > 5 && (
+            <span className="pl-2 text-[8px] font-bold text-slate-400 self-center">+{list.length - 5}</span>
+          )}
         </div>
         <span className="text-[9px] font-bold tabular-nums text-slate-400">{list.length}/{TEAM_SLOT_MAX}</span>
         <ListOrdered className="w-3 h-3 text-slate-400" />
@@ -1558,9 +1774,9 @@ function StarterSlot({ role, color, list, auto, notes, onOpenPlayer, onAdd, onNo
   );
 }
 
-/** Vista de listas: las 5 de la posición, en orden (nº 1 = titular) */
+/** Vista de listas: las 10 de la posición, en orden (nº 1 = titular); se ven 5 y se desplaza para el resto */
 function RoleList({
-  role, color, list, auto, notes, actionsAlways, onOpenPlayer, onAdd, onNoCandidates, onDropPlayer, onMove, onRemove, onReplace, onReset,
+  role, color, list, auto, notes, colors, actionsAlways, onOpenPlayer, onAdd, onNoCandidates, onDropPlayer, onMove, onRemove, onReplace, onReset,
 }: SlotProps & {
   actionsAlways?: boolean;
   onMove: (id: string, toIndex: number) => void;
@@ -1637,7 +1853,7 @@ function RoleList({
         </div>
       </div>
 
-      {/* Main Content: 5 full rows */}
+      {/* Main Content: 10 rows, 5 visible (scroll) */}
       <div className="flex-1 flex flex-col min-w-0 p-1">
         {list.length === 0 && auto ? (
           <button
@@ -1648,7 +1864,9 @@ function RoleList({
             No candidate matches these filters
           </button>
         ) : (
-          <ol className="flex-1 flex flex-col justify-between gap-1">
+          <ol
+            className="flex-1 min-h-0 flex flex-col gap-0.5 overflow-y-auto overscroll-contain pr-0.5 [scrollbar-width:thin]"
+          >
             {list.map((p, i) => (
               <li
                 key={p.id}
@@ -1660,12 +1878,15 @@ function RoleList({
                 }}
                 onDragOver={(e) => isTeamDrag(e) && e.preventDefault()}
                 onDrop={(e) => drop(e, i)}
-                className={`group relative flex items-center gap-2.5 px-2 rounded-xl cursor-grab active:cursor-grabbing transition-all ${
+                className={`group relative shrink-0 flex items-center gap-1.5 px-1.5 rounded-xl cursor-grab active:cursor-grabbing transition-all ${
                   i === 0
                     ? "bg-white/[0.14] border border-white/20 shadow-sm"
                     : "hover:bg-white/[0.08] border border-transparent hover:border-white/10"
                 }`}
-                style={{ height: LIST_ROW_H - 2 }}
+                style={{
+                  height: LIST_ROW_H - 2,
+                  ...(colors[p.id] ? { background: `${colors[p.id]}26`, boxShadow: `inset 4px 0 0 ${colors[p.id]}` } : {}),
+                }}
               >
                 {/* Rank number */}
                 <span
@@ -1686,21 +1907,19 @@ function RoleList({
                   )}
                 </div>
 
-                {/* Player Name (FULL, uncropped) & Club */}
+                {/* Player Name (condensed uppercase athletic style, crest only for club) */}
                 <button
                   onClick={() => onOpenPlayer(p)}
                   className="min-w-0 flex-1 text-left leading-tight py-0.5"
                   title={`${p.name}${p.teamName ? ` · ${p.teamName}` : ""}${notes[p.id] ? `\n\n${notes[p.id]}` : ""}`}
                 >
                   <div
-                    className={`text-[13px] leading-snug ${
-                      i === 0 ? "font-bold text-white tracking-tight" : "font-semibold text-slate-100"
+                    style={{ fontFamily: "var(--font-barlow-condensed), ui-sans-serif, system-ui" }}
+                    className={`text-[14px] uppercase tracking-wider leading-tight truncate ${
+                      i === 0 ? "font-black text-white" : "font-semibold text-slate-100"
                     }`}
                   >
                     {p.name}
-                  </div>
-                  <div className="flex items-center gap-1.5 text-[10.5px] text-slate-400 min-w-0 mt-0.5">
-                    <span className="truncate">{p.teamName}</span>
                   </div>
                 </button>
 
@@ -1749,6 +1968,7 @@ function RoleList({
                 key={`free-${k}`}
                 onDragOver={(e) => isTeamDrag(e) && e.preventDefault()}
                 onDrop={(e) => drop(e, list.length)}
+                className="shrink-0"
                 style={{ height: LIST_ROW_H - 2 }}
               >
                 <button
@@ -1813,6 +2033,7 @@ function AddPlayerDialog({
   const [q, setQ] = useState("");
   const [group, setGroup] = useState<string>(roleGroup);
   const [league, setLeague] = useState("");
+  const [teamName, setTeamName] = useState("");
   const [country, setCountry] = useState("");
   const [foot, setFoot] = useState("");
   const [ageMin, setAgeMin] = useState("");
@@ -1823,13 +2044,28 @@ function AddPlayerDialog({
 
   // Opciones de los desplegables (de toda la base de datos)
   const options = useMemo(() => {
-    const leagues = new Set<string>(), countries = new Set<string>();
+    // Ligas por nombre + país: si dos países comparten nombre, se ve el país al lado
+    const leagues = new Map<string, { id: string; name: string; country: string | null }>(), countries = new Set<string>();
     for (const p of allPlayers) {
-      if (p.leagueName) leagues.add(p.leagueName);
+      if (p.leagueName) {
+        const id = leagueId(p.leagueName, p.leagueCountry);
+        if (!leagues.has(id)) leagues.set(id, { id, name: p.leagueName, country: p.leagueCountry || null });
+      }
       if (p.country) countries.add(p.country);
     }
-    return { leagues: Array.from(leagues).sort(), countries: Array.from(countries).sort() };
+    const veces = new Map<string, number>();
+    leagues.forEach((l) => veces.set(l.name, (veces.get(l.name) || 0) + 1));
+    const list = Array.from(leagues.values())
+      .map((l) => ({ id: l.id, label: (veces.get(l.name) || 0) > 1 && l.country ? `${l.name} (${l.country})` : l.name }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+    return { leagues: list, countries: Array.from(countries).sort() };
   }, [allPlayers]);
+  // Equipos (de la liga elegida, si hay)
+  const teamOptions = useMemo(() => {
+    const teams = new Set<string>();
+    for (const p of allPlayers) if (p.teamName && (!league || leagueMatches(league, p.leagueName, p.leagueCountry))) teams.add(p.teamName);
+    return Array.from(teams).sort((a, b) => a.localeCompare(b));
+  }, [allPlayers, league]);
 
   const filtered = useMemo(() => {
     const nq = normalize(q.trim());
@@ -1837,7 +2073,8 @@ function AddPlayerDialog({
     const list = (source === "suggested" ? suggested : allPlayers).filter((p) => {
       if (nq && !normalize(`${p.name} ${p.matchName || ""} ${p.teamName || ""} ${p.leagueName || ""} ${p.country || ""}`).includes(nq)) return false;
       if (group && p.grupoDemarcacion !== group) return false;
-      if (league && p.leagueName !== league) return false;
+      if (league && !leagueMatches(league, p.leagueName, p.leagueCountry)) return false;
+      if (teamName && p.teamName !== teamName) return false;
       if (country && p.country !== country) return false;
       if (foot && p.preferredFoot !== foot) return false;
       if (aLo != null && (p._age == null || p._age < aLo)) return false;
@@ -1853,12 +2090,12 @@ function AddPlayerDialog({
     };
     return [...list].sort((a, b) => by[sort](b) - by[sort](a));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [source, q, group, league, country, foot, ageMin, ageMax, minRating, sort, suggested, allPlayers]);
+  }, [source, q, group, league, teamName, country, foot, ageMin, ageMax, minRating, sort, suggested, allPlayers]);
   const shown = filtered.slice(0, 150);
   const fmt = (v: number | null) => (v == null ? "—" : format ? format(v) : Number.isInteger(v) ? String(v) : v.toFixed(1));
-  const anyFilter = q || group !== roleGroup || league || country || foot || ageMin || ageMax || minRating;
+  const anyFilter = q || group !== roleGroup || league || teamName || country || foot || ageMin || ageMax || minRating;
   const reset = () => {
-    setQ(""); setGroup(roleGroup); setLeague(""); setCountry(""); setFoot(""); setAgeMin(""); setAgeMax(""); setMinRating("");
+    setQ(""); setGroup(roleGroup); setLeague(""); setTeamName(""); setCountry(""); setFoot(""); setAgeMin(""); setAgeMax(""); setMinRating("");
   };
 
   const field = "h-8 w-full rounded-lg bg-black/30 border border-white/10 focus:border-emerald-400/60 outline-none px-2 text-xs text-white";
@@ -1920,9 +2157,16 @@ function AddPlayerDialog({
           </label>
           <label>
             <span className={label}>League</span>
-            <select value={league} onChange={(e) => setLeague(e.target.value)} className={field}>
+            <select value={league} onChange={(e) => { setLeague(e.target.value); setTeamName(""); }} className={field}>
               <option value="">All leagues</option>
-              {options.leagues.map((l) => <option key={l} value={l}>{l}</option>)}
+              {options.leagues.map((l) => <option key={l.id} value={l.id}>{l.label}</option>)}
+            </select>
+          </label>
+          <label>
+            <span className={label}>Team</span>
+            <select value={teamName} onChange={(e) => setTeamName(e.target.value)} className={field}>
+              <option value="">All teams</option>
+              {teamOptions.map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
           </label>
           <label>
@@ -1951,7 +2195,7 @@ function AddPlayerDialog({
             <span className={label}>Min. rating</span>
             <input inputMode="numeric" value={minRating} onChange={(e) => setMinRating(e.target.value.replace(/\D/g, ""))} placeholder="0–100" className={field} />
           </label>
-          <label className="col-span-2">
+          <label>
             <span className={label}>Sort by</span>
             <select value={sort} onChange={(e) => setSort(e.target.value as typeof sort)} className={field}>
               <option value="metric">{sortLabel}</option>
@@ -2019,7 +2263,7 @@ function GamesPanel({
   saves: SavedTeam[];
   currentId: string | null;
   onLoad: (g: SavedTeam) => void;
-  onDelete: (id: string) => void;
+  onDelete: (id: string) => void | Promise<void>;
   onClose: () => void;
 }) {
   const count = (g: SavedTeam) => new Set(Object.values(g.team).flat().map((p) => p.id)).size;
@@ -2045,6 +2289,9 @@ function GamesPanel({
                     {fmtSaveDate(g.savedAt)} · {g.formation} · {count(g)} players
                     {Object.keys(g.notes || {}).length ? ` · ${Object.keys(g.notes).length} notes` : ""}
                   </div>
+                  <div className="text-[10px] text-slate-500 truncate">
+                    by {g.updatedByName || g.createdByName || "—"}
+                  </div>
                 </button>
                 <button
                   onClick={() => {
@@ -2066,9 +2313,10 @@ function GamesPanel({
 
 /** Guardar el equipo en curso: sobrescribir la partida cargada o crear una nueva */
 function SaveDialog({
-  current, defaultName, onSave, onClose,
+  current, defaultName, saving, onSave, onClose,
 }: {
   current: SavedTeam | null;
+  saving?: boolean;
   defaultName: string;
   onSave: (name: string, asNew: boolean) => void;
   onClose: () => void;
@@ -2087,11 +2335,11 @@ function SaveDialog({
           autoFocus
           value={name}
           onChange={(e) => setName(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && onSave(name, !current)}
+          onKeyDown={(e) => e.key === "Enter" && !saving && onSave(name, !current)}
           placeholder="Team name"
           className="w-full h-9 rounded-lg bg-black/30 border border-white/10 focus:border-emerald-400/60 outline-none px-3 text-sm text-white"
         />
-        <p className="text-[10px] text-slate-500">Saved with today’s date, the system, the players and your notes.</p>
+        <p className="text-[10px] text-slate-500">Saved with today’s date, your user, the system, the players, your notes and colours.</p>
         <div className="flex justify-end gap-2">
           <button onClick={onClose} className="h-8 px-3 rounded-lg text-xs text-slate-300 hover:text-white">Cancel</button>
           {current && (
@@ -2104,8 +2352,10 @@ function SaveDialog({
           )}
           <button
             onClick={() => onSave(name, !current)}
-            className="h-8 px-3 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-gray-950 text-xs font-bold"
+            disabled={saving}
+            className="h-8 px-3 rounded-lg bg-emerald-500 hover:bg-emerald-400 disabled:opacity-60 text-gray-950 text-xs font-bold flex items-center gap-1.5"
           >
+            {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
             {current ? `Update “${current.name}”` : "Save"}
           </button>
         </div>

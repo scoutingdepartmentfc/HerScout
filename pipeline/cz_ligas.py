@@ -162,6 +162,13 @@ def foto(store: Store, cz: CZClient, pid: str, url: Optional[str]) -> Optional[s
     return f"{subida}?v={int(time.time())}" if subida else None
 
 
+def foto_respaldo(store: Store, cz: CZClient, pid: str, cz_url: Optional[str]) -> Optional[str]:
+    """Foto de la ficha de ceroacero (sin fondo) para una jugadora que FotMob no tiene."""
+    m = re.search(r"/jugador/([^/?]+)/(\d+)", cz_url or "")
+    prof = cz.perfil(m.group(1), int(m.group(2))) if m else None
+    return foto(store, cz, pid, prof.get("foto")) if prof else None
+
+
 def descargar_liga(store: Store, liga: Dict[str, Any], limit: Optional[int], refresco_dias: int):
     """Clubes de la edición actual → plantilla de cada uno → ficha de cada jugadora → Supabase."""
     cz = CZClient(cache_days=1)  # las fichas se refrescan según refresco_dias, no por la caché
@@ -197,11 +204,9 @@ def descargar_liga(store: Store, liga: Dict[str, Any], limit: Optional[int], ref
                 continue
             p = {"id": previa["id"] if previa else f"sd-cz{j['cz_id']}", "name": previa["name"] if previa else j["name"]}
             f = filas(p, previa, j, prof, club, liga)
-            if not (previa or {}).get("photo_url"):
-                url = foto(store, cz, p["id"], prof.get("foto"))
-                if url:
-                    f["players"][0].update(photo_url=url, photo_updated_at=now_iso())
-                    tot["fotos"] += 1
+            # La foto no se sube aquí: el paso de fotos busca antes en FotMob y usa la de ceroacero de respaldo
+            # (sd_ligas.fotos → foto_respaldo)
+            tot["fotos"] += bool(prof.get("foto"))
             for k, v in f.items():
                 pendiente.setdefault(k, []).extend(v)
             hechas += 1

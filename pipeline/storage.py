@@ -30,6 +30,26 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+REINTENTOS_STORAGE = 4
+
+
+def _no_existe(e: Exception) -> bool:
+    return "not found" in str(e).lower() or "404" in str(e)
+
+
+def _reintentar(fn, que: str):
+    """Supabase Storage responde a veces 520/502/503 (página HTML de Cloudflare) o corta la conexión: se reintenta
+    con espera creciente en vez de tumbar toda la descarga. "No existe" (404) no se reintenta."""
+    for intento in range(REINTENTOS_STORAGE):
+        try:
+            return fn()
+        except Exception as e:
+            if _no_existe(e) or intento == REINTENTOS_STORAGE - 1:
+                raise
+            espera = 10 * (intento + 1)
+            logger.warning(f"Storage: fallo al {que} ({str(e)[:120].strip()}...), reintento en {espera}s")
+            time.sleep(espera)
+
 PUBLIC_BUCKETS = {BUCKET_PLAYER_PHOTOS, BUCKET_TEAM_BADGES}
 
 
@@ -169,18 +189,18 @@ class Store:
             # Fotos y escudos: el navegador/CDN los reutiliza 7 días en vez de 1 h (por defecto) → mucho menos egress.
             # No más: algunas rutas se sobrescriben sin ?v= en la URL y tardarían en verse.
             opts["cache-control"] = "604800"
-        self.client.storage.from_(bucket).upload(path, content, opts)
+        _reintentar(lambda: self.client.storage.from_(bucket).upload(path, content, opts), f"subir {bucket}/{path}")
         return self.client.storage.from_(bucket).get_public_url(path) if bucket in PUBLIC_BUCKETS else None
 
     def download(self, bucket: str, path: str) -> Optional[bytes]:
         if not self.client:
             return None
         try:
-            return self.client.storage.from_(bucket).download(path)
+            return _reintentar(lambda: self.client.storage.from_(bucket).download(path), f"leer {bucket}/{path}")
         except Exception as e:
             # Solo "no existe" equivale a vacío; un fallo transitorio no debe hacer creer que no hay
             # caché (se sobrescribiría con un subconjunto de partidos)
-            if "not found" in str(e).lower() or "404" in str(e):
+            if _no_existe(e):
                 return None
             raise
 

@@ -9,7 +9,8 @@ Jugadoras desde Soccerdonna, por ligas elegidas en /admin (tabla sd_leagues):
              (jugados y por jugar), eventing + matchstats, valoración por partido
   vincular   Une cada jugadora de Soccerdonna con la de Opta (nombre + fecha de nacimiento o club): una sola ficha
   escudos    Escudos PNG transparentes de FotMob para los clubes de la liga y el club actual de cada jugadora
-  fotos      Jugadoras de la liga sin foto (también las que solo están en Opta): FotMob y, si no, la oficial de Opta
+  fotos      Jugadoras de la liga sin foto (también las que solo están en Opta): FotMob y, si no, ceroacero (ligas de
+             ceroacero), Soccerdonna, 365scores o la oficial de Opta
   todo       Flujo estándar completo (todas las temporadas elegidas), ver flujo():
              Soccerdonna (plantillas de la liga) → Opta de esa liga (+ Champions/copas al final) → vincular
              (en la liga y entre ligas) → completar (las de Opta sin ficha: Soccerdonna fuera de su liga) →
@@ -658,9 +659,16 @@ def opta(store: Store, liga_code: Optional[str], max_matches: Optional[int], sol
         logger.info("Opta: ninguna liga elegida tiene un ID de Opta con temporadas en el catálogo")
         return
     pipe = IngestionPipeline(skip_photos=True, max_matches_per_comp=max_matches)
+    fallidas: List[str] = []
+    if modo == "partidos":  # diario: solo la temporada en curso de cada liga (las pasadas ya no cambian)
+        comps = [c for c in comps if c.get("active")]
     for comp in calendario:
         logger.info(f"▶ Opta (solo calendario) {comp['name']} {comp['season_name']} ({comp['season_id']})")
-        pipe.procesar_calendario(comp)
+        try:
+            pipe.procesar_calendario(comp, ventana_diaria() if modo == "partidos" else None)
+        except Exception as e:
+            fallidas.append(comp["name"])
+            logger.exception(f"  {comp['name']}: fallo en el calendario ({e})")
     if calendario and modo != "partidos":  # con "partidos" se vincula al final
         vincular_equipos(store, liga_code)
     for comp in comps:
@@ -675,25 +683,11 @@ def opta(store: Store, liga_code: Optional[str], max_matches: Optional[int], sol
             if not cache.empty:
                 pipe.recalcular_temporada(comp, cache, perfiles)
         elif modo == "partidos":
-            # Igual que IngestionPipeline.procesar_competicion: solo los partidos jugados aún sin procesar
-            sid = comp["season_id"]
-            perfiles = pipe.sync_squads(comp)
-            cache = pipe.store.load_match_cache(sid)
-            fixtures = pipe.adapter.get_fixtures(sid)
-            en_stats = lambda: {r["match_id"] for r in store.select_all("player_match_stats", "match_id", season_id=sid)}
-            hechos = (set(cache["match_id"].unique()) & en_stats()) if not cache.empty else set()
-            nuevos = sorted((m for m in fixtures
-                             if m.get("liveData", {}).get("matchDetails", {}).get("matchStatus") == "Played"
-                             and m["matchInfo"]["id"] not in hechos), key=lambda m: m["matchInfo"].get("date", ""))
-            if max_matches:
-                nuevos = nuevos[:max_matches]
-            logger.info(f"  Partidos: {len(hechos)} ya procesados, {len(nuevos)} nuevos a procesar")
-            if nuevos:
-                cache = pipe.procesar_partidos(comp, nuevos, perfiles, cache)
-                hechos = (set(cache["match_id"].unique()) & en_stats()) if not cache.empty else set()
-            pipe.guardar_calendario(comp, fixtures, hechos)
-            if nuevos and not cache.empty:
-                pipe.recalcular_temporada(comp, cache, perfiles)
+            try:  # una liga que falle (API, Storage) no deja sin partidos a las demás
+                partidos_del_dia(store, pipe, comp, max_matches)
+            except Exception as e:
+                fallidas.append(comp["name"])
+                logger.exception(f"  {comp['name']}: fallo en los partidos del día ({e})")
     if modo == "partidos":
         vincular_equipos(store, liga_code)  # equipos Opta nuevos del calendario (ascendidos, otra temporada)
     if pipe.totales["matches"]:
@@ -702,6 +696,51 @@ def opta(store: Store, liga_code: Optional[str], max_matches: Optional[int], sol
         except Exception as e:
             logger.warning(f"Similares: omitido ({e})")
     logger.info(f"Opta completado: {pipe.totales}")
+    if fallidas:  # el resto ya está guardado; la ejecución se marca como fallida para que se vea
+        raise SystemExit(f"Opta: fallaron {len(fallidas)} ligas: {', '.join(fallidas)}")
+
+
+# Descarga diaria: partidos jugados desde ayer y calendario hasta dentro de una semana. Lo que se escape (un día
+# sin ejecución, un partido que Opta publica tarde) lo recoge la descarga semanal completa.
+DIAS_ATRAS_PARTIDOS = 1
+DIAS_CALENDARIO = 7
+
+
+def _fecha_partido(f: Dict[str, Any]) -> str:
+    return str((f.get("matchInfo") or {}).get("date") or "")[:10]
+
+
+def ventana_diaria() -> tuple:
+    """(desde, hasta) en ISO: de ayer a dentro de DIAS_CALENDARIO días."""
+    hoy = datetime.now(timezone.utc).date()
+    return (hoy - timedelta(days=DIAS_ATRAS_PARTIDOS)).isoformat(), (hoy + timedelta(days=DIAS_CALENDARIO)).isoformat()
+
+
+def partidos_del_dia(store: Store, pipe, comp: Dict[str, Any], max_matches: Optional[int]):
+    """Una temporada en el modo diario: procesa los partidos jugados desde ayer aún sin procesar y guarda el
+    calendario (horarios, resultados) de ayer a dentro de DIAS_CALENDARIO días."""
+    sid = comp["season_id"]
+    hoy = datetime.now(timezone.utc).date()
+    desde, hasta = ventana_diaria()
+    fixtures = pipe.adapter.get_fixtures(sid) or []
+    ventana = [f for f in fixtures if desde <= _fecha_partido(f) <= hasta]
+    en_stats = lambda: {r["match_id"] for r in store.select_all("player_match_stats", "match_id", season_id=sid)}
+    procesados = en_stats()
+    nuevos = sorted((m for m in ventana
+                     if m.get("liveData", {}).get("matchDetails", {}).get("matchStatus") == "Played"
+                     and _fecha_partido(m) <= hoy.isoformat() and m["matchInfo"]["id"] not in procesados),
+                    key=_fecha_partido)
+    if max_matches:
+        nuevos = nuevos[:max_matches]
+    logger.info(f"  Partidos {desde} → {hasta}: {len(ventana)} en el calendario, {len(nuevos)} jugados por procesar")
+    if nuevos:  # plantillas y caché (Storage) solo si hay algo que procesar
+        perfiles = pipe.sync_squads(comp)
+        cache = pipe.store.load_match_cache(sid)
+        cache = pipe.procesar_partidos(comp, nuevos, perfiles, cache)
+        procesados = en_stats()
+        if not cache.empty:
+            pipe.recalcular_temporada(comp, cache, perfiles)
+    pipe.guardar_calendario(comp, ventana, procesados)
 
 
 def ligas_nuevas(store: Store, liga_code: Optional[str]) -> List[str]:
@@ -993,6 +1032,11 @@ def _unir(store: Store, s_: Dict[str, Any], mejor: Dict[str, Any], club_de_socce
                   "photo_url", "photo_updated_at", "fotmob_id", "fotmob_photo_url",
                   "fm_team_name", "fm_team_badge_url", "current_league_name", "current_league_logo_url")
     datos = {k: s_[k] for k in SD_CAMPOS if s_.get(k) is not None and (k in siempre_sd or not mejor.get(k))}
+    # La fila Opta ya tiene la foto de FotMob (su fotmob_id no se puede repetir, así que la "sd-" se quedó con una
+    # de respaldo: ceroacero, Soccerdonna...): se conserva la de FotMob
+    if mejor.get("fotmob_id") and mejor.get("photo_url") and not s_.get("fotmob_id"):
+        for k in ("photo_url", "photo_updated_at"):
+            datos.pop(k, None)
     if s_.get("primary_position") and mejor.get("primary_position") in (None, "", "Desconocida"):
         datos["primary_position"] = s_["primary_position"]
         if s_.get("grupo_demarcacion"):
@@ -1200,6 +1244,7 @@ def fotos(store: Store, liga_code: Optional[str], limit: Optional[int] = None, f
     fotmob = FotMobClient()
     fotmob.cargar_asignados(store)
     sd = SDClient()
+    cz = None  # cliente de ceroacero, solo si alguna jugadora lo necesita
     for liga in ligas:
         clubes = {t["id"]: t["name"] for t in equipos if t.get("sd_league_code") == liga["code"]
                   or (liga.get("opta_competition_id") and t.get("competition_id") == liga["opta_competition_id"])}
@@ -1211,17 +1256,22 @@ def fotos(store: Store, liga_code: Optional[str], limit: Optional[int] = None, f
         comp = store.select_all("competitions", "id,fotmob_id", id=liga["opta_competition_id"]) if liga.get("opta_competition_id") else []
         liga_fm = comp[0].get("fotmob_id") if comp else None
         sin_foto = [p for p in store.select_all("players", "id,name,first_name,last_name,match_name,birth_date,"
-                                                            "current_team_id,fm_team_name,sd_league_code,sd_id,sd_url,photo_url")
+                                                            "current_team_id,fm_team_name,sd_league_code,sd_id,sd_url,cz_url,photo_url")
                     if (p.get("sd_league_code") == liga["code"] or p.get("current_team_id") in clubes) and not p.get("photo_url")]
         if limit:
             sin_foto = sin_foto[:limit]
-        tot = {"fotmob": 0, "soccerdonna": 0, "365scores": 0, "opta": 0, "sin_foto": 0}
+        tot = {"fotmob": 0, "ceroacero": 0, "soccerdonna": 0, "365scores": 0, "opta": 0, "sin_foto": 0}
         for n, p in enumerate(sin_foto, 1):
             club = p.get("fm_team_name") or clubes.get(p.get("current_team_id")) or ""
             m = fotmob.buscar_jugador(p, club, liga_fm)
             img = fotmob.image(FOTMOB_PLAYER_IMG.format(id=m["id"])) if m else None
             url = store.upload(BUCKET_PLAYER_PHOTOS, f"{p['id']}.png", img, "image/png") if img else None
             fuente = "fotmob"
+            if not url and p.get("cz_url"):  # ligas de ceroacero (Argentina...): la foto de su ficha allí
+                from .ceroacero import CZClient
+                from .cz_ligas import foto_respaldo
+                cz = cz or CZClient(cache_days=7)
+                url, fuente = (foto_respaldo(store, cz, p["id"], p["cz_url"]) or "").split("?v=")[0] or None, "ceroacero"
             if not url and p.get("sd_url"):
                 m_sd = re.search(r"/en/([^/]+)/profil/spieler_(\d+)\.html", str(p["sd_url"]))
                 prof = sd.perfil(m_sd.group(1), int(m_sd.group(2)), 365) if m_sd else None

@@ -423,10 +423,13 @@ function PlayersDirectoryContent() {
   };
 
   const [searchTerm, setSearchTerm] = useState("");
-  const [positionFilter, setPositionFilter] = useState("all");
+  const [selectedPositions, setSelectedPositions] = useState<string[]>([]);
+  const [positionModalOpen, setPositionModalOpen] = useState(false);
   const [selectedTeams, setSelectedTeams] = useState<string[]>([]);
   const [teamsModalOpen, setTeamsModalOpen] = useState(false);
   const [teamModalSearch, setTeamModalSearch] = useState("");
+  const [leaguesModalOpen, setLeaguesModalOpen] = useState(false);
+  const [leagueModalSearch, setLeagueModalSearch] = useState("");
   const [selectedLeagues, setSelectedLeagues] = useState<string[]>([]);
   const [seasonFilter, setSeasonFilter] = useState("all");
   const [minRatingFilter, setMinRatingFilter] = useState<string>("all");
@@ -456,7 +459,7 @@ function PlayersDirectoryContent() {
     const sTerm = searchParams.get("search") ?? getSaved("search") ?? "";
     setSearchTerm(sTerm);
     const pos = searchParams.get("position") ?? getSaved("position") ?? "all";
-    setPositionFilter(pos);
+    setSelectedPositions(pos && pos !== "all" ? pos.split(",").map((x) => x.trim()).filter(Boolean) : []);
     const teams = searchParams.get("teams") || searchParams.get("team") || getSaved("teams");
     setSelectedTeams(teams && teams !== "all" ? teams.split(",").map((t) => t.trim()).filter(Boolean) : []);
     const leagues = searchParams.get("leagues") || searchParams.get("league") || getSaved("leagues");
@@ -546,6 +549,17 @@ function PlayersDirectoryContent() {
 
     (async () => {
       try {
+        // Si no hay caché previa, pedimos primero 60 perfiles para pintar la tabla al instante
+        if (!cached) {
+          const quickRes = await fetch(`/api/players?season=${encodeURIComponent(seasonFilter)}&limit=60`);
+          if (quickRes.ok) {
+            const quickJson = (await quickRes.json()) as PlayersResponse;
+            if (!cancelled) {
+              applyResponse(quickJson);
+              setIsLoading(false);
+            }
+          }
+        }
         const res = await fetch(`/api/players?season=${encodeURIComponent(seasonFilter)}`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const json = (await res.json()) as PlayersResponse;
@@ -570,7 +584,7 @@ function PlayersDirectoryContent() {
     const timer = setTimeout(() => {
       updateUrlParams({
         search: searchTerm,
-        position: positionFilter,
+        position: selectedPositions.length > 0 ? selectedPositions.join(",") : "all",
         teams: selectedTeams.join(","),
         leagues: selectedLeagues.join(","),
         season: seasonFilter,
@@ -583,7 +597,7 @@ function PlayersDirectoryContent() {
     }, 250);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchTerm, positionFilter, selectedTeams, selectedLeagues, seasonFilter, minRatingFilter, minAge, maxAge, sortBy, sortOrder]);
+  }, [searchTerm, selectedPositions, selectedTeams, selectedLeagues, seasonFilter, minRatingFilter, minAge, maxAge, sortBy, sortOrder]);
 
   const deferredSearch = useDeferredValue(searchTerm);
 
@@ -599,11 +613,13 @@ function PlayersDirectoryContent() {
       );
     }
 
-    if (positionFilter !== "all") {
-      const pos = positionFilter.toLowerCase();
-      list = list.filter(
-        (p) => (p.position || "").toLowerCase().includes(pos) || (p.grupoDemarcacion || "").toLowerCase().includes(pos)
-      );
+    if (selectedPositions.length > 0) {
+      const wanted = selectedPositions.map((x) => x.toLowerCase());
+      list = list.filter((p) => {
+        const pos = (p.position || "").toLowerCase();
+        const grp = (p.grupoDemarcacion || "").toLowerCase();
+        return wanted.some((w) => pos === w || pos.includes(w) || grp.includes(w));
+      });
     }
 
     if (selectedTeams.length > 0) {
@@ -688,7 +704,7 @@ function PlayersDirectoryContent() {
       });
     }
     return sorted;
-  }, [allPlayers, deferredSearch, positionFilter, selectedTeams, selectedLeagues, minAge, maxAge, minRatingFilter, minValue, maxValue, minMinutes, maxMinutes, minGoals, maxGoals, sortBy, sortOrder]);
+  }, [allPlayers, deferredSearch, selectedPositions, selectedTeams, selectedLeagues, minAge, maxAge, minRatingFilter, minValue, maxValue, minMinutes, maxMinutes, minGoals, maxGoals, sortBy, sortOrder]);
 
   // Dynamically adapt available teams based on selected leagues, and available leagues based on selected teams
   const filteredAvailableTeams = useMemo(() => {
@@ -799,7 +815,7 @@ function PlayersDirectoryContent() {
       });
     } catch { }
     setSearchTerm("");
-    setPositionFilter("all");
+    setSelectedPositions([]);
     setSelectedTeams([]);
     setSelectedLeagues([]);
     setSeasonFilter("all");
@@ -823,7 +839,7 @@ function PlayersDirectoryContent() {
   };
 
   const activeFiltersCount =
-    (positionFilter !== "all" ? 1 : 0) +
+    (selectedPositions.length > 0 ? 1 : 0) +
     (selectedTeams.length > 0 ? 1 : 0) +
     (selectedLeagues.length > 0 ? 1 : 0) +
     (seasonFilter !== "all" ? 1 : 0) +
@@ -926,58 +942,54 @@ function PlayersDirectoryContent() {
             />
           </div>
 
-          {/* Position Select */}
+          {/* Position Filter (Campograma modal) */}
           <div>
             <label className="text-[10px] font-semibold text-slate-300 uppercase tracking-wider block mb-1">
               Position
             </label>
-            <Select
-              value={positionFilter}
-              onChange={(e) => setPositionFilter(e.target.value)}
-              className="bg-navy-950 h-9 text-xs"
+            <button
+              type="button"
+              onClick={() => setPositionModalOpen(true)}
+              className="w-full h-9 px-3 rounded-lg bg-navy-950/70 border border-border/80 hover:border-primary/60 text-left text-xs text-slate-200 flex items-center justify-between gap-2 transition-colors"
             >
-            <option value="all">All Positions (GK, DEF, MID, ATT)</option>
-            <optgroup label="Goalkeepers">
-              <option value="Portero">GK · Goalkeepers</option>
-            </optgroup>
-            <optgroup label="Defenders">
-              <option value="Central">CB · Centre-Backs</option>
-              <option value="Lateral">FB · Full-Backs (RB / LB)</option>
-            </optgroup>
-            <optgroup label="Midfielders">
-              <option value="Mediocentro Defensivo">CDM · Defensive Midfielders</option>
-              <option value="Mediocentro">CM · Central Midfielders</option>
-              <option value="Mediapunta">CAM · Attacking Midfielders</option>
-            </optgroup>
-            <optgroup label="Attackers">
-              <option value="Extremo">W · Wingers (LW / RW)</option>
-              <option value="Delantero">ST · Centre-Forwards / Strikers</option>
-            </optgroup>
-            </Select>
+              <span className="truncate">
+                {selectedPositions.length === 0
+                  ? "All Positions (GK, DEF, MID, ATT)"
+                  : selectedPositions.length === 1
+                    ? selectedPositions[0]
+                    : `${selectedPositions.length} positions selected`}
+              </span>
+              <span className="text-[10px] text-emerald-400 font-semibold shrink-0">
+                Pitch
+              </span>
+            </button>
           </div>
 
           {/* Advanced Filters */}
           {(
             <div className="space-y-4">
 
-              {/* Competition / League (Multi-select with Flag/Logo) */}
+              {/* Competition / League (Modal with cards, same style as Clubs / Teams) */}
               <div>
-                <MultiSelectDropdown
-                  label="Leagues / Competitions"
-                  options={filteredAvailableLeagues}
-                  selectedIds={selectedLeagues}
-                  onChange={setSelectedLeagues}
-                  placeholder="All leagues"
-                  renderIcon={(opt) => (
-                    <div className="flex items-center gap-1 shrink-0">
-                      {opt.country ? (
-                        <Bandera country={opt.country} size="xs" />
-                      ) : (
-                        <span className="text-[10px]">🏆</span>
-                      )}
-                    </div>
-                  )}
-                />
+                <label className="text-[10px] font-semibold text-slate-300 uppercase tracking-wider block mb-1">
+                  Leagues / Competitions
+                </label>
+                <button
+                  type="button"
+                  onClick={() => { setLeagueModalSearch(""); setLeaguesModalOpen(true); }}
+                  className="w-full h-9 px-3 rounded-lg bg-navy-950/70 border border-border/80 hover:border-primary/60 text-left text-xs text-slate-200 flex items-center justify-between gap-2 transition-colors"
+                >
+                  <span className="truncate">
+                    {selectedLeagues.length === 0
+                      ? "All leagues"
+                      : selectedLeagues.length === 1
+                        ? (filteredAvailableLeagues.find((l) => l.id === selectedLeagues[0])?.name || selectedLeagues[0])
+                        : `${selectedLeagues.length} leagues selected`}
+                  </span>
+                  <span className="text-[10px] text-slate-400 shrink-0">
+                    {filteredAvailableLeagues.length}
+                  </span>
+                </button>
               </div>
 
               {/* Club / Team (Modal with large badges) */}
@@ -1647,13 +1659,262 @@ function PlayersDirectoryContent() {
       </Card>
       </div>
       </div>
+      {positionModalOpen && (
+        <div
+          className="fixed inset-0 z-[100] bg-black/75 backdrop-blur-sm flex items-start justify-center pt-24 pb-4 px-4"
+          onClick={() => setPositionModalOpen(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl border border-border/80 bg-[#0b1222] shadow-2xl flex flex-col overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-4 border-b border-border/60 flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-base font-bold text-white">Select Positions</h3>
+                <p className="text-xs text-slate-400">
+                  {selectedPositions.length === 0
+                    ? "All positions active · Click nodes on pitch"
+                    : `${selectedPositions.length} selected`}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                {selectedPositions.length > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSelectedPositions([])}
+                    className="text-xs text-slate-300 hover:text-white"
+                  >
+                    Clear
+                  </Button>
+                )}
+                <Button size="sm" onClick={() => setPositionModalOpen(false)}>
+                  Done
+                </Button>
+              </div>
+            </div>
+
+            <div className="p-4 space-y-3">
+              {/* Quick tactical family presets */}
+              <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                {[
+                  { label: "DEF", ids: ["Lateral Derecho", "Central Derecho", "Central Izquierdo", "Lateral Izquierdo"] },
+                  { label: "MID", ids: ["Mediocentro Defensivo", "Mediocentro", "Mediapunta"] },
+                  { label: "ATT", ids: ["Extremo Derecho", "Extremo Izquierdo", "Delantero"] },
+                ].map((grp) => {
+                  const allOn = grp.ids.every((id) => selectedPositions.includes(id));
+                  return (
+                    <button
+                      key={grp.label}
+                      type="button"
+                      onClick={() =>
+                        setSelectedPositions((prev) =>
+                          allOn
+                            ? prev.filter((id) => !grp.ids.includes(id))
+                            : Array.from(new Set([...prev, ...grp.ids]))
+                        )
+                      }
+                      className={`px-2.5 py-1 rounded-md text-[11px] font-bold border transition-colors ${
+                        allOn
+                          ? "bg-emerald-500/20 border-emerald-400 text-emerald-300"
+                          : "bg-navy-950/70 border-white/10 text-slate-300 hover:border-white/30"
+                      }`}
+                    >
+                      {grp.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Interactive vertical pitch */}
+              <div className="relative w-full aspect-[3/4] max-h-[430px] mx-auto rounded-xl border border-emerald-500/30 bg-gradient-to-b from-emerald-950/60 via-emerald-900/35 to-emerald-950/60 overflow-hidden select-none">
+                <svg viewBox="0 0 300 400" className="absolute inset-0 w-full h-full pointer-events-none opacity-35">
+                  <rect x="12" y="12" width="276" height="376" fill="none" stroke="#6ee7b7" strokeWidth="1.5" />
+                  <line x1="12" y1="200" x2="288" y2="200" stroke="#6ee7b7" strokeWidth="1.5" />
+                  <circle cx="150" cy="200" r="38" fill="none" stroke="#6ee7b7" strokeWidth="1.5" />
+                  <circle cx="150" cy="200" r="2.5" fill="#6ee7b7" />
+                  <rect x="70" y="12" width="160" height="58" fill="none" stroke="#6ee7b7" strokeWidth="1.5" />
+                  <rect x="108" y="12" width="84" height="22" fill="none" stroke="#6ee7b7" strokeWidth="1.5" />
+                  <rect x="70" y="330" width="160" height="58" fill="none" stroke="#6ee7b7" strokeWidth="1.5" />
+                  <rect x="108" y="366" width="84" height="22" fill="none" stroke="#6ee7b7" strokeWidth="1.5" />
+                </svg>
+
+                {[
+                  { id: "Delantero", short: "ST", x: 50, y: 14 },
+                  { id: "Extremo Izquierdo", short: "LW", x: 20, y: 24 },
+                  { id: "Extremo Derecho", short: "RW", x: 80, y: 24 },
+                  { id: "Mediapunta", short: "CAM", x: 50, y: 36 },
+                  { id: "Mediocentro", short: "CM", x: 50, y: 52 },
+                  { id: "Mediocentro Defensivo", short: "CDM", x: 50, y: 66 },
+                  { id: "Lateral Izquierdo", short: "LB", x: 16, y: 76 },
+                  { id: "Central Izquierdo", short: "LCB", x: 38, y: 79 },
+                  { id: "Central Derecho", short: "RCB", x: 62, y: 79 },
+                  { id: "Lateral Derecho", short: "RB", x: 84, y: 76 },
+                  { id: "Portero", short: "GK", x: 50, y: 92 },
+                ].map((pos) => {
+                  const active = selectedPositions.includes(pos.id);
+                  return (
+                    <button
+                      key={pos.id}
+                      type="button"
+                      title={pos.id}
+                      onClick={() =>
+                        setSelectedPositions((prev) =>
+                          prev.includes(pos.id) ? prev.filter((x) => x !== pos.id) : [...prev, pos.id]
+                        )
+                      }
+                      style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
+                      className={`-translate-x-1/2 -translate-y-1/2 absolute w-11 h-11 rounded-full border-2 font-bold text-xs flex items-center justify-center transition-all ${
+                        active
+                          ? "bg-emerald-500 text-navy-950 border-white shadow-[0_0_16px_rgba(16,185,129,0.75)] scale-110"
+                          : "bg-navy-950/85 text-slate-200 border-emerald-400/40 hover:border-emerald-300 hover:scale-105"
+                      }`}
+                    >
+                      {pos.short}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {leaguesModalOpen && (
+        <div
+          className="fixed inset-0 z-[100] bg-black/75 backdrop-blur-sm flex items-start justify-center pt-24 pb-4 px-4"
+          onClick={() => setLeaguesModalOpen(false)}
+        >
+          <div
+            className="w-full max-w-5xl max-h-[calc(100vh-7rem)] rounded-2xl border border-border/80 bg-[#0b1222] shadow-2xl flex flex-col overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-4 border-b border-border/60 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="text-base font-bold text-white">Leagues / Competitions</h3>
+                <p className="text-xs text-slate-400">
+                  {selectedLeagues.length > 0
+                    ? `${selectedLeagues.length} selected · ${filteredAvailableLeagues.length} available`
+                    : `${filteredAvailableLeagues.length} leagues available`}
+                </p>
+              </div>
+              <div className="flex items-center gap-2 flex-1 max-w-sm">
+                <div className="relative flex-1">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={leagueModalSearch}
+                    onChange={(e) => setLeagueModalSearch(e.target.value)}
+                    placeholder="Search league or country..."
+                    autoFocus
+                    className="w-full h-9 pl-9 pr-3 rounded-lg bg-navy-950 border border-border/80 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+                {selectedLeagues.length > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSelectedLeagues([])}
+                    className="text-xs text-slate-300 hover:text-white"
+                  >
+                    Clear
+                  </Button>
+                )}
+                <Button size="sm" onClick={() => setLeaguesModalOpen(false)}>
+                  Done
+                </Button>
+              </div>
+            </div>
+
+            <div className="p-4 overflow-y-auto grid grid-cols-1 md:grid-cols-2 gap-5 items-start">
+              {(() => {
+                const q = leagueModalSearch.trim().toLowerCase();
+                const filtered = filteredAvailableLeagues.filter(
+                  (l) => !q || l.name.toLowerCase().includes(q) || (l.country || "").toLowerCase().includes(q)
+                );
+                const byCountry = new Map<string, typeof filtered>();
+                for (const l of filtered) {
+                  const c = l.country || "Other";
+                  if (!byCountry.has(c)) byCountry.set(c, []);
+                  byCountry.get(c)!.push(l);
+                }
+                const countries = Array.from(byCountry.keys()).sort((a, b) => a.localeCompare(b));
+                return countries.map((country) => {
+                  const items = byCountry.get(country)!.slice().sort((a, b) => a.name.localeCompare(b.name));
+                  const allSelected = items.every((i) => selectedLeagues.includes(i.id));
+                  return (
+                    <div key={country} className="space-y-2.5">
+                      <div className="flex items-center justify-between border-b border-white/10 pb-1.5">
+                        <div className="flex items-center gap-2">
+                          {country !== "Other" && <Bandera country={country} size="sm" />}
+                          <span className="text-xs font-bold uppercase tracking-wider text-slate-200">{country}</span>
+                          <span className="text-[11px] text-slate-400">({items.length})</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const ids = items.map((i) => i.id);
+                            setSelectedLeagues((prev) =>
+                              allSelected
+                                ? prev.filter((id) => !ids.includes(id))
+                                : Array.from(new Set([...prev, ...ids]))
+                            );
+                          }}
+                          className="text-[11px] font-semibold text-emerald-400 hover:text-emerald-300"
+                        >
+                          {allSelected ? "Deselect all" : "All"}
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        {items.map((opt) => {
+                          const selected = selectedLeagues.includes(opt.id);
+                          return (
+                            <button
+                              key={opt.id}
+                              type="button"
+                              onClick={() =>
+                                setSelectedLeagues((prev) =>
+                                  prev.includes(opt.id) ? prev.filter((id) => id !== opt.id) : [...prev, opt.id]
+                                )
+                              }
+                              className={`group flex flex-col items-center text-center gap-2 p-3.5 rounded-xl border transition-all ${
+                                selected
+                                  ? "bg-emerald-500/15 border-emerald-400 shadow-[0_0_16px_rgba(16,185,129,0.2)]"
+                                  : "bg-navy-950/60 border-border/60 hover:border-slate-500 hover:bg-navy-900/70"
+                              }`}
+                            >
+                              <div className="w-12 h-12 rounded-xl bg-white/5 flex items-center justify-center p-1.5 group-hover:scale-105 transition-transform">
+                                {opt.logoUrl ? (
+                                  <img src={opt.logoUrl} alt={opt.name} className="w-10 h-10 object-contain" loading="lazy" />
+                                ) : opt.country ? (
+                                  <Bandera country={opt.country} size="md" />
+                                ) : (
+                                  <span className="text-xl">🏆</span>
+                                )}
+                              </div>
+                              <span className={`text-sm font-semibold leading-snug line-clamp-2 ${selected ? "text-emerald-300" : "text-white"}`}>
+                                {opt.name}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
+
       {teamsModalOpen && (
         <div
-          className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4"
+          className="fixed inset-0 z-[100] bg-black/75 backdrop-blur-sm flex items-start justify-center pt-24 pb-4 px-4"
           onClick={() => setTeamsModalOpen(false)}
         >
           <div
-            className="w-full max-w-4xl max-h-[85vh] rounded-2xl border border-border/80 bg-[#0b1222] shadow-2xl flex flex-col overflow-hidden"
+            className="w-full max-w-4xl max-h-[calc(100vh-7rem)] rounded-2xl border border-border/80 bg-[#0b1222] shadow-2xl flex flex-col overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="p-4 border-b border-border/60 flex flex-wrap items-center justify-between gap-3">

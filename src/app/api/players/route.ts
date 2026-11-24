@@ -14,6 +14,9 @@ const isInternational = (id?: string | null, country?: string | null) =>
   Boolean((id && INTERNATIONAL_IDS.has(id)) || (country && INTERNATIONAL_REGIONS.has(country)));
 // Lowercase, typographic apostrophes → straight, collapsed spaces ("Women’s" == "Women's")
 
+// Jugadoras con ficha de club: de Soccerdonna (sd_id) o, en las ligas que Soccerdonna no tiene (Argentina,
+// Brasil...), de ceroacero (cz_id)
+const CON_FICHA = "sd_id.not.is.null,cz_id.not.is.null";
 const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes cache
 const TREND_FROM_DATE = "2026-08-01";
 const PAGE = 1000;
@@ -185,7 +188,7 @@ async function loadBaseData(db: any): Promise<BaseData> {
           teams:current_team_id ( id, name, badge_url, league_name, league_logo_url ),
           player_ea_ratings ( pace, physicality )
         )
-      `).not("players.sd_id", "is", null);
+      `).or(CON_FICHA, { referencedTable: "players" });
 
     const statsCountPromise = db
       .from("player_season_stats")
@@ -199,12 +202,12 @@ async function loadBaseData(db: any): Promise<BaseData> {
       player_ea_ratings ( pace, physicality )`;
     const fetchAllPlayers = async () => {
       try {
-        const { count, error: cErr } = await db.from("players").select("id", { count: "exact", head: true }).not("sd_id", "is", null);
+        const { count, error: cErr } = await db.from("players").select("id", { count: "exact", head: true }).or(CON_FICHA);
         if (cErr) throw cErr;
         const offs: number[] = [];
         for (let from = 0; from < (count || 0); from += PAGE) offs.push(from);
         const res = await Promise.all(
-          offs.map((from) => db.from("players").select(PLAYER_FIELDS).not("sd_id", "is", null).order("id").range(from, from + PAGE - 1))
+          offs.map((from) => db.from("players").select(PLAYER_FIELDS).or(CON_FICHA).order("id").range(from, from + PAGE - 1))
         );
         const out: any[] = [];
         for (const r of res as any[]) {
@@ -214,7 +217,7 @@ async function loadBaseData(db: any): Promise<BaseData> {
         return out;
       } catch (e) {
         console.warn("[FETCH_ALL_PLAYERS] Fallback limited:", e);
-        const { data } = await db.from("players").select(PLAYER_FIELDS).not("sd_id", "is", null).limit(5000);
+        const { data } = await db.from("players").select(PLAYER_FIELDS).or(CON_FICHA).limit(5000);
         return data || [];
       }
     };
@@ -312,6 +315,8 @@ export async function GET(req: NextRequest) {
   const ratings = url.searchParams.get("ratings") || "all";
   const sortBy = url.searchParams.get("sortBy") || "nota_global";
   const order = url.searchParams.get("order") === "asc" ? "asc" : "desc";
+  const limitParam = url.searchParams.get("limit");
+  const limit = limitParam ? Math.max(1, Number(limitParam)) : null;
 
   if (!supabaseAdmin) {
     return NextResponse.json({ players: [], filters: { teams: [], leagues: [], seasons: [] } });
@@ -721,7 +726,8 @@ export async function GET(req: NextRequest) {
     });
 
     return NextResponse.json({
-      players: list,
+      players: limit ? list.slice(0, limit) : list,
+      total: list.length,
       evaluatedPeriod,
       filters: processed.filters,
     }, {

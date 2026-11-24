@@ -522,15 +522,20 @@ class IngestionPipeline:
                                        'end_date': (tc.get('endDate') or '').replace('Z', '') or None,
                                        'is_active': activa, 'updated_at': ts}])
 
-    def procesar_calendario(self, comp: Dict[str, Any]):
+    def procesar_calendario(self, comp: Dict[str, Any], ventana: Optional[tuple] = None):
         """Liga sin datos por jugadora en Opta (solo resultados o alineaciones): calendario con horarios y resultados,
-        sin estadísticas ni notas. Los equipos sin competición quedan en esta (para vincularlos con Soccerdonna)."""
+        sin estadísticas ni notas. Los equipos sin competición quedan en esta (para vincularlos con Soccerdonna).
+        `ventana` (desde, hasta) en ISO: solo se guardan los partidos de esas fechas (descarga diaria)."""
         fixtures = self.adapter.get_fixtures(comp['season_id'])
         if not fixtures:
             logger.warning(f"  Calendario: Opta no devuelve partidos de {comp['name']} {comp.get('season_name')}")
             return
         self.guardar_competicion(comp, fixtures)
-        self.guardar_calendario(comp, fixtures, set())
+        if ventana:
+            fecha = lambda f: str((f.get('matchInfo') or {}).get('date') or '')[:10]
+            self.guardar_calendario(comp, [f for f in fixtures if ventana[0] <= fecha(f) <= ventana[1]], set())
+        else:
+            self.guardar_calendario(comp, fixtures, set())
         ids = {c.get('id') for f in fixtures for c in ((f.get('matchInfo') or {}).get('contestant') or []) if c.get('id')}
         sueltos = [t['id'] for t in self.store.select_all('teams', 'id,competition_id')
                    if t['id'] in ids and not t.get('competition_id')]

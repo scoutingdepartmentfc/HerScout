@@ -1267,11 +1267,16 @@ def fotos(store: Store, liga_code: Optional[str], limit: Optional[int] = None, f
             img = fotmob.image(FOTMOB_PLAYER_IMG.format(id=m["id"])) if m else None
             url = store.upload(BUCKET_PLAYER_PHOTOS, f"{p['id']}.png", img, "image/png") if img else None
             fuente = "fotmob"
-            if not url and p.get("cz_url"):  # ligas de ceroacero (Argentina...): la foto de su ficha allí
-                from .ceroacero import CZClient
+            if not url and p.get("cz_url") and cz is not False:  # ligas de ceroacero (Argentina...): la foto de su ficha allí
+                from .ceroacero import BloqueadoError, CZClient
                 from .cz_ligas import foto_respaldo
                 cz = cz or CZClient(cache_days=7)
-                url, fuente = (foto_respaldo(store, cz, p["id"], p["cz_url"]) or "").split("?v=")[0] or None, "ceroacero"
+                try:
+                    url, fuente = (foto_respaldo(store, cz, p["id"], p["cz_url"]) or "").split("?v=")[0] or None, "ceroacero"
+                except BloqueadoError as e:
+                    # Cloudflare: sin ceroacero el resto de esta ejecución, se sigue con las demás fuentes
+                    logger.warning(f"  {e}; se omite ceroacero para las fotos en esta ejecución")
+                    cz, url = False, None
             if not url and p.get("sd_url"):
                 m_sd = re.search(r"/en/([^/]+)/profil/spieler_(\d+)\.html", str(p["sd_url"]))
                 prof = sd.perfil(m_sd.group(1), int(m_sd.group(2)), 365) if m_sd else None

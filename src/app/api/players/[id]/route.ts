@@ -339,6 +339,8 @@ export async function GET(
       playedPositions: sortedPlayedPositions,
       positionsMap: posCounts,
       grupoDemarcacion: p.grupo_demarcacion,
+      perfil: seasonRow?.radar_data?.perfil || null,
+      perfiles: seasonRow?.radar_data?.perfiles || null,
       shirtNumber: p.shirt_number,
       height: p.height,
       weight: p.weight,

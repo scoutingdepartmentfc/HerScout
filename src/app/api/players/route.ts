@@ -165,6 +165,7 @@ async function loadBaseData(db: any): Promise<BaseData> {
         nota_balon_parado,
         nota_disponibilidad,
         score_general,
+        perfil:radar_data->perfil,
         players:player_id (
           id,
           name,
@@ -460,6 +461,7 @@ export async function GET(req: NextRequest) {
             photoUrl: p.fotmob_photo_url || p.photo_url,
             position: latestRow.demarcacion || p.primary_position || "Centrocampista",
             grupoDemarcacion: latestRow.grupo_demarcacion || p.grupo_demarcacion || "General",
+            perfil: latestRow.perfil || null,
             shirtNumber: p.shirt_number,
             height: p.height,
             weight: p.weight,

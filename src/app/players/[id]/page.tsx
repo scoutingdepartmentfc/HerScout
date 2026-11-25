@@ -270,8 +270,8 @@ export default function PlayerProfilePage() {
       <section className="space-y-6">
         {/* Top Header Block: Card + Identity + Personal Data */}
         <div className="grid grid-cols-1 lg:grid-cols-[auto_1fr] gap-8 p-6 rounded-2xl border border-border/60 bg-[#070e1e]/90 shadow-2xl items-start">
-          {/* Pure White Ultimate Team Card */}
-          <div className="mx-auto lg:mx-0 shrink-0">
+          {/* Pure White Ultimate Team Card + Tactical Profiles */}
+          <div className="mx-auto lg:mx-0 shrink-0 flex flex-col items-center gap-3.5 w-full max-w-[250px]">
             <CromoJugador
               j={{
                 player_id: p.id,
@@ -290,6 +290,78 @@ export default function PlayerProfilePage() {
               }}
               size="md"
             />
+
+            {p.perfiles && Object.keys(p.perfiles).length > 0 && (
+              <div className="w-full rounded-2xl border border-white/10 bg-gradient-to-b from-white/[0.06] to-white/[0.02] backdrop-blur-md p-3.5 shadow-xl space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-slate-300">
+                      Tactical Profiles
+                    </span>
+                  </div>
+                  {primaryEnglishPos && (
+                    <span className="text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-white/[0.07] text-slate-400 border border-white/5 truncate max-w-[95px]">
+                      {primaryEnglishPos}
+                    </span>
+                  )}
+                </div>
+
+                <div className="space-y-2.5">
+                  {Object.entries<number>(p.perfiles)
+                    .sort((a, b) => Number(b[1]) - Number(a[1]))
+                    .map(([profName, score], idx) => {
+                      const val = Number(score);
+                      const isTop = idx === 0;
+                      return (
+                        <div
+                          key={profName}
+                          className={`rounded-xl px-2.5 py-2 border transition-colors ${
+                            isTop
+                              ? "bg-emerald-500/[0.08] border-emerald-400/30 shadow-[0_0_16px_rgba(16,185,129,0.08)]"
+                              : "bg-white/[0.02] border-white/[0.05]"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2 mb-1.5">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              {isTop && (
+                                <span className="text-[9px] font-black uppercase px-1.5 py-0.2 rounded bg-emerald-400/20 text-emerald-300 border border-emerald-400/30 shrink-0">
+                                  TOP
+                                </span>
+                              )}
+                              <span
+                                className={`text-xs truncate ${
+                                  isTop ? "font-bold text-emerald-200" : "font-medium text-slate-300"
+                                }`}
+                                title={profName}
+                              >
+                                {profName}
+                              </span>
+                            </div>
+                            <span
+                              className={`font-mono text-xs font-black shrink-0 ${
+                                isTop ? "text-emerald-300" : "text-white"
+                              }`}
+                            >
+                              {val.toFixed(1)}
+                            </span>
+                          </div>
+                          <div className="h-1.5 w-full rounded-full bg-white/[0.07] overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all duration-500 ${
+                                isTop
+                                  ? "bg-gradient-to-r from-emerald-400 to-teal-300 shadow-[0_0_8px_rgba(52,211,153,0.6)]"
+                                  : "bg-gradient-to-r from-sky-500/80 to-indigo-400/80"
+                              }`}
+                              style={{ width: `${Math.max(2, Math.min(100, val))}%` }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Right Column: Name + Club line + Stats Summary + Datos Personales */}
@@ -409,6 +481,11 @@ export default function PlayerProfilePage() {
                   <div className="p-2 rounded-lg bg-navy-950/50 border border-white/5">
                     <div className="text-[10px] text-muted-foreground uppercase font-semibold">Position</div>
                     <div className="font-semibold text-white text-xs mt-0.5 truncate">{primaryEnglishPos}</div>
+                    {p.perfil && (
+                      <div className="mt-1 inline-block rounded bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.5 text-[10px] font-bold text-emerald-300">
+                        {p.perfil}
+                      </div>
+                    )}
                   </div>
                   <div className="p-2 rounded-lg bg-navy-950/50 border border-white/5">
                     <div className="text-[10px] text-muted-foreground uppercase font-semibold">Nationality</div>

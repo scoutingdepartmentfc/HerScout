@@ -1,0 +1,963 @@
+{
+  "GK": {
+    "Classic GK": {
+      "desc": "Portera de área: prioriza parar y evitar goles; el juego con los pies es secundario.",
+      "metrics": [
+        {
+          "metric": "savePct",
+          "invert": false,
+          "weight": 0.3
+        },
+        {
+          "metric": "goalsConceded",
+          "invert": true,
+          "weight": 0.1
+        },
+        {
+          "metric": "goalsPrevented",
+          "invert": false,
+          "weight": 0.3
+        },
+        {
+          "metric": "accuratePass",
+          "invert": false,
+          "weight": 0.04
+        },
+        {
+          "metric": "accurateLaunches",
+          "invert": false,
+          "weight": 0.04
+        },
+        {
+          "metric": "touches",
+          "invert": false,
+          "weight": 0.02
+        },
+        {
+          "metric": "accurateKeeperSweeper",
+          "invert": false,
+          "weight": 0.08
+        },
+        {
+          "metric": "savedIbox",
+          "invert": false,
+          "weight": 0.12
+        }
+      ]
+    },
+    "Offensive GK": {
+      "desc": "Portera que inicia el juego: buena distribución y participación, además de parar.",
+      "metrics": [
+        {
+          "metric": "savePct",
+          "invert": false,
+          "weight": 0.2
+        },
+        {
+          "metric": "goalsConceded",
+          "invert": true,
+          "weight": 0.06
+        },
+        {
+          "metric": "goalsPrevented",
+          "invert": false,
+          "weight": 0.2
+        },
+        {
+          "metric": "accuratePass",
+          "invert": false,
+          "weight": 0.14
+        },
+        {
+          "metric": "accurateLaunches",
+          "invert": false,
+          "weight": 0.1
+        },
+        {
+          "metric": "touches",
+          "invert": false,
+          "weight": 0.1
+        },
+        {
+          "metric": "accurateKeeperSweeper",
+          "invert": false,
+          "weight": 0.14
+        },
+        {
+          "metric": "savedIbox",
+          "invert": false,
+          "weight": 0.06
+        }
+      ]
+    }
+  },
+  "RB / LB": {
+    "Attacking Full-Back": {
+      "desc": "Lateral que llega arriba: centros, presencia en campo rival y producción ofensiva.",
+      "metrics": [
+        {
+          "metric": "expectedAssists",
+          "invert": false,
+          "weight": 0.12
+        },
+        {
+          "metric": "accurateCrossPct",
+          "invert": false,
+          "weight": 0.2
+        },
+        {
+          "metric": "crossesPer90",
+          "invert": false,
+          "weight": 0.2
+        },
+        {
+          "metric": "touchesFinalThird",
+          "invert": false,
+          "weight": 0.18
+        },
+        {
+          "metric": "touchesMidThird",
+          "invert": false,
+          "weight": 0.1
+        },
+        {
+          "metric": "duelWon",
+          "invert": false,
+          "weight": 0.05
+        },
+        {
+          "metric": "ballRecovery",
+          "invert": false,
+          "weight": 0.05
+        },
+        {
+          "metric": "successfulDefActions",
+          "invert": false,
+          "weight": 0.1
+        }
+      ]
+    },
+    "Defensive Full-Back": {
+      "desc": "Lateral que prioriza defender: duelos y recuperaciones.",
+      "metrics": [
+        {
+          "metric": "expectedAssists",
+          "invert": false,
+          "weight": 0.03
+        },
+        {
+          "metric": "accurateCrossPct",
+          "invert": false,
+          "weight": 0.08
+        },
+        {
+          "metric": "crossesPer90",
+          "invert": false,
+          "weight": 0.05
+        },
+        {
+          "metric": "touchesFinalThird",
+          "invert": false,
+          "weight": 0.04
+        },
+        {
+          "metric": "touchesMidThird",
+          "invert": false,
+          "weight": 0.08
+        },
+        {
+          "metric": "duelWon",
+          "invert": false,
+          "weight": 0.22
+        },
+        {
+          "metric": "ballRecovery",
+          "invert": false,
+          "weight": 0.18
+        },
+        {
+          "metric": "successfulDefActions",
+          "invert": false,
+          "weight": 0.32
+        }
+      ]
+    },
+    "Balance Full-Back": {
+      "desc": "Equilibrado: aporta en las dos fases.",
+      "metrics": [
+        {
+          "metric": "expectedAssists",
+          "invert": false,
+          "weight": 0.06
+        },
+        {
+          "metric": "accurateCrossPct",
+          "invert": false,
+          "weight": 0.12
+        },
+        {
+          "metric": "crossesPer90",
+          "invert": false,
+          "weight": 0.1
+        },
+        {
+          "metric": "touchesFinalThird",
+          "invert": false,
+          "weight": 0.12
+        },
+        {
+          "metric": "touchesMidThird",
+          "invert": false,
+          "weight": 0.1
+        },
+        {
+          "metric": "duelWon",
+          "invert": false,
+          "weight": 0.14
+        },
+        {
+          "metric": "ballRecovery",
+          "invert": false,
+          "weight": 0.12
+        },
+        {
+          "metric": "successfulDefActions",
+          "invert": false,
+          "weight": 0.24
+        }
+      ]
+    }
+  },
+  "CB": {
+    "Offensive CB": {
+      "desc": "Central que construye: pase, progresión y balón largo.",
+      "metrics": [
+        {
+          "metric": "duelWon",
+          "invert": false,
+          "weight": 0.06
+        },
+        {
+          "metric": "aerialWon",
+          "invert": false,
+          "weight": 0.05
+        },
+        {
+          "metric": "successfulDefActions",
+          "invert": false,
+          "weight": 0.15
+        },
+        {
+          "metric": "effectiveClearance",
+          "invert": false,
+          "weight": 0.03
+        },
+        {
+          "metric": "accurateMidThirdPassPct",
+          "invert": false,
+          "weight": 0.2
+        },
+        {
+          "metric": "accurateFwdZonePassPct",
+          "invert": false,
+          "weight": 0.22
+        },
+        {
+          "metric": "accurateLongBalls",
+          "invert": false,
+          "weight": 0.14
+        },
+        {
+          "metric": "touches",
+          "invert": false,
+          "weight": 0.15
+        }
+      ]
+    },
+    "Classic CB": {
+      "desc": "Central de duelo: duelos, juego aéreo, cortes y despejes.",
+      "metrics": [
+        {
+          "metric": "duelWon",
+          "invert": false,
+          "weight": 0.16
+        },
+        {
+          "metric": "aerialWon",
+          "invert": false,
+          "weight": 0.16
+        },
+        {
+          "metric": "successfulDefActions",
+          "invert": false,
+          "weight": 0.22
+        },
+        {
+          "metric": "effectiveClearance",
+          "invert": false,
+          "weight": 0.14
+        },
+        {
+          "metric": "accurateMidThirdPassPct",
+          "invert": false,
+          "weight": 0.1
+        },
+        {
+          "metric": "accurateFwdZonePassPct",
+          "invert": false,
+          "weight": 0.12
+        },
+        {
+          "metric": "accurateLongBalls",
+          "invert": false,
+          "weight": 0.04
+        },
+        {
+          "metric": "touches",
+          "invert": false,
+          "weight": 0.06
+        }
+      ]
+    }
+  },
+  "DMF": {
+    "Creative": {
+      "desc": "Pivote que organiza: volumen de pase y conexión con jugadoras avanzadas.",
+      "metrics": [
+        {
+          "metric": "defDuelsWon",
+          "invert": false,
+          "weight": 0.06
+        },
+        {
+          "metric": "aerialWon",
+          "invert": false,
+          "weight": 0.03
+        },
+        {
+          "metric": "successfulDefActions",
+          "invert": false,
+          "weight": 0.1
+        },
+        {
+          "metric": "ballRecovery",
+          "invert": false,
+          "weight": 0.05
+        },
+        {
+          "metric": "touches",
+          "invert": false,
+          "weight": 0.12
+        },
+        {
+          "metric": "accuratePassPct",
+          "invert": false,
+          "weight": 0.28
+        },
+        {
+          "metric": "accurateFinalThirdPassPct",
+          "invert": false,
+          "weight": 0.3
+        },
+        {
+          "metric": "touchesInOppBox",
+          "invert": false,
+          "weight": 0.06
+        }
+      ]
+    },
+    "Stopper": {
+      "desc": "Destructora: duelos, cortes y recuperaciones.",
+      "metrics": [
+        {
+          "metric": "defDuelsWon",
+          "invert": false,
+          "weight": 0.26
+        },
+        {
+          "metric": "aerialWon",
+          "invert": false,
+          "weight": 0.12
+        },
+        {
+          "metric": "successfulDefActions",
+          "invert": false,
+          "weight": 0.28
+        },
+        {
+          "metric": "ballRecovery",
+          "invert": false,
+          "weight": 0.2
+        },
+        {
+          "metric": "touches",
+          "invert": false,
+          "weight": 0.03
+        },
+        {
+          "metric": "accuratePassPct",
+          "invert": false,
+          "weight": 0.06
+        },
+        {
+          "metric": "accurateFinalThirdPassPct",
+          "invert": false,
+          "weight": 0.05
+        },
+        {
+          "metric": "touchesInOppBox",
+          "invert": false,
+          "weight": 0.0
+        }
+      ]
+    },
+    "Box To Box": {
+      "desc": "Ida y vuelta: recupera y participa mucho. (Con 8 métricas ya incluye presencia ofensiva)",
+      "metrics": [
+        {
+          "metric": "defDuelsWon",
+          "invert": false,
+          "weight": 0.14
+        },
+        {
+          "metric": "aerialWon",
+          "invert": false,
+          "weight": 0.05
+        },
+        {
+          "metric": "successfulDefActions",
+          "invert": false,
+          "weight": 0.16
+        },
+        {
+          "metric": "ballRecovery",
+          "invert": false,
+          "weight": 0.14
+        },
+        {
+          "metric": "touches",
+          "invert": false,
+          "weight": 0.12
+        },
+        {
+          "metric": "accuratePassPct",
+          "invert": false,
+          "weight": 0.08
+        },
+        {
+          "metric": "accurateFinalThirdPassPct",
+          "invert": false,
+          "weight": 0.13
+        },
+        {
+          "metric": "touchesInOppBox",
+          "invert": false,
+          "weight": 0.18
+        }
+      ]
+    },
+    "Complete": {
+      "desc": "Perfil total: reparte el peso entre defender, participar y progresar.",
+      "metrics": [
+        {
+          "metric": "defDuelsWon",
+          "invert": false,
+          "weight": 0.14
+        },
+        {
+          "metric": "aerialWon",
+          "invert": false,
+          "weight": 0.06
+        },
+        {
+          "metric": "successfulDefActions",
+          "invert": false,
+          "weight": 0.16
+        },
+        {
+          "metric": "ballRecovery",
+          "invert": false,
+          "weight": 0.1
+        },
+        {
+          "metric": "touches",
+          "invert": false,
+          "weight": 0.08
+        },
+        {
+          "metric": "accuratePassPct",
+          "invert": false,
+          "weight": 0.16
+        },
+        {
+          "metric": "accurateFinalThirdPassPct",
+          "invert": false,
+          "weight": 0.16
+        },
+        {
+          "metric": "touchesInOppBox",
+          "invert": false,
+          "weight": 0.14
+        }
+      ]
+    }
+  },
+  "MF": {
+    "Controler": {
+      "desc": "Controla el ritmo del equipo: pase, toques y recuperación.",
+      "metrics": [
+        {
+          "metric": "bigChanceCreated",
+          "invert": false,
+          "weight": 0.08
+        },
+        {
+          "metric": "expectedAssists",
+          "invert": false,
+          "weight": 0.18
+        },
+        {
+          "metric": "goals",
+          "invert": false,
+          "weight": 0.03
+        },
+        {
+          "metric": "expectedGoals",
+          "invert": false,
+          "weight": 0.03
+        },
+        {
+          "metric": "touchesInOppBox",
+          "invert": false,
+          "weight": 0.04
+        },
+        {
+          "metric": "ballRecovery",
+          "invert": false,
+          "weight": 0.18
+        },
+        {
+          "metric": "touches",
+          "invert": false,
+          "weight": 0.18
+        },
+        {
+          "metric": "accuratePass",
+          "invert": false,
+          "weight": 0.28
+        }
+      ]
+    },
+    "Box To Box": {
+      "desc": "Cubre mucho campo: recupera y llega al área.",
+      "metrics": [
+        {
+          "metric": "bigChanceCreated",
+          "invert": false,
+          "weight": 0.05
+        },
+        {
+          "metric": "expectedAssists",
+          "invert": false,
+          "weight": 0.08
+        },
+        {
+          "metric": "goals",
+          "invert": false,
+          "weight": 0.09
+        },
+        {
+          "metric": "expectedGoals",
+          "invert": false,
+          "weight": 0.09
+        },
+        {
+          "metric": "touchesInOppBox",
+          "invert": false,
+          "weight": 0.18
+        },
+        {
+          "metric": "ballRecovery",
+          "invert": false,
+          "weight": 0.26
+        },
+        {
+          "metric": "touches",
+          "invert": false,
+          "weight": 0.13
+        },
+        {
+          "metric": "accuratePass",
+          "invert": false,
+          "weight": 0.12
+        }
+      ]
+    },
+    "2nd Line Arrival": {
+      "desc": "Llega desde segunda línea: tiro, gol y presencia en el área rival.",
+      "metrics": [
+        {
+          "metric": "bigChanceCreated",
+          "invert": false,
+          "weight": 0.1
+        },
+        {
+          "metric": "expectedAssists",
+          "invert": false,
+          "weight": 0.08
+        },
+        {
+          "metric": "goals",
+          "invert": false,
+          "weight": 0.2
+        },
+        {
+          "metric": "expectedGoals",
+          "invert": false,
+          "weight": 0.24
+        },
+        {
+          "metric": "touchesInOppBox",
+          "invert": false,
+          "weight": 0.24
+        },
+        {
+          "metric": "ballRecovery",
+          "invert": false,
+          "weight": 0.04
+        },
+        {
+          "metric": "touches",
+          "invert": false,
+          "weight": 0.05
+        },
+        {
+          "metric": "accuratePass",
+          "invert": false,
+          "weight": 0.05
+        }
+      ]
+    }
+  },
+  "OMF": {
+    "Classic 10": {
+      "desc": "Enlace creativo: genera ocasiones y asistencias.",
+      "metrics": [
+        {
+          "metric": "touchesInOppBox",
+          "invert": false,
+          "weight": 0.05
+        },
+        {
+          "metric": "touches",
+          "invert": false,
+          "weight": 0.18
+        },
+        {
+          "metric": "goals",
+          "invert": false,
+          "weight": 0.04
+        },
+        {
+          "metric": "shotsOnTargetPct",
+          "invert": false,
+          "weight": 0.06
+        },
+        {
+          "metric": "expectedGoals",
+          "invert": false,
+          "weight": 0.05
+        },
+        {
+          "metric": "bigChanceCreated",
+          "invert": false,
+          "weight": 0.3
+        },
+        {
+          "metric": "wonContest",
+          "invert": false,
+          "weight": 0.08
+        },
+        {
+          "metric": "expectedAssists",
+          "invert": false,
+          "weight": 0.24
+        }
+      ]
+    },
+    "Second Striker": {
+      "desc": "Juega pegada a la delantera: pisa área, tira y marca.",
+      "metrics": [
+        {
+          "metric": "touchesInOppBox",
+          "invert": false,
+          "weight": 0.22
+        },
+        {
+          "metric": "touches",
+          "invert": false,
+          "weight": 0.05
+        },
+        {
+          "metric": "goals",
+          "invert": false,
+          "weight": 0.26
+        },
+        {
+          "metric": "shotsOnTargetPct",
+          "invert": false,
+          "weight": 0.12
+        },
+        {
+          "metric": "expectedGoals",
+          "invert": false,
+          "weight": 0.24
+        },
+        {
+          "metric": "bigChanceCreated",
+          "invert": false,
+          "weight": 0.0
+        },
+        {
+          "metric": "wonContest",
+          "invert": false,
+          "weight": 0.05
+        },
+        {
+          "metric": "expectedAssists",
+          "invert": false,
+          "weight": 0.06
+        }
+      ]
+    },
+    "False Winger": {
+      "desc": "Sale de banda pero se mete dentro: regate y creación.",
+      "metrics": [
+        {
+          "metric": "touchesInOppBox",
+          "invert": false,
+          "weight": 0.08
+        },
+        {
+          "metric": "touches",
+          "invert": false,
+          "weight": 0.09
+        },
+        {
+          "metric": "goals",
+          "invert": false,
+          "weight": 0.08
+        },
+        {
+          "metric": "shotsOnTargetPct",
+          "invert": false,
+          "weight": 0.08
+        },
+        {
+          "metric": "expectedGoals",
+          "invert": false,
+          "weight": 0.08
+        },
+        {
+          "metric": "bigChanceCreated",
+          "invert": false,
+          "weight": 0.14
+        },
+        {
+          "metric": "wonContest",
+          "invert": false,
+          "weight": 0.28
+        },
+        {
+          "metric": "expectedAssists",
+          "invert": false,
+          "weight": 0.17
+        }
+      ]
+    }
+  },
+  "WIN": {
+    "Classic Winger": {
+      "desc": "Extremo de banda: regate y centro.",
+      "metrics": [
+        {
+          "metric": "wonContest",
+          "invert": false,
+          "weight": 0.22
+        },
+        {
+          "metric": "accurateCrossPct",
+          "invert": false,
+          "weight": 0.32
+        },
+        {
+          "metric": "goals",
+          "invert": false,
+          "weight": 0.06
+        },
+        {
+          "metric": "goalConversionPct",
+          "invert": false,
+          "weight": 0.06
+        },
+        {
+          "metric": "expectedAssists",
+          "invert": false,
+          "weight": 0.12
+        },
+        {
+          "metric": "bigChanceCreated",
+          "invert": false,
+          "weight": 0.1
+        },
+        {
+          "metric": "penAreaEntries",
+          "invert": false,
+          "weight": 0.06
+        },
+        {
+          "metric": "expectedGoals",
+          "invert": false,
+          "weight": 0.06
+        }
+      ]
+    },
+    "Interior Winger": {
+      "desc": "Extremo que se mete a finalizar: regate, gol y entradas al área.",
+      "metrics": [
+        {
+          "metric": "wonContest",
+          "invert": false,
+          "weight": 0.22
+        },
+        {
+          "metric": "accurateCrossPct",
+          "invert": false,
+          "weight": 0.04
+        },
+        {
+          "metric": "goals",
+          "invert": false,
+          "weight": 0.2
+        },
+        {
+          "metric": "goalConversionPct",
+          "invert": false,
+          "weight": 0.14
+        },
+        {
+          "metric": "expectedAssists",
+          "invert": false,
+          "weight": 0.08
+        },
+        {
+          "metric": "bigChanceCreated",
+          "invert": false,
+          "weight": 0.08
+        },
+        {
+          "metric": "penAreaEntries",
+          "invert": false,
+          "weight": 0.14
+        },
+        {
+          "metric": "expectedGoals",
+          "invert": false,
+          "weight": 0.1
+        }
+      ]
+    }
+  },
+  "CF": {
+    "Classic Number 9": {
+      "desc": "Rematadora de área: goles, goles esperados y tiros a puerta.",
+      "metrics": [
+        {
+          "metric": "goals",
+          "invert": false,
+          "weight": 0.26
+        },
+        {
+          "metric": "expectedGoals",
+          "invert": false,
+          "weight": 0.2
+        },
+        {
+          "metric": "goalConversionPct",
+          "invert": false,
+          "weight": 0.16
+        },
+        {
+          "metric": "expectedAssists",
+          "invert": false,
+          "weight": 0.0
+        },
+        {
+          "metric": "attIboxTarget",
+          "invert": false,
+          "weight": 0.16
+        },
+        {
+          "metric": "touchesInOppBox",
+          "invert": false,
+          "weight": 0.1
+        },
+        {
+          "metric": "touches",
+          "invert": false,
+          "weight": 0.04
+        },
+        {
+          "metric": "aerialWon",
+          "invert": false,
+          "weight": 0.08
+        }
+      ]
+    },
+    "False 9": {
+      "desc": "Delantera que baja a jugar: participa, asiste y crea.",
+      "metrics": [
+        {
+          "metric": "goals",
+          "invert": false,
+          "weight": 0.12
+        },
+        {
+          "metric": "expectedGoals",
+          "invert": false,
+          "weight": 0.08
+        },
+        {
+          "metric": "goalConversionPct",
+          "invert": false,
+          "weight": 0.08
+        },
+        {
+          "metric": "expectedAssists",
+          "invert": false,
+          "weight": 0.24
+        },
+        {
+          "metric": "attIboxTarget",
+          "invert": false,
+          "weight": 0.04
+        },
+        {
+          "metric": "touchesInOppBox",
+          "invert": false,
+          "weight": 0.05
+        },
+        {
+          "metric": "touches",
+          "invert": false,
+          "weight": 0.37
+        },
+        {
+          "metric": "aerialWon",
+          "invert": false,
+          "weight": 0.02
+        }
+      ]
+    }
+  }
+}

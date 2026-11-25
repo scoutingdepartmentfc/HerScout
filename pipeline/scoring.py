@@ -28,6 +28,7 @@ import pandas as pd
 
 from .categorias import (CATEGORIAS, DIFERENCIAS, JERARQUIA, JERARQUIA_PORTEROS, MALUS, METRICA_SUB, PESOS_GRUPO,
                          PLANTILLAS_POSICION, plantilla_de)
+from .perfiles import calcular_perfiles_v4
 from .config import (K_MINUTOS_PARTIDO, MIN_ACTUACIONES_GRUPO, MIN_JUGADORAS_GRUPO, MIN_MINUTOS_NOTA,
                      MIN_MINUTOS_REFERENCIA, MIN_MINUTOS_TEMPORADA, MIN_PARTIDOS_NOTA, MIN_REFERENCIA_GLOBAL,
                      MIN_REFERENCIA_GRUPO, NOTA_DESVIACION, NOTA_MEDIA_LIGA, NOTA_PARTIDO_DESVIACION,
@@ -615,6 +616,7 @@ def puntuar_temporada(df_temp: pd.DataFrame, nivel: float = NOTA_MEDIA_LIGA, gen
                 out[c] = int(puestos.at[i, c])
         return out
 
+    perfiles_v4 = calcular_perfiles_v4(df_temp)
     df_temp['radar_data'] = [
         {'metricas': {**{c: [round(float(df_temp.at[i, c]), 3), float(notas.at[i, c])] for c in cols
                          if pd.notna(df_temp.at[i, c])},
@@ -626,6 +628,8 @@ def puntuar_temporada(df_temp: pd.DataFrame, nivel: float = NOTA_MEDIA_LIGA, gen
                          for k, v in df_temp.at[i, '_notas_sub'].items() if pd.notna(v)}},
          'top10': top10(i), 'jugadoras_liga': int(fiables.sum()),
          'muestra_baja': bool(df_temp.at[i, '_muestra_baja']),
+         'perfil': perfiles_v4.get(i, {}).get('perfil'),
+         'perfiles': perfiles_v4.get(i, {}).get('perfiles'),
          'heatmap': df_temp.at[i, '_heatmap'], 'pases': df_temp.at[i, '_pases'], 'demarcaciones': df_temp.at[i, '_demarcaciones']}
         for i in df_temp.index
     ]

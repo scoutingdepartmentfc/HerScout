@@ -35,6 +35,7 @@ interface PlayerRow {
   birthDate?: string | null;
   position: string;
   grupoDemarcacion: string;
+  perfil?: string | null;
   shirtNumber?: number | string | null;
   height?: number;
   weight?: number;
@@ -307,15 +308,15 @@ function MultiSelectDropdown<T extends { id: string; name: string; badgeUrl?: st
                             type="button"
                             onClick={() => toggleOption(opt.id)}
                             className={`w-full py-1.5 px-2 rounded-md flex items-center justify-between text-left text-xs transition-colors ${isSelected
-                                ? "bg-emerald-500/15 text-emerald-300 font-semibold border border-emerald-500/30"
-                                : "text-slate-300 hover:bg-white/5 border border-transparent"
+                              ? "bg-emerald-500/15 text-emerald-300 font-semibold border border-emerald-500/30"
+                              : "text-slate-300 hover:bg-white/5 border border-transparent"
                               }`}
                           >
                             <span className="truncate pr-2">{opt.name}</span>
                             <div
                               className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors ${isSelected
-                                  ? "bg-emerald-500 border-emerald-400 text-gray-950 font-black"
-                                  : "border-white/20 bg-navy-950"
+                                ? "bg-emerald-500 border-emerald-400 text-gray-950 font-black"
+                                : "border-white/20 bg-navy-950"
                                 }`}
                             >
                               {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
@@ -336,8 +337,8 @@ function MultiSelectDropdown<T extends { id: string; name: string; badgeUrl?: st
                     type="button"
                     onClick={() => toggleOption(opt.id)}
                     className={`w-full py-2 px-2.5 rounded-lg flex items-center justify-between text-left text-xs transition-colors ${isSelected
-                        ? "bg-emerald-500/15 text-emerald-300 font-semibold border border-emerald-500/30"
-                        : "text-slate-300 hover:bg-white/5 border border-transparent"
+                      ? "bg-emerald-500/15 text-emerald-300 font-semibold border border-emerald-500/30"
+                      : "text-slate-300 hover:bg-white/5 border border-transparent"
                       }`}
                   >
                     <div className="flex items-center gap-2.5 truncate pr-2">
@@ -346,8 +347,8 @@ function MultiSelectDropdown<T extends { id: string; name: string; badgeUrl?: st
                     </div>
                     <div
                       className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors ${isSelected
-                          ? "bg-emerald-500 border-emerald-400 text-gray-950 font-black"
-                          : "border-white/20 bg-navy-950"
+                        ? "bg-emerald-500 border-emerald-400 text-gray-950 font-black"
+                        : "border-white/20 bg-navy-950"
                         }`}
                     >
                       {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
@@ -901,763 +902,770 @@ function PlayersDirectoryContent() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[290px_minmax(0,1fr)] gap-5 items-start">
-      {/* Filters Sidebar */}
-      <Card className="bg-[#070c18] border-border/80 shadow-xl relative z-30 overflow-visible lg:sticky lg:top-0">
-        <CardContent className="p-4 space-y-4 overflow-visible">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-white">
-              <SlidersHorizontal className="w-4 h-4 text-amber-400" />
-              <span className="font-display text-base font-bold uppercase tracking-wide">Filters</span>
+        {/* Filters Sidebar */}
+        <Card className="bg-[#070c18] border-border/80 shadow-xl relative z-30 overflow-visible lg:sticky lg:top-0">
+          <CardContent className="p-4 space-y-4 overflow-visible">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-white">
+                <SlidersHorizontal className="w-4 h-4 text-amber-400" />
+                <span className="font-display text-base font-bold uppercase tracking-wide">Filters</span>
+                {activeFiltersCount > 0 && (
+                  <span className="px-1.5 py-0.5 bg-amber-400/15 text-amber-300 border border-amber-400/30 rounded text-[10px] font-bold">
+                    {activeFiltersCount}
+                  </span>
+                )}
+              </div>
               {activeFiltersCount > 0 && (
-                <span className="px-1.5 py-0.5 bg-amber-400/15 text-amber-300 border border-amber-400/30 rounded text-[10px] font-bold">
-                  {activeFiltersCount}
-                </span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={resetAllFilters}
+                  className="h-7 px-2 text-[11px] text-muted-foreground hover:text-white"
+                  leftIcon={<X className="w-3.5 h-3.5" />}
+                >
+                  Reset
+                </Button>
               )}
             </div>
-            {activeFiltersCount > 0 && (
-              <Button
+
+            {/* Search Input */}
+            <div>
+              <label className="text-[10px] font-semibold text-slate-300 uppercase tracking-wider block mb-1">
+                Player
+              </label>
+              <Input
+                placeholder="Search player name..."
+                leftIcon={<Search className="w-4 h-4 text-muted-foreground" />}
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="bg-navy-950 h-9 text-xs"
+              />
+            </div>
+
+            {/* Position Filter (Campograma modal) */}
+            <div>
+              <label className="text-[10px] font-semibold text-slate-300 uppercase tracking-wider block mb-1">
+                Position
+              </label>
+              <button
                 type="button"
-                variant="ghost"
-                size="sm"
-                onClick={resetAllFilters}
-                className="h-7 px-2 text-[11px] text-muted-foreground hover:text-white"
-                leftIcon={<X className="w-3.5 h-3.5" />}
+                onClick={() => setPositionModalOpen(true)}
+                className="w-full h-9 px-3 rounded-lg bg-navy-950/70 border border-border/80 hover:border-primary/60 text-left text-xs text-slate-200 flex items-center justify-between gap-2 transition-colors"
               >
-                Reset
-              </Button>
+                <span className="truncate">
+                  {selectedPositions.length === 0
+                    ? "All Positions (GK, DEF, MID, ATT)"
+                    : selectedPositions.length === 1
+                      ? selectedPositions[0]
+                      : `${selectedPositions.length} positions selected`}
+                </span>
+                <span className="text-[10px] text-emerald-400 font-semibold shrink-0">
+                  Pitch
+                </span>
+              </button>
+            </div>
+
+            {/* Advanced Filters */}
+            {(
+              <div className="space-y-4">
+
+                {/* Competition / League (Modal with cards, same style as Clubs / Teams) */}
+                <div>
+                  <label className="text-[10px] font-semibold text-slate-300 uppercase tracking-wider block mb-1">
+                    Leagues / Competitions
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => { setLeagueModalSearch(""); setLeaguesModalOpen(true); }}
+                    className="w-full h-9 px-3 rounded-lg bg-navy-950/70 border border-border/80 hover:border-primary/60 text-left text-xs text-slate-200 flex items-center justify-between gap-2 transition-colors"
+                  >
+                    <span className="truncate">
+                      {selectedLeagues.length === 0
+                        ? "All leagues"
+                        : selectedLeagues.length === 1
+                          ? (filteredAvailableLeagues.find((l) => l.id === selectedLeagues[0])?.name || selectedLeagues[0])
+                          : `${selectedLeagues.length} leagues selected`}
+                    </span>
+                    <span className="text-[10px] text-slate-400 shrink-0">
+                      {filteredAvailableLeagues.length}
+                    </span>
+                  </button>
+                </div>
+
+                {/* Club / Team (Modal with large badges) */}
+                <div>
+                  <label className="text-[10px] font-semibold text-slate-300 uppercase tracking-wider block mb-1">
+                    Clubs / Teams
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => { setTeamModalSearch(""); setTeamsModalOpen(true); }}
+                    className="w-full h-9 px-3 rounded-lg bg-navy-950/70 border border-border/80 hover:border-primary/60 text-left text-xs text-slate-200 flex items-center justify-between gap-2 transition-colors"
+                  >
+                    <span className="truncate">
+                      {selectedTeams.length === 0
+                        ? "All teams"
+                        : selectedTeams.length === 1
+                          ? selectedTeams[0]
+                          : `${selectedTeams.length} teams selected`}
+                    </span>
+                    <span className="text-[10px] text-slate-400 shrink-0">
+                      {filteredAvailableTeams.length}
+                    </span>
+                  </button>
+                </div>
+
+                {/* Rating Threshold (Min OVR) */}
+                <div>
+                  <label className="text-[10px] font-semibold text-slate-300 uppercase tracking-wider block mb-1">
+                    Min Rating (OVR)
+                  </label>
+                  <Select
+                    value={minRatingFilter}
+                    onChange={(e) => setMinRatingFilter(e.target.value)}
+                    className="bg-navy-950/90 border-white/10 h-9 text-xs rounded-lg"
+                  >
+                    <option value="all">All Ratings (0+)</option>
+                    <option value="85">⭐ Elite 85+ OVR</option>
+                    <option value="80">Top 80+ OVR</option>
+                    <option value="75">75+ OVR</option>
+                    <option value="70">70+ OVR</option>
+                    <option value="60">60+ OVR</option>
+                  </Select>
+                </div>
+
+                {/* Age Range Slider */}
+                <div className="space-y-1.5 bg-navy-950/60 p-2 rounded-lg border border-white/10">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="font-semibold text-slate-300 uppercase tracking-wider text-[10px]">
+                      Age Range
+                    </span>
+                    <div className="flex items-center gap-1.5 font-mono text-[11px]">
+                      <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-bold border border-emerald-500/30">
+                        ≥ {minAge}
+                      </span>
+                      <span className="text-slate-500">–</span>
+                      <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-bold border border-emerald-500/30">
+                        ≤ {maxAge}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Modern Dual-Thumb Range Track */}
+                  <div className="relative flex items-center h-6 select-none">
+                    {/* Background Track */}
+                    <div className="absolute w-full h-1.5 bg-slate-800 rounded-full overflow-hidden pointer-events-none">
+                      <div
+                        className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 rounded-full"
+                        style={{
+                          left: `${((minAge - 15) / (42 - 15)) * 100}%`,
+                          width: `${((maxAge - minAge) / (42 - 15)) * 100}%`,
+                          position: "absolute",
+                        }}
+                      />
+                    </div>
+                    {/* Slider Min (Menor) */}
+                    <input
+                      type="range"
+                      min={15}
+                      max={42}
+                      value={minAge}
+                      onChange={(e) => {
+                        const v = Number(e.target.value);
+                        if (v <= maxAge) setMinAge(v);
+                      }}
+                      className="range-slider-thumb absolute w-full h-1.5 appearance-none bg-transparent pointer-events-none accent-emerald-400"
+                      style={{ zIndex: minAge > 35 ? 20 : 10 }}
+                    />
+                    {/* Slider Max (Mayor) */}
+                    <input
+                      type="range"
+                      min={15}
+                      max={42}
+                      value={maxAge}
+                      onChange={(e) => {
+                        const v = Number(e.target.value);
+                        if (v >= minAge) setMaxAge(v);
+                      }}
+                      className="range-slider-thumb absolute w-full h-1.5 appearance-none bg-transparent pointer-events-none accent-teal-400"
+                      style={{ zIndex: 15 }}
+                    />
+                  </div>
+                </div>
+
+                {/* Market Value Range */}
+                <div className="space-y-2 rounded-lg border border-border/80 bg-navy-950/60 p-3">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      Market Value
+                    </label>
+                    <div className="flex items-center gap-1.5 text-[11px] font-mono">
+                      <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                        ≥ €{Math.round((Number(minValue || 0)) / 1000)}k
+                      </span>
+                      <span className="text-muted-foreground">–</span>
+                      <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                        ≤ €{Math.round((Number(maxValue || 2000000)) / 1000)}k
+                      </span>
+                    </div>
+                  </div>
+                  <div className="relative h-6 flex items-center">
+                    <div className="w-full h-1.5 bg-navy-900 rounded-full overflow-hidden relative">
+                      <div
+                        className="h-full bg-gradient-to-r from-emerald-500 to-teal-400"
+                        style={{
+                          left: `${(Number(minValue || 0) / 2000000) * 100}%`,
+                          right: `${100 - (Number(maxValue || 2000000) / 2000000) * 100}%`,
+                          position: "absolute",
+                        }}
+                      />
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={2000000}
+                      step={50000}
+                      value={Number(minValue || 0)}
+                      onChange={(e) => {
+                        const v = Number(e.target.value);
+                        if (v <= Number(maxValue || 2000000)) setMinValue(v === 0 ? "" : String(v));
+                      }}
+                      className="range-slider-thumb absolute w-full h-1.5 appearance-none bg-transparent pointer-events-none accent-emerald-400"
+                      style={{ zIndex: Number(minValue || 0) > 1500000 ? 20 : 10 }}
+                    />
+                    <input
+                      type="range"
+                      min={0}
+                      max={2000000}
+                      step={50000}
+                      value={Number(maxValue || 2000000)}
+                      onChange={(e) => {
+                        const v = Number(e.target.value);
+                        if (v >= Number(minValue || 0)) setMaxValue(v === 2000000 ? "" : String(v));
+                      }}
+                      className="range-slider-thumb absolute w-full h-1.5 appearance-none bg-transparent pointer-events-none accent-teal-400"
+                      style={{ zIndex: 15 }}
+                    />
+                  </div>
+                </div>
+
+                {/* Minutes Played Range */}
+                <div className="space-y-2 rounded-lg border border-border/80 bg-navy-950/60 p-3">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      Minutes Played
+                    </label>
+                    <div className="flex items-center gap-1.5 text-[11px] font-mono">
+                      <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                        ≥ {minMinutes || 0}&apos;
+                      </span>
+                      <span className="text-muted-foreground">–</span>
+                      <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                        ≤ {maxMinutes || 3500}&apos;
+                      </span>
+                    </div>
+                  </div>
+                  <div className="relative h-6 flex items-center">
+                    <div className="w-full h-1.5 bg-navy-900 rounded-full overflow-hidden relative">
+                      <div
+                        className="h-full bg-gradient-to-r from-emerald-500 to-teal-400"
+                        style={{
+                          left: `${(Number(minMinutes || 0) / 3500) * 100}%`,
+                          right: `${100 - (Number(maxMinutes || 3500) / 3500) * 100}%`,
+                          position: "absolute",
+                        }}
+                      />
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={3500}
+                      step={90}
+                      value={Number(minMinutes || 0)}
+                      onChange={(e) => {
+                        const v = Number(e.target.value);
+                        if (v <= Number(maxMinutes || 3500)) setMinMinutes(v === 0 ? "" : String(v));
+                      }}
+                      className="range-slider-thumb absolute w-full h-1.5 appearance-none bg-transparent pointer-events-none accent-emerald-400"
+                      style={{ zIndex: Number(minMinutes || 0) > 2500 ? 20 : 10 }}
+                    />
+                    <input
+                      type="range"
+                      min={0}
+                      max={3500}
+                      step={90}
+                      value={Number(maxMinutes || 3500)}
+                      onChange={(e) => {
+                        const v = Number(e.target.value);
+                        if (v >= Number(minMinutes || 0)) setMaxMinutes(v === 3500 ? "" : String(v));
+                      }}
+                      className="range-slider-thumb absolute w-full h-1.5 appearance-none bg-transparent pointer-events-none accent-teal-400"
+                      style={{ zIndex: 15 }}
+                    />
+                  </div>
+                </div>
+
+                {/* Goals Range */}
+                <div className="space-y-2 rounded-lg border border-border/80 bg-navy-950/60 p-3">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      Goals
+                    </label>
+                    <div className="flex items-center gap-1.5 text-[11px] font-mono">
+                      <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                        ≥ {minGoals || 0}
+                      </span>
+                      <span className="text-muted-foreground">–</span>
+                      <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                        ≤ {maxGoals || 40}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="relative h-6 flex items-center">
+                    <div className="w-full h-1.5 bg-navy-900 rounded-full overflow-hidden relative">
+                      <div
+                        className="h-full bg-gradient-to-r from-emerald-500 to-teal-400"
+                        style={{
+                          left: `${(Number(minGoals || 0) / 40) * 100}%`,
+                          right: `${100 - (Number(maxGoals || 40) / 40) * 100}%`,
+                          position: "absolute",
+                        }}
+                      />
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={40}
+                      step={1}
+                      value={Number(minGoals || 0)}
+                      onChange={(e) => {
+                        const v = Number(e.target.value);
+                        if (v <= Number(maxGoals || 40)) setMinGoals(v === 0 ? "" : String(v));
+                      }}
+                      className="range-slider-thumb absolute w-full h-1.5 appearance-none bg-transparent pointer-events-none accent-emerald-400"
+                      style={{ zIndex: Number(minGoals || 0) > 30 ? 20 : 10 }}
+                    />
+                    <input
+                      type="range"
+                      min={0}
+                      max={40}
+                      step={1}
+                      value={Number(maxGoals || 40)}
+                      onChange={(e) => {
+                        const v = Number(e.target.value);
+                        if (v >= Number(minGoals || 0)) setMaxGoals(v === 40 ? "" : String(v));
+                      }}
+                      className="range-slider-thumb absolute w-full h-1.5 appearance-none bg-transparent pointer-events-none accent-teal-400"
+                      style={{ zIndex: 15 }}
+                    />
+                  </div>
+                </div>
+              </div>
             )}
-          </div>
+          </CardContent>
+        </Card>
 
-          {/* Search Input */}
-          <div>
-            <label className="text-[10px] font-semibold text-slate-300 uppercase tracking-wider block mb-1">
-              Player
-            </label>
-            <Input
-              placeholder="Search player name..."
-              leftIcon={<Search className="w-4 h-4 text-muted-foreground" />}
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="bg-navy-950 h-9 text-xs"
-            />
-          </div>
-
-          {/* Position Filter (Campograma modal) */}
-          <div>
-            <label className="text-[10px] font-semibold text-slate-300 uppercase tracking-wider block mb-1">
-              Position
-            </label>
-            <button
-              type="button"
-              onClick={() => setPositionModalOpen(true)}
-              className="w-full h-9 px-3 rounded-lg bg-navy-950/70 border border-border/80 hover:border-primary/60 text-left text-xs text-slate-200 flex items-center justify-between gap-2 transition-colors"
-            >
-              <span className="truncate">
-                {selectedPositions.length === 0
-                  ? "All Positions (GK, DEF, MID, ATT)"
-                  : selectedPositions.length === 1
-                    ? selectedPositions[0]
-                    : `${selectedPositions.length} positions selected`}
+        {/* Data Table */}
+        <div className="min-w-0">
+          <Card className="bg-[#070c18] border-border/80 shadow-2xl overflow-hidden relative z-10">
+            <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 py-3 px-4 border-b border-border/40">
+              <div className="flex items-center gap-2">
+                <CardTitle className="text-sm font-bold text-white">Player Registry Results</CardTitle>
+                <Badge variant="secondary" size="sm">
+                  {players.length} profiles
+                </Badge>
+              </div>
+              <span className="text-[11px] text-muted-foreground hidden sm:inline">
+                Normalized 0–100 Rating vs. League Average
               </span>
-              <span className="text-[10px] text-emerald-400 font-semibold shrink-0">
-                Pitch
-              </span>
-            </button>
-          </div>
+            </CardHeader>
 
-          {/* Advanced Filters */}
-          {(
-            <div className="space-y-4">
+            {/* Selected Assigned Filters Bar (Badges con Escudos y Banderas) */}
+            {(selectedTeams.length > 0 || selectedLeagues.length > 0) && (
+              <div className="px-4 py-2 border-b border-white/10 bg-navy-950/70 flex flex-wrap items-center gap-2 text-xs">
+                <span className="text-[11px] font-semibold text-muted-foreground">Active filters:</span>
 
-              {/* Competition / League (Modal with cards, same style as Clubs / Teams) */}
-              <div>
-                <label className="text-[10px] font-semibold text-slate-300 uppercase tracking-wider block mb-1">
-                  Leagues / Competitions
-                </label>
-                <button
-                  type="button"
-                  onClick={() => { setLeagueModalSearch(""); setLeaguesModalOpen(true); }}
-                  className="w-full h-9 px-3 rounded-lg bg-navy-950/70 border border-border/80 hover:border-primary/60 text-left text-xs text-slate-200 flex items-center justify-between gap-2 transition-colors"
-                >
-                  <span className="truncate">
-                    {selectedLeagues.length === 0
-                      ? "All leagues"
-                      : selectedLeagues.length === 1
-                        ? (filteredAvailableLeagues.find((l) => l.id === selectedLeagues[0])?.name || selectedLeagues[0])
-                        : `${selectedLeagues.length} leagues selected`}
-                  </span>
-                  <span className="text-[10px] text-slate-400 shrink-0">
-                    {filteredAvailableLeagues.length}
-                  </span>
-                </button>
-              </div>
-
-              {/* Club / Team (Modal with large badges) */}
-              <div>
-                <label className="text-[10px] font-semibold text-slate-300 uppercase tracking-wider block mb-1">
-                  Clubs / Teams
-                </label>
-                <button
-                  type="button"
-                  onClick={() => { setTeamModalSearch(""); setTeamsModalOpen(true); }}
-                  className="w-full h-9 px-3 rounded-lg bg-navy-950/70 border border-border/80 hover:border-primary/60 text-left text-xs text-slate-200 flex items-center justify-between gap-2 transition-colors"
-                >
-                  <span className="truncate">
-                    {selectedTeams.length === 0
-                      ? "All teams"
-                      : selectedTeams.length === 1
-                        ? selectedTeams[0]
-                        : `${selectedTeams.length} teams selected`}
-                  </span>
-                  <span className="text-[10px] text-slate-400 shrink-0">
-                    {filteredAvailableTeams.length}
-                  </span>
-                </button>
-              </div>
-
-              {/* Rating Threshold (Min OVR) */}
-              <div>
-                <label className="text-[10px] font-semibold text-slate-300 uppercase tracking-wider block mb-1">
-                  Min Rating (OVR)
-                </label>
-                <Select
-                  value={minRatingFilter}
-                  onChange={(e) => setMinRatingFilter(e.target.value)}
-                  className="bg-navy-950/90 border-white/10 h-9 text-xs rounded-lg"
-                >
-                  <option value="all">All Ratings (0+)</option>
-                  <option value="85">⭐ Elite 85+ OVR</option>
-                  <option value="80">Top 80+ OVR</option>
-                  <option value="75">75+ OVR</option>
-                  <option value="70">70+ OVR</option>
-                  <option value="60">60+ OVR</option>
-                </Select>
-              </div>
-
-              {/* Age Range Slider */}
-              <div className="space-y-1.5 bg-navy-950/60 p-2 rounded-lg border border-white/10">
-                <div className="flex items-center justify-between text-[11px]">
-                  <span className="font-semibold text-slate-300 uppercase tracking-wider text-[10px]">
-                    Age Range
-                  </span>
-                  <div className="flex items-center gap-1.5 font-mono text-[11px]">
-                    <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-bold border border-emerald-500/30">
-                      ≥ {minAge}
+                {/* Assigned Teams Pills */}
+                {selectedTeams.map((teamName) => {
+                  const teamInfo = availableTeams.find((t) => t.name.toLowerCase() === teamName.toLowerCase());
+                  return (
+                    <span
+                      key={teamName}
+                      className="inline-flex items-center gap-1.5 pl-1.5 pr-2 py-1 rounded-full bg-navy-900 border border-white/15 text-white text-xs shadow-sm hover:border-rose-500/40 transition-colors"
+                    >
+                      <EscudoEquipo
+                        teamId={teamInfo?.teamId}
+                        badgeUrl={teamInfo?.badgeUrl}
+                        name={teamName}
+                        size={16}
+                        className="shrink-0"
+                      />
+                      <span className="font-medium truncate max-w-[150px]">{teamName}</span>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedTeams(selectedTeams.filter((t) => t.toLowerCase() !== teamName.toLowerCase()))}
+                        className="text-slate-400 hover:text-white rounded-full p-0.5 hover:bg-white/10 transition-colors"
+                        title={`Remove ${teamName}`}
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
                     </span>
-                    <span className="text-slate-500">–</span>
-                    <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-bold border border-emerald-500/30">
-                      ≤ {maxAge}
-                    </span>
-                  </div>
-                </div>
+                  );
+                })}
 
-                {/* Modern Dual-Thumb Range Track */}
-                <div className="relative flex items-center h-6 select-none">
-                  {/* Background Track */}
-                  <div className="absolute w-full h-1.5 bg-slate-800 rounded-full overflow-hidden pointer-events-none">
-                    <div
-                      className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 rounded-full"
-                      style={{
-                        left: `${((minAge - 15) / (42 - 15)) * 100}%`,
-                        width: `${((maxAge - minAge) / (42 - 15)) * 100}%`,
-                        position: "absolute",
-                      }}
-                    />
-                  </div>
-                  {/* Slider Min (Menor) */}
-                  <input
-                    type="range"
-                    min={15}
-                    max={42}
-                    value={minAge}
-                    onChange={(e) => {
-                      const v = Number(e.target.value);
-                      if (v <= maxAge) setMinAge(v);
-                    }}
-                    className="range-slider-thumb absolute w-full h-1.5 appearance-none bg-transparent pointer-events-none accent-emerald-400"
-                    style={{ zIndex: minAge > 35 ? 20 : 10 }}
-                  />
-                  {/* Slider Max (Mayor) */}
-                  <input
-                    type="range"
-                    min={15}
-                    max={42}
-                    value={maxAge}
-                    onChange={(e) => {
-                      const v = Number(e.target.value);
-                      if (v >= minAge) setMaxAge(v);
-                    }}
-                    className="range-slider-thumb absolute w-full h-1.5 appearance-none bg-transparent pointer-events-none accent-teal-400"
-                    style={{ zIndex: 15 }}
-                  />
-                </div>
-              </div>
-
-              {/* Market Value Range */}
-              <div className="space-y-2 rounded-lg border border-border/80 bg-navy-950/60 p-3">
-                <div className="flex items-center justify-between">
-                  <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                    Market Value
-                  </label>
-                  <div className="flex items-center gap-1.5 text-[11px] font-mono">
-                    <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
-                      ≥ €{Math.round((Number(minValue || 0)) / 1000)}k
-                    </span>
-                    <span className="text-muted-foreground">–</span>
-                    <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
-                      ≤ €{Math.round((Number(maxValue || 2000000)) / 1000)}k
-                    </span>
-                  </div>
-                </div>
-                <div className="relative h-6 flex items-center">
-                  <div className="w-full h-1.5 bg-navy-900 rounded-full overflow-hidden relative">
-                    <div
-                      className="h-full bg-gradient-to-r from-emerald-500 to-teal-400"
-                      style={{
-                        left: `${(Number(minValue || 0) / 2000000) * 100}%`,
-                        right: `${100 - (Number(maxValue || 2000000) / 2000000) * 100}%`,
-                        position: "absolute",
-                      }}
-                    />
-                  </div>
-                  <input
-                    type="range"
-                    min={0}
-                    max={2000000}
-                    step={50000}
-                    value={Number(minValue || 0)}
-                    onChange={(e) => {
-                      const v = Number(e.target.value);
-                      if (v <= Number(maxValue || 2000000)) setMinValue(v === 0 ? "" : String(v));
-                    }}
-                    className="range-slider-thumb absolute w-full h-1.5 appearance-none bg-transparent pointer-events-none accent-emerald-400"
-                    style={{ zIndex: Number(minValue || 0) > 1500000 ? 20 : 10 }}
-                  />
-                  <input
-                    type="range"
-                    min={0}
-                    max={2000000}
-                    step={50000}
-                    value={Number(maxValue || 2000000)}
-                    onChange={(e) => {
-                      const v = Number(e.target.value);
-                      if (v >= Number(minValue || 0)) setMaxValue(v === 2000000 ? "" : String(v));
-                    }}
-                    className="range-slider-thumb absolute w-full h-1.5 appearance-none bg-transparent pointer-events-none accent-teal-400"
-                    style={{ zIndex: 15 }}
-                  />
-                </div>
-              </div>
-
-              {/* Minutes Played Range */}
-              <div className="space-y-2 rounded-lg border border-border/80 bg-navy-950/60 p-3">
-                <div className="flex items-center justify-between">
-                  <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                    Minutes Played
-                  </label>
-                  <div className="flex items-center gap-1.5 text-[11px] font-mono">
-                    <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
-                      ≥ {minMinutes || 0}&apos;
-                    </span>
-                    <span className="text-muted-foreground">–</span>
-                    <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
-                      ≤ {maxMinutes || 3500}&apos;
-                    </span>
-                  </div>
-                </div>
-                <div className="relative h-6 flex items-center">
-                  <div className="w-full h-1.5 bg-navy-900 rounded-full overflow-hidden relative">
-                    <div
-                      className="h-full bg-gradient-to-r from-emerald-500 to-teal-400"
-                      style={{
-                        left: `${(Number(minMinutes || 0) / 3500) * 100}%`,
-                        right: `${100 - (Number(maxMinutes || 3500) / 3500) * 100}%`,
-                        position: "absolute",
-                      }}
-                    />
-                  </div>
-                  <input
-                    type="range"
-                    min={0}
-                    max={3500}
-                    step={90}
-                    value={Number(minMinutes || 0)}
-                    onChange={(e) => {
-                      const v = Number(e.target.value);
-                      if (v <= Number(maxMinutes || 3500)) setMinMinutes(v === 0 ? "" : String(v));
-                    }}
-                    className="range-slider-thumb absolute w-full h-1.5 appearance-none bg-transparent pointer-events-none accent-emerald-400"
-                    style={{ zIndex: Number(minMinutes || 0) > 2500 ? 20 : 10 }}
-                  />
-                  <input
-                    type="range"
-                    min={0}
-                    max={3500}
-                    step={90}
-                    value={Number(maxMinutes || 3500)}
-                    onChange={(e) => {
-                      const v = Number(e.target.value);
-                      if (v >= Number(minMinutes || 0)) setMaxMinutes(v === 3500 ? "" : String(v));
-                    }}
-                    className="range-slider-thumb absolute w-full h-1.5 appearance-none bg-transparent pointer-events-none accent-teal-400"
-                    style={{ zIndex: 15 }}
-                  />
-                </div>
-              </div>
-
-              {/* Goals Range */}
-              <div className="space-y-2 rounded-lg border border-border/80 bg-navy-950/60 p-3">
-                <div className="flex items-center justify-between">
-                  <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                    Goals
-                  </label>
-                  <div className="flex items-center gap-1.5 text-[11px] font-mono">
-                    <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
-                      ≥ {minGoals || 0}
-                    </span>
-                    <span className="text-muted-foreground">–</span>
-                    <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
-                      ≤ {maxGoals || 40}
-                    </span>
-                  </div>
-                </div>
-                <div className="relative h-6 flex items-center">
-                  <div className="w-full h-1.5 bg-navy-900 rounded-full overflow-hidden relative">
-                    <div
-                      className="h-full bg-gradient-to-r from-emerald-500 to-teal-400"
-                      style={{
-                        left: `${(Number(minGoals || 0) / 40) * 100}%`,
-                        right: `${100 - (Number(maxGoals || 40) / 40) * 100}%`,
-                        position: "absolute",
-                      }}
-                    />
-                  </div>
-                  <input
-                    type="range"
-                    min={0}
-                    max={40}
-                    step={1}
-                    value={Number(minGoals || 0)}
-                    onChange={(e) => {
-                      const v = Number(e.target.value);
-                      if (v <= Number(maxGoals || 40)) setMinGoals(v === 0 ? "" : String(v));
-                    }}
-                    className="range-slider-thumb absolute w-full h-1.5 appearance-none bg-transparent pointer-events-none accent-emerald-400"
-                    style={{ zIndex: Number(minGoals || 0) > 30 ? 20 : 10 }}
-                  />
-                  <input
-                    type="range"
-                    min={0}
-                    max={40}
-                    step={1}
-                    value={Number(maxGoals || 40)}
-                    onChange={(e) => {
-                      const v = Number(e.target.value);
-                      if (v >= Number(minGoals || 0)) setMaxGoals(v === 40 ? "" : String(v));
-                    }}
-                    className="range-slider-thumb absolute w-full h-1.5 appearance-none bg-transparent pointer-events-none accent-teal-400"
-                    style={{ zIndex: 15 }}
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Data Table */}
-      <div className="min-w-0">
-      <Card className="bg-[#070c18] border-border/80 shadow-2xl overflow-hidden relative z-10">
-        <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 py-3 px-4 border-b border-border/40">
-          <div className="flex items-center gap-2">
-            <CardTitle className="text-sm font-bold text-white">Player Registry Results</CardTitle>
-            <Badge variant="secondary" size="sm">
-              {players.length} profiles
-            </Badge>
-          </div>
-          <span className="text-[11px] text-muted-foreground hidden sm:inline">
-            Normalized 0–100 Rating vs. League Average
-          </span>
-        </CardHeader>
-
-        {/* Selected Assigned Filters Bar (Badges con Escudos y Banderas) */}
-        {(selectedTeams.length > 0 || selectedLeagues.length > 0) && (
-          <div className="px-4 py-2 border-b border-white/10 bg-navy-950/70 flex flex-wrap items-center gap-2 text-xs">
-            <span className="text-[11px] font-semibold text-muted-foreground">Active filters:</span>
-
-            {/* Assigned Teams Pills */}
-            {selectedTeams.map((teamName) => {
-              const teamInfo = availableTeams.find((t) => t.name.toLowerCase() === teamName.toLowerCase());
-              return (
-                <span
-                  key={teamName}
-                  className="inline-flex items-center gap-1.5 pl-1.5 pr-2 py-1 rounded-full bg-navy-900 border border-white/15 text-white text-xs shadow-sm hover:border-rose-500/40 transition-colors"
-                >
-                  <EscudoEquipo
-                    teamId={teamInfo?.teamId}
-                    badgeUrl={teamInfo?.badgeUrl}
-                    name={teamName}
-                    size={16}
-                    className="shrink-0"
-                  />
-                  <span className="font-medium truncate max-w-[150px]">{teamName}</span>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedTeams(selectedTeams.filter((t) => t.toLowerCase() !== teamName.toLowerCase()))}
-                    className="text-slate-400 hover:text-white rounded-full p-0.5 hover:bg-white/10 transition-colors"
-                    title={`Remove ${teamName}`}
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </span>
-              );
-            })}
-
-            {/* Assigned Leagues Pills */}
-            {selectedLeagues.map((leagueKey) => {
-              const leagueInfo = availableLeagues.find((l) => l.id === leagueKey);
-              const leagueName = leagueInfo?.name || parseLeagueId(leagueKey).name;
-              const country = leagueInfo?.country || parseLeagueId(leagueKey).country || guessLeagueCountry(leagueName);
-              return (
-                <span
-                  key={leagueKey}
-                  className="inline-flex items-center gap-1.5 pl-2 pr-2 py-1 rounded-full bg-navy-900 border border-white/15 text-white text-xs shadow-sm hover:border-rose-500/40 transition-colors"
-                >
-                  {country ? (
-                    <Bandera country={country} size="xs" className="shrink-0" />
-                  ) : (
-                    <span className="text-[10px]">🏆</span>
-                  )}
-                  <span className="font-medium truncate max-w-[160px]">{leagueName}</span>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedLeagues(selectedLeagues.filter((l) => l !== leagueKey))}
-                    className="text-slate-400 hover:text-white rounded-full p-0.5 hover:bg-white/10 transition-colors"
-                    title={`Remove ${leagueName}`}
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </span>
-              );
-            })}
-
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedTeams([]);
-                setSelectedLeagues([]);
-              }}
-              className="text-[11px] text-muted-foreground hover:text-rose-400 ml-1 transition-colors underline"
-            >
-              Clear all
-            </button>
-          </div>
-        )}
-        <CardContent className="p-0 overflow-x-auto">
-          {isLoading && allPlayers.length === 0 ? (
-            <LoadingState message="Loading player database and metrics..." />
-          ) : players.length === 0 ? (
-            <EmptyState
-              title="No players found"
-              description="Try adjusting your search criteria, club, position, or rating filter."
-              actionLabel="Clear all filters"
-              onAction={resetAllFilters}
-            />
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow className="border-border/60 bg-navy-950/60 text-xs">
-                  <TableHead className="font-semibold text-white">Player</TableHead>
-                  <TableHead className="text-center font-semibold text-emerald-400 select-none whitespace-nowrap px-2" title="Performance trend over the last 3 months">
-                    LAST 3M
-                  </TableHead>
-                  <TableHead
-                    onClick={() => handleSort("age")}
-                    className="cursor-pointer text-center font-semibold text-slate-300 hover:text-white select-none whitespace-nowrap"
-                    title="Sort by Age"
-                  >
-                    Age {sortBy === "age" && (sortOrder === "desc" ? "↓" : "↑")}
-                  </TableHead>
-                  <TableHead className="font-semibold text-white text-center">POS</TableHead>
-                  <TableHead className="font-semibold text-white">Club</TableHead>
-                  <TableHead
-                    onClick={() => handleSort("nota_global")}
-                    className="cursor-pointer text-center font-bold text-amber-300 hover:text-amber-200 select-none"
-                    title="Sort by Overall OVR"
-                  >
-                    OVR {sortBy === "nota_global" && (sortOrder === "desc" ? "↓" : "↑")}
-                  </TableHead>
-                  <TableHead
-                    onClick={() => handleSort("market_value")}
-                    className="cursor-pointer text-center font-semibold text-slate-300 hover:text-white select-none whitespace-nowrap"
-                    title="Sort by Market value"
-                  >
-                    Value {sortBy === "market_value" && (sortOrder === "desc" ? "↓" : "↑")}
-                  </TableHead>
-                  <TableHead
-                    onClick={() => handleSort("contract")}
-                    className="cursor-pointer text-center font-semibold text-slate-300 hover:text-white select-none whitespace-nowrap"
-                    title="Sort by Contract expiry (days left)"
-                  >
-                    Contract {sortBy === "contract" && (sortOrder === "desc" ? "↓" : "↑")}
-                  </TableHead>
-                  <TableHead
-                    onClick={() => handleSort("recent_matches")}
-                    className="cursor-pointer text-center font-semibold text-slate-300 hover:text-white select-none whitespace-nowrap"
-                    title="Matches played in the most recent season"
-                  >
-                    MP {sortBy === "recent_matches" && (sortOrder === "desc" ? "↓" : "↑")}
-                  </TableHead>
-                  <TableHead
-                    onClick={() => handleSort("recent_minutes")}
-                    className="cursor-pointer text-center font-semibold text-slate-300 hover:text-white select-none whitespace-nowrap"
-                    title="Minutes played in the most recent season"
-                  >
-                    Min {sortBy === "recent_minutes" && (sortOrder === "desc" ? "↓" : "↑")}
-                  </TableHead>
-                  <TableHead
-                    onClick={() => handleSort("recent_goals")}
-                    className="cursor-pointer text-center font-semibold text-slate-300 hover:text-white select-none whitespace-nowrap"
-                    title="Goals in the most recent season"
-                  >
-                    Goals {sortBy === "recent_goals" && (sortOrder === "desc" ? "↓" : "↑")}
-                  </TableHead>
-                  <TableHead
-                    className="text-center font-semibold text-slate-300 select-none whitespace-nowrap"
-                    title="Rating de los últimos 5 partidos"
-                  >
-                    Form
-                  </TableHead>
-                  <TableHead className="text-right font-semibold text-white">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody className="divide-y divide-border/30">
-                {visiblePlayers.map((player) => (
-                  <TableRow key={player.id} className="h-14 hover:bg-navy-900/50 transition-colors">
-                    <TableCell className="py-1.5 pl-3 pr-2">
-                      <Link href={`/players/${player.id}`} className="flex items-center gap-3 group">
-                        <div className="relative w-11 h-11 rounded-xl bg-gradient-to-b from-slate-800/70 via-navy-900/95 to-navy-950 ring-1 ring-white/15 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] flex items-end justify-center overflow-hidden shrink-0 group-hover:ring-amber-400/50 group-hover:shadow-[0_0_14px_-3px_rgba(251,191,36,0.35)] transition-all duration-200">
-                          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_20%,rgba(255,255,255,0.09),transparent_68%)]" />
-                          {player.photoUrl ? (
-                            <img
-                              src={player.photoUrl}
-                              alt={player.name}
-                              className="relative z-10 w-full h-full object-contain object-bottom drop-shadow-[0_2px_6px_rgba(0,0,0,0.65)] group-hover:scale-105 transition-transform duration-200"
-                              loading="lazy"
-                              onError={(e) => {
-                                (e.target as HTMLElement).style.display = "none";
-                              }}
-                            />
-                          ) : (
-                            <div className="relative z-10 w-full h-full p-1.5 flex items-end justify-center text-slate-500/75 group-hover:text-slate-300/90 transition-colors">
-                              <PlayerSilhouette className="w-full h-full scale-110 object-contain" />
-                            </div>
-                          )}
-                          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-2.5 z-20 bg-gradient-to-t from-navy-950/75 to-transparent" />
-                        </div>
-                        <div className="py-1">
-                          <span
-                            className="block font-display text-[17px] font-bold uppercase tracking-wide leading-none text-white group-hover:text-amber-300 transition-colors"
-                            title={player.name !== player.matchName ? player.name : undefined}
-                          >
-                            {player.matchName || player.name}
-                          </span>
-                          <div className="flex items-center gap-1.5 mt-1.5">
-                            <Bandera country={player.country} size="xs" />
-                            <span className="text-[11px] font-medium text-slate-400">{player.country || "—"}</span>
-                          </div>
-                        </div>
-                      </Link>
-                    </TableCell>
-
-                    {/* Evolución / Trend Arrow Column (Last 3 Months) matching CromoJugador badge style */}
-                    <TableCell className="text-center whitespace-nowrap px-2">
-                      {player.trend === "up" && (
-                        <div
-                          className="inline-flex items-center justify-center w-6 h-6 rounded-full shadow-md border transition-transform duration-150 hover:scale-110"
-                          style={{
-                            background: "linear-gradient(135deg, rgba(16, 185, 129, 0.95) 0%, rgba(5, 150, 105, 0.95) 100%)",
-                            borderColor: "rgba(110, 231, 183, 0.8)",
-                            boxShadow: "0 2px 8px rgba(16, 185, 129, 0.45)",
-                          }}
-                          title="Ascending trend (Last 3 months)"
-                        >
-                          <svg
-                            className="w-3.5 h-3.5 text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="3"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            viewBox="0 0 24 24"
-                          >
-                            <polyline points="18 15 12 9 6 15" />
-                          </svg>
-                        </div>
-                      )}
-                      {player.trend === "neutral" && (
-                        <div
-                          className="inline-flex items-center justify-center w-6 h-6 rounded-full shadow-md border transition-transform duration-150 hover:scale-110"
-                          style={{
-                            background: "linear-gradient(135deg, rgba(234, 179, 8, 0.95) 0%, rgba(202, 138, 4, 0.95) 100%)",
-                            borderColor: "rgba(253, 224, 71, 0.8)",
-                            boxShadow: "0 2px 8px rgba(234, 179, 8, 0.45)",
-                          }}
-                          title="Steady performance (Last 3 months)"
-                        >
-                          <svg
-                            className="w-3.5 h-3.5 text-gray-950 drop-shadow-[0_1px_1px_rgba(255,255,255,0.4)]"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="3.5"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            viewBox="0 0 24 24"
-                          >
-                            <line x1="5" y1="12" x2="19" y2="12" />
-                            <polyline points="14 7 19 12 14 17" />
-                          </svg>
-                        </div>
-                      )}
-                      {player.trend === "down" && (
-                        <div
-                          className="inline-flex items-center justify-center w-6 h-6 rounded-full shadow-md border transition-transform duration-150 hover:scale-110"
-                          style={{
-                            background: "linear-gradient(135deg, rgba(239, 68, 68, 0.95) 0%, rgba(185, 28, 28, 0.95) 100%)",
-                            borderColor: "rgba(252, 165, 165, 0.8)",
-                            boxShadow: "0 2px 8px rgba(239, 68, 68, 0.45)",
-                          }}
-                          title="Descending trend (Last 3 months)"
-                        >
-                          <svg
-                            className="w-3.5 h-3.5 text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="3"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            viewBox="0 0 24 24"
-                          >
-                            <polyline points="6 9 12 15 18 9" />
-                          </svg>
-                        </div>
-                      )}
-                      {player.trend == null && (
-                        <span className="text-muted-foreground/30 font-mono text-xs">—</span>
-                      )}
-                    </TableCell>
-
-                    {/* Age Column */}
-                    <TableCell className="text-center whitespace-nowrap">
-                      {player.birthDate ? (
-                        <span className="font-mono text-xs font-semibold text-slate-200">
-                          {Math.floor((Date.now() - new Date(player.birthDate).getTime()) / (365.25 * 24 * 3600 * 1000))}
-                        </span>
+                {/* Assigned Leagues Pills */}
+                {selectedLeagues.map((leagueKey) => {
+                  const leagueInfo = availableLeagues.find((l) => l.id === leagueKey);
+                  const leagueName = leagueInfo?.name || parseLeagueId(leagueKey).name;
+                  const country = leagueInfo?.country || parseLeagueId(leagueKey).country || guessLeagueCountry(leagueName);
+                  return (
+                    <span
+                      key={leagueKey}
+                      className="inline-flex items-center gap-1.5 pl-2 pr-2 py-1 rounded-full bg-navy-900 border border-white/15 text-white text-xs shadow-sm hover:border-rose-500/40 transition-colors"
+                    >
+                      {country ? (
+                        <Bandera country={country} size="xs" className="shrink-0" />
                       ) : (
-                        <span className="text-muted-foreground/40 font-mono text-xs">—</span>
+                        <span className="text-[10px]">🏆</span>
                       )}
-                    </TableCell>
+                      <span className="font-medium truncate max-w-[160px]">{leagueName}</span>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedLeagues(selectedLeagues.filter((l) => l !== leagueKey))}
+                        className="text-slate-400 hover:text-white rounded-full p-0.5 hover:bg-white/10 transition-colors"
+                        title={`Remove ${leagueName}`}
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  );
+                })}
 
-                    {/* Abbreviated English Position */}
-                    <TableCell className="text-center whitespace-nowrap">
-                      {getPositionPill(player.position)}
-                    </TableCell>
-
-                    <TableCell>
-                      <div className="flex items-center gap-2.5">
-                        <EscudoEquipo
-                          teamId={player.teamId}
-                          badgeUrl={player.badgeUrl}
-                          name={player.teamName}
-                          size={28}
-                        />
-                        <div className="min-w-0">
-                          <div className="text-xs text-white font-medium">{player.teamName}</div>
-                          {player.leagueName && (
-                            <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground mt-0.5">
-                              {player.leagueLogoUrl && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedTeams([]);
+                    setSelectedLeagues([]);
+                  }}
+                  className="text-[11px] text-muted-foreground hover:text-rose-400 ml-1 transition-colors underline"
+                >
+                  Clear all
+                </button>
+              </div>
+            )}
+            <CardContent className="p-0 overflow-x-auto">
+              {isLoading && allPlayers.length === 0 ? (
+                <LoadingState message="Loading player database and metrics..." />
+              ) : players.length === 0 ? (
+                <EmptyState
+                  title="No players found"
+                  description="Try adjusting your search criteria, club, position, or rating filter."
+                  actionLabel="Clear all filters"
+                  onAction={resetAllFilters}
+                />
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow className="border-border/60 bg-navy-950/60 text-xs">
+                      <TableHead className="font-semibold text-white">Player</TableHead>
+                      <TableHead className="text-center font-semibold text-emerald-400 select-none whitespace-nowrap px-2" title="Performance trend over the last 3 months">
+                        LAST 3M
+                      </TableHead>
+                      <TableHead
+                        onClick={() => handleSort("age")}
+                        className="cursor-pointer text-center font-semibold text-slate-300 hover:text-white select-none whitespace-nowrap"
+                        title="Sort by Age"
+                      >
+                        Age {sortBy === "age" && (sortOrder === "desc" ? "↓" : "↑")}
+                      </TableHead>
+                      <TableHead className="font-semibold text-white text-center">POS</TableHead>
+                      <TableHead className="font-semibold text-white">Club</TableHead>
+                      <TableHead
+                        onClick={() => handleSort("nota_global")}
+                        className="cursor-pointer text-center font-bold text-amber-300 hover:text-amber-200 select-none"
+                        title="Sort by Overall OVR"
+                      >
+                        OVR {sortBy === "nota_global" && (sortOrder === "desc" ? "↓" : "↑")}
+                      </TableHead>
+                      <TableHead
+                        onClick={() => handleSort("market_value")}
+                        className="cursor-pointer text-center font-semibold text-slate-300 hover:text-white select-none whitespace-nowrap"
+                        title="Sort by Market value"
+                      >
+                        Value {sortBy === "market_value" && (sortOrder === "desc" ? "↓" : "↑")}
+                      </TableHead>
+                      <TableHead
+                        onClick={() => handleSort("contract")}
+                        className="cursor-pointer text-center font-semibold text-slate-300 hover:text-white select-none whitespace-nowrap"
+                        title="Sort by Contract expiry (days left)"
+                      >
+                        Contract {sortBy === "contract" && (sortOrder === "desc" ? "↓" : "↑")}
+                      </TableHead>
+                      <TableHead
+                        onClick={() => handleSort("recent_matches")}
+                        className="cursor-pointer text-center font-semibold text-slate-300 hover:text-white select-none whitespace-nowrap"
+                        title="Matches played in the most recent season"
+                      >
+                        MP {sortBy === "recent_matches" && (sortOrder === "desc" ? "↓" : "↑")}
+                      </TableHead>
+                      <TableHead
+                        onClick={() => handleSort("recent_minutes")}
+                        className="cursor-pointer text-center font-semibold text-slate-300 hover:text-white select-none whitespace-nowrap"
+                        title="Minutes played in the most recent season"
+                      >
+                        Min {sortBy === "recent_minutes" && (sortOrder === "desc" ? "↓" : "↑")}
+                      </TableHead>
+                      <TableHead
+                        onClick={() => handleSort("recent_goals")}
+                        className="cursor-pointer text-center font-semibold text-slate-300 hover:text-white select-none whitespace-nowrap"
+                        title="Goals in the most recent season"
+                      >
+                        Goals {sortBy === "recent_goals" && (sortOrder === "desc" ? "↓" : "↑")}
+                      </TableHead>
+                      <TableHead
+                        className="text-center font-semibold text-slate-300 select-none whitespace-nowrap"
+                        title="Rating de los últimos 5 partidos"
+                      >
+                        Form
+                      </TableHead>
+                      <TableHead className="text-right font-semibold text-white">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody className="divide-y divide-border/30">
+                    {visiblePlayers.map((player) => (
+                      <TableRow key={player.id} className="h-14 hover:bg-navy-900/50 transition-colors">
+                        <TableCell className="py-1.5 pl-3 pr-2">
+                          <Link href={`/players/${player.id}`} className="flex items-center gap-3 group">
+                            <div className="relative w-11 h-11 rounded-xl bg-gradient-to-b from-slate-800/70 via-navy-900/95 to-navy-950 ring-1 ring-white/15 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] flex items-end justify-center overflow-hidden shrink-0 group-hover:ring-amber-400/50 group-hover:shadow-[0_0_14px_-3px_rgba(251,191,36,0.35)] transition-all duration-200">
+                              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_20%,rgba(255,255,255,0.09),transparent_68%)]" />
+                              {player.photoUrl ? (
                                 <img
-                                  src={player.leagueLogoUrl}
-                                  alt=""
-                                  className="h-3.5 w-auto max-w-[14px] object-contain bg-transparent shrink-0"
+                                  src={player.photoUrl}
+                                  alt={player.name}
+                                  className="relative z-10 w-full h-full object-contain object-bottom drop-shadow-[0_2px_6px_rgba(0,0,0,0.65)] group-hover:scale-105 transition-transform duration-200"
                                   loading="lazy"
+                                  onError={(e) => {
+                                    (e.target as HTMLElement).style.display = "none";
+                                  }}
                                 />
+                              ) : (
+                                <div className="relative z-10 w-full h-full p-1.5 flex items-end justify-center text-slate-500/75 group-hover:text-slate-300/90 transition-colors">
+                                  <PlayerSilhouette className="w-full h-full scale-110 object-contain" />
+                                </div>
                               )}
-                              <span className="truncate">{player.leagueName}</span>
-                              {(player.leagueCountry || guessLeagueCountry(player.leagueName)) && (
-                                <Bandera country={player.leagueCountry || guessLeagueCountry(player.leagueName)} size="xs" className="shrink-0 ml-0.5" />
-                              )}
+                              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-2.5 z-20 bg-gradient-to-t from-navy-950/75 to-transparent" />
+                            </div>
+                            <div className="py-1">
+                              <span
+                                className="block font-display text-[17px] font-bold uppercase tracking-wide leading-none text-white group-hover:text-amber-300 transition-colors"
+                                title={player.name !== player.matchName ? player.name : undefined}
+                              >
+                                {player.matchName || player.name}
+                              </span>
+                              <div className="flex items-center gap-1.5 mt-1.5">
+                                <Bandera country={player.country} size="xs" />
+                                <span className="text-[11px] font-medium text-slate-400">{player.country || "—"}</span>
+                              </div>
+                            </div>
+                          </Link>
+                        </TableCell>
+
+                        {/* Evolución / Trend Arrow Column (Last 3 Months) matching CromoJugador badge style */}
+                        <TableCell className="text-center whitespace-nowrap px-2">
+                          {player.trend === "up" && (
+                            <div
+                              className="inline-flex items-center justify-center w-6 h-6 rounded-full shadow-md border transition-transform duration-150 hover:scale-110"
+                              style={{
+                                background: "linear-gradient(135deg, rgba(16, 185, 129, 0.95) 0%, rgba(5, 150, 105, 0.95) 100%)",
+                                borderColor: "rgba(110, 231, 183, 0.8)",
+                                boxShadow: "0 2px 8px rgba(16, 185, 129, 0.45)",
+                              }}
+                              title="Ascending trend (Last 3 months)"
+                            >
+                              <svg
+                                className="w-3.5 h-3.5 text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="3"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                viewBox="0 0 24 24"
+                              >
+                                <polyline points="18 15 12 9 6 15" />
+                              </svg>
                             </div>
                           )}
-                        </div>
-                      </div>
-                    </TableCell>
+                          {player.trend === "neutral" && (
+                            <div
+                              className="inline-flex items-center justify-center w-6 h-6 rounded-full shadow-md border transition-transform duration-150 hover:scale-110"
+                              style={{
+                                background: "linear-gradient(135deg, rgba(234, 179, 8, 0.95) 0%, rgba(202, 138, 4, 0.95) 100%)",
+                                borderColor: "rgba(253, 224, 71, 0.8)",
+                                boxShadow: "0 2px 8px rgba(234, 179, 8, 0.45)",
+                              }}
+                              title="Steady performance (Last 3 months)"
+                            >
+                              <svg
+                                className="w-3.5 h-3.5 text-gray-950 drop-shadow-[0_1px_1px_rgba(255,255,255,0.4)]"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="3.5"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                viewBox="0 0 24 24"
+                              >
+                                <line x1="5" y1="12" x2="19" y2="12" />
+                                <polyline points="14 7 19 12 14 17" />
+                              </svg>
+                            </div>
+                          )}
+                          {player.trend === "down" && (
+                            <div
+                              className="inline-flex items-center justify-center w-6 h-6 rounded-full shadow-md border transition-transform duration-150 hover:scale-110"
+                              style={{
+                                background: "linear-gradient(135deg, rgba(239, 68, 68, 0.95) 0%, rgba(185, 28, 28, 0.95) 100%)",
+                                borderColor: "rgba(252, 165, 165, 0.8)",
+                                boxShadow: "0 2px 8px rgba(239, 68, 68, 0.45)",
+                              }}
+                              title="Descending trend (Last 3 months)"
+                            >
+                              <svg
+                                className="w-3.5 h-3.5 text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="3"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                viewBox="0 0 24 24"
+                              >
+                                <polyline points="6 9 12 15 18 9" />
+                              </svg>
+                            </div>
+                          )}
+                          {player.trend == null && (
+                            <span className="text-muted-foreground/30 font-mono text-xs">—</span>
+                          )}
+                        </TableCell>
 
-                    {/* Scoring Columns */}
-                    <TableCell className="text-center font-bold">
-                      <div className="inline-flex flex-col items-center" title={player.lowSample ? LOW_SAMPLE_LABEL : undefined}>
-                        {getScoreBadge(player.notaGlobal, true)}
-                        {player.lowSample && player.notaGlobal != null && (
-                          <span className="mt-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-400/80">Low sample</span>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-center font-mono text-xs font-semibold text-amber-400 whitespace-nowrap">
-                      {fmtMarketValue(player.marketValue)}
-                    </TableCell>
-                    <TableCell className="text-center whitespace-nowrap">
-                      <ContractCell until={player.contractUntil} />
-                    </TableCell>
-                    <TableCell className="text-center font-mono text-xs text-slate-200" title={player.recentSeason || undefined}>
-                      {player.recentMatches ?? "—"}
-                    </TableCell>
-                    <TableCell className="text-center font-mono text-xs text-slate-200 whitespace-nowrap" title={player.recentSeason || undefined}>
-                      {player.recentMinutes != null ? `${player.recentMinutes}'` : "—"}
-                    </TableCell>
-                    <TableCell className="text-center font-mono text-xs font-semibold text-white" title={player.recentSeason || undefined}>
-                      {player.recentGoals ?? "—"}
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <FormBars ratings={player.last5Ratings} />
-                    </TableCell>
+                        {/* Age Column */}
+                        <TableCell className="text-center whitespace-nowrap">
+                          {player.birthDate ? (
+                            <span className="font-mono text-xs font-semibold text-slate-200">
+                              {Math.floor((Date.now() - new Date(player.birthDate).getTime()) / (365.25 * 24 * 3600 * 1000))}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground/40 font-mono text-xs">—</span>
+                          )}
+                        </TableCell>
 
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-1.5">
-                        <Button
-                          variant={savedWatchlist[player.id] ? "pitch" : "ghost"}
-                          size="xs"
-                          onClick={() => toggleWatchlist(player.id)}
-                          leftIcon={
-                            savedWatchlist[player.id] ? (
-                              <Check className="w-3 h-3 text-emerald-400" />
-                            ) : (
-                              <Bookmark className="w-3 h-3" />
-                            )
-                          }
-                          className="h-7 px-2"
-                        >
-                          {savedWatchlist[player.id] ? "Saved" : "Track"}
-                        </Button>
-                        <Link href={`/players/${player.id}`}>
-                          <Button size="xs" variant="secondary" leftIcon={<Eye className="w-3 h-3" />} className="h-7 px-2.5">
-                            Profile
-                          </Button>
-                        </Link>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-          {!isLoading && hasMore && (
-            <div ref={loadMoreRef} className="py-4 text-center text-[11px] text-muted-foreground">
-              Showing {visiblePlayers.length} of {players.length}…
-            </div>
-          )}
-        </CardContent>
-      </Card>
-      </div>
+                        {/* Abbreviated English Position + Tactical Profile */}
+                        <TableCell className="text-center whitespace-nowrap">
+                          <div className="inline-flex flex-col items-center gap-0.5">
+                            {getPositionPill(player.position)}
+                            {player.perfil && (
+                              <span className="text-[9px] font-semibold text-emerald-300/90">
+                                {player.perfil}
+                              </span>
+                            )}
+                          </div>
+                        </TableCell>
+
+                        <TableCell>
+                          <div className="flex items-center gap-2.5">
+                            <EscudoEquipo
+                              teamId={player.teamId}
+                              badgeUrl={player.badgeUrl}
+                              name={player.teamName}
+                              size={28}
+                            />
+                            <div className="min-w-0">
+                              <div className="text-xs text-white font-medium">{player.teamName}</div>
+                              {player.leagueName && (
+                                <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground mt-0.5">
+                                  {player.leagueLogoUrl && (
+                                    <img
+                                      src={player.leagueLogoUrl}
+                                      alt=""
+                                      className="h-3.5 w-auto max-w-[14px] object-contain bg-transparent shrink-0"
+                                      loading="lazy"
+                                    />
+                                  )}
+                                  <span className="truncate">{player.leagueName}</span>
+                                  {(player.leagueCountry || guessLeagueCountry(player.leagueName)) && (
+                                    <Bandera country={player.leagueCountry || guessLeagueCountry(player.leagueName)} size="xs" className="shrink-0 ml-0.5" />
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </TableCell>
+
+                        {/* Scoring Columns */}
+                        <TableCell className="text-center font-bold">
+                          <div className="inline-flex flex-col items-center" title={player.lowSample ? LOW_SAMPLE_LABEL : undefined}>
+                            {getScoreBadge(player.notaGlobal, true)}
+                            {player.lowSample && player.notaGlobal != null && (
+                              <span className="mt-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-400/80">Low sample</span>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-center font-mono text-xs font-semibold text-amber-400 whitespace-nowrap">
+                          {fmtMarketValue(player.marketValue)}
+                        </TableCell>
+                        <TableCell className="text-center whitespace-nowrap">
+                          <ContractCell until={player.contractUntil} />
+                        </TableCell>
+                        <TableCell className="text-center font-mono text-xs text-slate-200" title={player.recentSeason || undefined}>
+                          {player.recentMatches ?? "—"}
+                        </TableCell>
+                        <TableCell className="text-center font-mono text-xs text-slate-200 whitespace-nowrap" title={player.recentSeason || undefined}>
+                          {player.recentMinutes != null ? `${player.recentMinutes}'` : "—"}
+                        </TableCell>
+                        <TableCell className="text-center font-mono text-xs font-semibold text-white" title={player.recentSeason || undefined}>
+                          {player.recentGoals ?? "—"}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <FormBars ratings={player.last5Ratings} />
+                        </TableCell>
+
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <Button
+                              variant={savedWatchlist[player.id] ? "pitch" : "ghost"}
+                              size="xs"
+                              onClick={() => toggleWatchlist(player.id)}
+                              leftIcon={
+                                savedWatchlist[player.id] ? (
+                                  <Check className="w-3 h-3 text-emerald-400" />
+                                ) : (
+                                  <Bookmark className="w-3 h-3" />
+                                )
+                              }
+                              className="h-7 px-2"
+                            >
+                              {savedWatchlist[player.id] ? "Saved" : "Track"}
+                            </Button>
+                            <Link href={`/players/${player.id}`}>
+                              <Button size="xs" variant="secondary" leftIcon={<Eye className="w-3 h-3" />} className="h-7 px-2.5">
+                                Profile
+                              </Button>
+                            </Link>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+              {!isLoading && hasMore && (
+                <div ref={loadMoreRef} className="py-4 text-center text-[11px] text-muted-foreground">
+                  Showing {visiblePlayers.length} of {players.length}…
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       </div>
       {positionModalOpen && (
         <div
@@ -1714,11 +1722,10 @@ function PlayersDirectoryContent() {
                             : Array.from(new Set([...prev, ...grp.ids]))
                         )
                       }
-                      className={`px-2.5 py-1 rounded-md text-[11px] font-bold border transition-colors ${
-                        allOn
+                      className={`px-2.5 py-1 rounded-md text-[11px] font-bold border transition-colors ${allOn
                           ? "bg-emerald-500/20 border-emerald-400 text-emerald-300"
                           : "bg-navy-950/70 border-white/10 text-slate-300 hover:border-white/30"
-                      }`}
+                        }`}
                     >
                       {grp.label}
                     </button>
@@ -1764,11 +1771,10 @@ function PlayersDirectoryContent() {
                         )
                       }
                       style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
-                      className={`-translate-x-1/2 -translate-y-1/2 absolute w-11 h-11 rounded-full border-2 font-bold text-xs flex items-center justify-center transition-all ${
-                        active
+                      className={`-translate-x-1/2 -translate-y-1/2 absolute w-11 h-11 rounded-full border-2 font-bold text-xs flex items-center justify-center transition-all ${active
                           ? "bg-emerald-500 text-navy-950 border-white shadow-[0_0_16px_rgba(16,185,129,0.75)] scale-110"
                           : "bg-navy-950/85 text-slate-200 border-emerald-400/40 hover:border-emerald-300 hover:scale-105"
-                      }`}
+                        }`}
                     >
                       {pos.short}
                     </button>
@@ -1786,7 +1792,7 @@ function PlayersDirectoryContent() {
           onClick={() => setLeaguesModalOpen(false)}
         >
           <div
-            className="w-full max-w-5xl max-h-[calc(100vh-7rem)] rounded-2xl border border-border/80 bg-[#0b1222] shadow-2xl flex flex-col overflow-hidden"
+            className="w-full max-w-2xl max-h-[calc(100vh-7rem)] rounded-2xl border border-border/80 bg-[#0b1222] shadow-2xl flex flex-col overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="p-4 border-b border-border/60 flex flex-wrap items-center justify-between gap-3">
@@ -1826,7 +1832,7 @@ function PlayersDirectoryContent() {
               </div>
             </div>
 
-            <div className="p-4 overflow-y-auto grid grid-cols-1 md:grid-cols-2 gap-5 items-start">
+            <div className="p-4 overflow-y-auto flex flex-col gap-4">
               {(() => {
                 const q = leagueModalSearch.trim().toLowerCase();
                 const filtered = filteredAvailableLeagues.filter(
@@ -1840,10 +1846,11 @@ function PlayersDirectoryContent() {
                 }
                 const countries = Array.from(byCountry.keys()).sort((a, b) => a.localeCompare(b));
                 return countries.map((country) => {
-                  const items = byCountry.get(country)!.slice().sort((a, b) => a.name.localeCompare(b.name));
+                  // Preservar el orden por nivel/categoría de sortLeaguesByCountryAndTier
+                  const items = byCountry.get(country)!;
                   const allSelected = items.every((i) => selectedLeagues.includes(i.id));
                   return (
-                    <div key={country} className="space-y-2.5">
+                    <div key={country} className="space-y-2">
                       <div className="flex items-center justify-between border-b border-white/10 pb-1.5">
                         <div className="flex items-center gap-2">
                           {country !== "Other" && <Bandera country={country} size="sm" />}
@@ -1865,7 +1872,7 @@ function PlayersDirectoryContent() {
                           {allSelected ? "Deselect all" : "All"}
                         </button>
                       </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <div className="flex flex-col gap-1.5">
                         {items.map((opt) => {
                           const selected = selectedLeagues.includes(opt.id);
                           return (
@@ -1877,23 +1884,30 @@ function PlayersDirectoryContent() {
                                   prev.includes(opt.id) ? prev.filter((id) => id !== opt.id) : [...prev, opt.id]
                                 )
                               }
-                              className={`group flex flex-col items-center text-center gap-2 p-3.5 rounded-xl border transition-all ${
-                                selected
-                                  ? "bg-emerald-500/15 border-emerald-400 shadow-[0_0_16px_rgba(16,185,129,0.2)]"
+                              className={`group flex items-center gap-2.5 px-2.5 py-2 rounded-lg border text-left transition-all ${selected
+                                  ? "bg-emerald-500/15 border-emerald-400 shadow-[0_0_12px_rgba(16,185,129,0.18)]"
                                   : "bg-navy-950/60 border-border/60 hover:border-slate-500 hover:bg-navy-900/70"
-                              }`}
+                                }`}
                             >
-                              <div className="w-12 h-12 rounded-xl bg-white/5 flex items-center justify-center p-1.5 group-hover:scale-105 transition-transform">
+                              <div className="w-7 h-7 rounded-md bg-white/5 flex items-center justify-center p-0.5 shrink-0">
                                 {opt.logoUrl ? (
-                                  <img src={opt.logoUrl} alt={opt.name} className="w-10 h-10 object-contain" loading="lazy" />
+                                  <img src={opt.logoUrl} alt={opt.name} className="w-6 h-6 object-contain" loading="lazy" />
                                 ) : opt.country ? (
-                                  <Bandera country={opt.country} size="md" />
+                                  <Bandera country={opt.country} size="sm" />
                                 ) : (
-                                  <span className="text-xl">🏆</span>
+                                  <span className="text-sm">🏆</span>
                                 )}
                               </div>
-                              <span className={`text-sm font-semibold leading-snug line-clamp-2 ${selected ? "text-emerald-300" : "text-white"}`}>
+                              <span className={`text-xs font-semibold leading-tight flex-1 ${selected ? "text-emerald-300" : "text-white"}`}>
                                 {opt.name}
+                              </span>
+                              <span
+                                className={`w-4 h-4 rounded border flex items-center justify-center text-[10px] shrink-0 ${selected
+                                    ? "bg-emerald-500 border-emerald-400 text-navy-950 font-black"
+                                    : "border-white/20 text-transparent"
+                                  }`}
+                              >
+                                ✓
                               </span>
                             </button>
                           );
@@ -1971,11 +1985,10 @@ function PlayersDirectoryContent() {
                           prev.includes(opt.id) ? prev.filter((id) => id !== opt.id) : [...prev, opt.id]
                         )
                       }
-                      className={`group flex flex-col items-center text-center gap-2.5 p-3.5 rounded-xl border transition-all ${
-                        selected
+                      className={`group flex flex-col items-center text-center gap-2.5 p-3.5 rounded-xl border transition-all ${selected
                           ? "bg-emerald-500/15 border-emerald-400 shadow-[0_0_16px_rgba(16,185,129,0.2)]"
                           : "bg-navy-950/60 border-border/60 hover:border-slate-500 hover:bg-navy-900/70"
-                      }`}
+                        }`}
                     >
                       <div className="w-12 h-12 rounded-xl bg-white/5 flex items-center justify-center p-1.5 group-hover:scale-105 transition-transform">
                         <EscudoEquipo

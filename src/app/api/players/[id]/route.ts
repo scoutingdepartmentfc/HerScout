@@ -86,8 +86,12 @@ export async function GET(
   }
 
   try {
+    const db = supabaseAdmin as any;
+    // League averages (cached; precomputed in Postgres) start now, in parallel with everything else
+    const leagueAveragesPromise = getLeagueAverages(db);
+
     // 1. Player Demographics
-    const playerRes = await (supabaseAdmin as any)
+    const playerPromise = db
       .from("players")
       .select(`
         id,
@@ -122,14 +126,8 @@ export async function GET(
       .eq("id", playerId)
       .single();
 
-    if (playerRes.error || !playerRes.data) {
-      return NextResponse.json({ error: "Player not found" }, { status: 404 });
-    }
-
-    const p = playerRes.data;
-
     // 2. Player Season Stats with raw metric breakdown
-    const statsRes = await (supabaseAdmin as any)
+    const statsPromise = db
       .from("player_season_stats")
       .select(`
         *,
@@ -141,8 +139,10 @@ export async function GET(
       .order("updated_at", { ascending: false });
 
     // 3. Match log: every match played with its 0-9.9 rating, and the Soccerdonna career data
-    const db = supabaseAdmin as any;
-    const [matchStats, matchScores, marketValues, transfers, nationalTeams, injuries, physical, eaRatings] = await Promise.all([
+    // All the player's queries go out at once (they used to wait for each other)
+    const [playerRes, statsRes, matchStats, matchScores, marketValues, transfers, nationalTeams, injuries, physical, eaRatings] = await Promise.all([
+      playerPromise,
+      statsPromise,
       db.from("player_match_stats")
         .select(`
           match_id, team_id, competition_id, season_id, match_date, minutes_played, is_starter, goals, assists, demarcacion,
@@ -174,10 +174,13 @@ export async function GET(
         .select("pace, acceleration, sprint_speed, physicality, jumping, stamina, strength, aggression, edition, ea_club")
         .eq("player_id", playerId).maybeSingle(),
     ]);
+    if (playerRes.error || !playerRes.data) {
+      return NextResponse.json({ error: "Player not found" }, { status: 404 });
+    }
+    const p = playerRes.data;
     const scoreByMatch = new Map<string, any>((matchScores.data || []).map((r: any) => [r.match_id, r]));
 
-    // Fetch league averages for metrics (cached in memory or queried from player_season_stats)
-    const leagueAverages = await getLeagueAverages(db);
+    const leagueAverages = await leagueAveragesPromise;
 
     const matchLog = (matchStats.data || []).map((r: any) => {
       const m = r.matches || {};

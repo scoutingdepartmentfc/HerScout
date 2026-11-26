@@ -43,7 +43,7 @@ except ImportError:
 import pandas as pd
 
 from .adapter import OptaSDAPIAdapter
-from .config import BUCKET_PIPELINE_CACHE, MAX_WORKERS_DESCARGA, NIVEL_LIGA, NIVEL_LIGA_DEFECTO, es_internacional, es_selecciones
+from .config import BUCKET_PIPELINE_CACHE, MAX_WORKERS_DESCARGA, NOTA_MEDIA_LIGA, es_internacional, es_selecciones
 from .events import match_metadata
 from .metrics_engine import MetricsEngine
 from .fotos_jugadoras import sincronizar_fotos_jugadoras
@@ -377,9 +377,8 @@ class IngestionPipeline:
         """Ratings por partido y tabla de temporada desde la caché. Sin `actualizar_jugadoras` no se tocan las
         fichas (nombre y demarcación principal): para recalcular sin plantillas de Opta."""
         cid, sid = comp['id'], comp['season_id']
-        if cid not in NIVEL_LIGA:
-            logger.warning(f"  {comp['name']} sin nivel en NIVEL_LIGA: se usa {NIVEL_LIGA_DEFECTO}")
-        nivel_comp = NIVEL_LIGA.get(cid, NIVEL_LIGA_DEFECTO)
+        # Opción 1: todas las competiciones usan NOTA_MEDIA_LIGA (sin desplazamiento por liga ni resta en internacionales)
+        nivel_comp = NOTA_MEDIA_LIGA
         # Media general por demarcación: acumulados de las demás temporadas descargadas (todas las ligas)
         refs = self.referencia_general()
         otras = {k: sumar_acumulados(*(a for s_, a in refs.get(k, {}).items() if s_ != sid))
@@ -388,8 +387,6 @@ class IngestionPipeline:
         df_sp, df_temp = calcular_temporada(cache, nivel_comp, otras, acum)
         if not es_internacional(comp):  # las internacionales mezclan niveles: no fijan la media general
             self.guardar_referencia_general(sid, acum)
-        if es_internacional(comp) and not df_temp.empty:
-            df_temp = self._nivel_por_club(df_temp, nivel_comp, selecciones=es_selecciones(comp))
         if df_temp.empty:
             logger.info("  Temporada: sin jugadores con minutos suficientes todavía")
             return

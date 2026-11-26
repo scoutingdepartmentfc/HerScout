@@ -73,9 +73,11 @@ export const METRICS_HIERARCHY: CategoryDef[] = [
         name: "Finishing",
         metrics: [
           m("of_goles_p90", "Goals"),
+          m("of_goles_sin_penalti_p90", "Non-penalty goals"),
           m("of_goles_dentro_area_p90", "Goals inside the box"),
           m("of_goles_fuera_area_p90", "Goals outside the box"),
           m("of_xG_p90", "xG (expected goals)"),
+          m("of_xg_sin_penalti_p90", "npxG (non-penalty xG)"),
           m("of_tiros_p90", "Total shots"),
           m("of_tiros_dentro_pct", "Shots on target %", true),
           m("of_goles_menos_xg_p90", "Goals − xG"),

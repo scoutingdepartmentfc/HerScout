@@ -60,18 +60,18 @@ const XCA: Def = ["of_xCA_p90", "xCA", "Expected chain value (passes)"];
 
 export const RADAR_TEMPLATES: Record<RadarTemplateId, RadarTemplate> = {
   GK: {
-    id: "GK", name: "Goalkeeper", grupo: "Porteros", stats: tpl([
-      ["def_paradas_p90", "Saves", "saves"],
-      ["def_goles_encajados_p90", "Goals conceded", "goalsConceded"],
-      ["def_xg_contra_p90", "xG conceded", "expectedGoalsConceded"],
-      ["of_pases_buenos_p90", "Accurate passes", "accuratePass"],
-      ["of_envios_largos_p90", "Accurate launches", "accurateLaunches"],
-      ["of_toques_p90", "Touches", "touches"],
-      ["def_salidas_libero_p90", "Sweeper actions", "accurateKeeperSweeper"],
-      ["def_paradas_area_p90", "Saves inside box", "savedIbox"],
-    ], [
-      ["def_goles_menos_xgc_p90", "Goals − xG conceded", "goalsConceded − expectedGoalsConceded"],
-    ]),
+    id: "GK", name: "Goalkeeper", grupo: "Porteros", stats: [
+      s("def_goles_menos_xgc_p90", "Goals − xG conceded", "goalsConceded − expectedGoalsConceded", 0.22),
+      s("def_paradas_pct", "Save %", "savePercentage", 0.16, true),
+      s("def_paradas_p90", "Saves", "saves", 0.14),
+      s("def_paradas_ocasiones_claras_p90", "Big chance saves", "bigChanceSaves", 0.10),
+      s("def_paradas_area_p90", "Saves inside box", "savedIbox", 0.08),
+      s("def_salidas_libero_p90", "Sweeper actions", "accurateKeeperSweeper", 0.08),
+      s("def_goles_encajados_p90", "Goals conceded", "goalsConceded", 0.05),
+      s("of_pases_buenos_p90", "Accurate passes", "accuratePass", 0.07),
+      s("of_envios_largos_p90", "Accurate launches", "accurateLaunches", 0.05),
+      s("of_saques_puerta_pct", "Goal kick accuracy %", "accurateGoalKicksPct", 0.05, true),
+    ],
   },
   CB: {
     id: "CB", name: "Centre-Back", grupo: "Centrales", stats: tpl([
@@ -110,16 +110,18 @@ export const RADAR_TEMPLATES: Record<RadarTemplateId, RadarTemplate> = {
     ], [XCA]),
   },
   CMF: {
-    id: "CMF", name: "Central Midfielder", grupo: "Medios", stats: tpl([
-      ["of_grandes_ocasiones_creadas_p90", "Big chances created", "bigChanceCreated"],
-      ["of_xA_p90", "xA", "expectedAssists"],
-      GOALS,
-      XG,
-      ["of_toques_area_rival_p90", "Touches opp. box", "touchesInOppBox"],
-      ["def_recuperaciones_p90", "Recoveries", "ballRecovery"],
-      ["of_toques_p90", "Touches", "touches"],
-      ["of_pases_buenos_p90", "Accurate passes", "accuratePass"],
-    ], [XCA]),
+    id: "CMF", name: "Central Midfielder", grupo: "Medios", stats: [
+      s("of_xCA_p90", "xCA", "Expected chain value (passes)", 0.14),
+      s("of_pases_buenos_p90", "Accurate passes", "accuratePass", 0.13),
+      s("of_progresivos_p90", "Progressive passes", "progressivePasses", 0.12),
+      s("def_recuperaciones_p90", "Recoveries", "ballRecovery", 0.12),
+      s("of_xA_p90", "xA", "expectedAssists", 0.11),
+      s("of_toques_p90", "Touches", "touches", 0.10),
+      s("of_grandes_ocasiones_creadas_p90", "Big chances created", "bigChanceCreated", 0.10),
+      s("of_toques_area_rival_p90", "Touches opp. box", "touchesInOppBox", 0.09),
+      s("of_xG_p90", "xG", "expectedGoals", 0.05),
+      s("of_goles_p90", "Goals", "goals", 0.04),
+    ],
   },
   AMF: {
     id: "AMF", name: "Attacking Midfielder", grupo: "Mediapuntas", stats: tpl([
@@ -134,16 +136,17 @@ export const RADAR_TEMPLATES: Record<RadarTemplateId, RadarTemplate> = {
     ], [XCA, G_XG]),
   },
   W: {
-    id: "W", name: "Winger", grupo: "Extremos", stats: tpl([
-      ["of_regates_p90", "Dribbles won", "wonContest"],
-      ["of_centros_buenos_p90", "Accurate crosses", "accurateCross"],
-      GOALS,
-      ["of_asistencia_gol_p90", "Assists", "goalAssist"],
-      ["of_xA_p90", "xA", "expectedAssists"],
-      ["of_grandes_ocasiones_creadas_p90", "Big chances created", "bigChanceCreated"],
-      ["of_entradas_area_p90", "Box entries", "penAreaEntries"],
-      XG,
-    ], [XG, G_XG]),
+    id: "W", name: "Winger", grupo: "Extremos", stats: [
+      s("of_goles_p90", "Goals", "goals", 0.16),
+      s("of_xG_p90", "xG", "expectedGoals", 0.14),
+      s("of_asistencia_gol_p90", "Assists", "goalAssist", 0.14),
+      s("of_regates_p90", "Dribbles won", "wonContest", 0.13),
+      s("of_xA_p90", "xA", "expectedAssists", 0.12),
+      s("of_grandes_ocasiones_creadas_p90", "Big chances created", "bigChanceCreated", 0.10),
+      s("of_centros_buenos_p90", "Accurate crosses", "accurateCross", 0.08),
+      s("of_entradas_area_p90", "Box entries", "penAreaEntries", 0.07),
+      s("of_goles_menos_xg_p90", "Goals − xG", "goals − expectedGoals", 0.06),
+    ],
   },
   CF: {
     id: "CF", name: "Centre-Forward", grupo: "Delanteros", stats: tpl([

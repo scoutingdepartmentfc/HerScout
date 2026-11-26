@@ -27,7 +27,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
-import openpyxl
 import pandas as pd
 import requests
 from PIL import Image, ImageFilter
@@ -39,7 +38,6 @@ from .fotos_365 import sin_fondo, subir_foto as subir_foto_365
 from .photos import FotMobClient, normalizar, normalizar_club, sim_nombre, variantes_nombre
 from .positions import get_grupo_demarcacion
 from .scoring import puntuar_temporada
-from .sidearm import fetch_sidearm_roster, match_sidearm_player, resolve_sidearm_domain
 from .storage import Store, get_supabase_client
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -189,6 +187,8 @@ def match_espn_team(team_name: str, espn_teams: List[Dict[str, str]]) -> Optiona
 
 
 def read_wyscout_excel(path: str) -> List[Dict[str, Any]]:
+    import openpyxl
+
     wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
     ws = wb.active
     rows_iter = ws.iter_rows(values_only=True)
@@ -248,6 +248,7 @@ def build_metric_row(rec: Dict[str, Any], player_id: str, team_id: str) -> Dict[
         "minutes_played": int(round(mins)),
         # Ataque
         "of_goles_p90": _num(rec.get("Goals per 90")),
+        "of_goles_sin_penalti_p90": _num(rec.get("Non-penalty goals per 90"), _num(rec.get("Goals per 90"))),
         "of_xG_p90": _num(rec.get("xG per 90")),
         "of_tiros_p90": _num(rec.get("Shots per 90")),
         "of_toques_area_rival_p90": _num(rec.get("Touches in box per 90")),
@@ -317,7 +318,8 @@ def build_metric_row(rec: Dict[str, Any], player_id: str, team_id: str) -> Dict[
             "def_goles_encajados_p90": _num(rec.get("Conceded goals per 90")),
             "def_xg_contra_p90": _num(rec.get("xG against per 90")),
             "def_paradas_pct": _num(rec.get("Save rate, %")),
-            "def_goles_menos_xgc_p90": _num(rec.get("Prevented goals per 90")),
+            # En Wyscout "Prevented goals per 90" es positivo = bueno; en HerScout def_goles_menos_xgc_p90 es MALUS (negativo = bueno)
+            "def_goles_menos_xgc_p90": -_num(rec.get("Prevented goals per 90")),
             "def_salidas_libero_p90": _num(rec.get("Exits per 90")),
         })
 
@@ -530,6 +532,7 @@ def import_wyscout_excel(
         team_name_by_id = {t["id"]: t["name"] for t in team_map.values()}
 
         # 4a. SIDEARM Sports (1 petición por equipo, fotos oficiales + nombre completo + dorsal)
+        from .sidearm import fetch_sidearm_roster, match_sidearm_player, resolve_sidearm_domain
         _emit_progress(progress, 38, "Descargando fotos oficiales (SIDEARM Sports)", f"{len(team_map)} equipos")
         rosters_by_tid: Dict[str, List[Dict[str, Any]]] = {}
         dom_by_tid = {

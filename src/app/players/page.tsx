@@ -45,6 +45,7 @@ interface PlayerRow {
   leagueName?: string;
   leagueLogoUrl?: string;
   leagueCountry?: string | null;
+  leagueTier?: string | null;
   /** International club competitions she played (Champions League...) */
   competitions?: string[];
   seasonName?: string | null;
@@ -432,6 +433,7 @@ function PlayersDirectoryContent() {
   const [leaguesModalOpen, setLeaguesModalOpen] = useState(false);
   const [leagueModalSearch, setLeagueModalSearch] = useState("");
   const [selectedLeagues, setSelectedLeagues] = useState<string[]>([]);
+  const [leagueTierFilter, setLeagueTierFilter] = useState<string>("all");
   const [seasonFilter, setSeasonFilter] = useState("all");
   const [minRatingFilter, setMinRatingFilter] = useState<string>("all");
   const [minAge, setMinAge] = useState<number>(15);
@@ -633,6 +635,10 @@ function PlayersDirectoryContent() {
       list = list.filter((p) => playerInLeagues(selectedLeagues, p.leagueName, p.leagueCountry, p.competitions));
     }
 
+    if (leagueTierFilter !== "all") {
+      list = list.filter((p) => p.leagueTier === leagueTierFilter);
+    }
+
     const minA = minAge > 15 ? minAge : null;
     const maxA = maxAge < 42 ? maxAge : null;
     if (minA != null || maxA != null) {
@@ -705,7 +711,7 @@ function PlayersDirectoryContent() {
       });
     }
     return sorted;
-  }, [allPlayers, deferredSearch, selectedPositions, selectedTeams, selectedLeagues, minAge, maxAge, minRatingFilter, minValue, maxValue, minMinutes, maxMinutes, minGoals, maxGoals, sortBy, sortOrder]);
+  }, [allPlayers, deferredSearch, selectedPositions, selectedTeams, selectedLeagues, leagueTierFilter, minAge, maxAge, minRatingFilter, minValue, maxValue, minMinutes, maxMinutes, minGoals, maxGoals, sortBy, sortOrder]);
 
   // Dynamically adapt available teams based on selected leagues, and available leagues based on selected teams
   const filteredAvailableTeams = useMemo(() => {
@@ -819,6 +825,7 @@ function PlayersDirectoryContent() {
     setSelectedPositions([]);
     setSelectedTeams([]);
     setSelectedLeagues([]);
+    setLeagueTierFilter("all");
     setSeasonFilter("all");
     setMinRatingFilter("all");
     setMinAge(15);
@@ -843,6 +850,7 @@ function PlayersDirectoryContent() {
     (selectedPositions.length > 0 ? 1 : 0) +
     (selectedTeams.length > 0 ? 1 : 0) +
     (selectedLeagues.length > 0 ? 1 : 0) +
+    (leagueTierFilter !== "all" ? 1 : 0) +
     (seasonFilter !== "all" ? 1 : 0) +
     (minRatingFilter !== "all" ? 1 : 0) +
     (minAge > 15 || maxAge < 42 ? 1 : 0) +
@@ -957,7 +965,7 @@ function PlayersDirectoryContent() {
                   {selectedPositions.length === 0
                     ? "All Positions (GK, DEF, MID, ATT)"
                     : selectedPositions.length === 1
-                      ? selectedPositions[0]
+                      ? getPositionBadge(selectedPositions[0]).fullEn
                       : `${selectedPositions.length} positions selected`}
                 </span>
                 <span className="text-[10px] text-emerald-400 font-semibold shrink-0">
@@ -991,6 +999,23 @@ function PlayersDirectoryContent() {
                       {filteredAvailableLeagues.length}
                     </span>
                   </button>
+                </div>
+
+                {/* League Tier / Division */}
+                <div>
+                  <label className="text-[10px] font-semibold text-slate-300 uppercase tracking-wider block mb-1">
+                    Division / Tier
+                  </label>
+                  <Select
+                    value={leagueTierFilter}
+                    onChange={(e) => setLeagueTierFilter(e.target.value)}
+                    className="bg-navy-950/90 border-white/10 h-9 text-xs rounded-lg"
+                  >
+                    <option value="all">All Divisions</option>
+                    <option value="1st">1st Division</option>
+                    <option value="2nd">2nd Division</option>
+                    <option value="intl">International only</option>
+                  </Select>
                 </div>
 
                 {/* Club / Team (Modal with large badges) */}
@@ -1764,7 +1789,7 @@ function PlayersDirectoryContent() {
                     <button
                       key={pos.id}
                       type="button"
-                      title={pos.id}
+                      title={getPositionBadge(pos.id).fullEn}
                       onClick={() =>
                         setSelectedPositions((prev) =>
                           prev.includes(pos.id) ? prev.filter((x) => x !== pos.id) : [...prev, pos.id]

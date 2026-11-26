@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
-import { isCurrentSeason } from "@/lib/currentSeason";
+import { isCurrentSeason, competitionWeighted } from "@/lib/currentSeason";
 import { requireAdmin } from "@/lib/adminGuard";
 
 // Fields that can be edited by hand from the profile (stored in players.manual_overrides)
@@ -44,7 +44,6 @@ export async function PATCH(
     return NextResponse.json({ error: readError?.message || "Player not found" }, { status: 404 });
   }
 
-  // null / "" / [] removes the override (back to the scraped value)
   const overrides: Record<string, any> = { ...(current.manual_overrides || {}) };
   for (const [key, kind] of Object.entries(EDITABLE)) {
     if (!(key in (body.overrides || {}))) continue;
@@ -87,10 +86,11 @@ export async function GET(
 
   try {
     const db = supabaseAdmin as any;
-    // League averages (cached; precomputed in Postgres) start now, in parallel with everything else
+    const callerOrgId = req.headers.get("x-user-org-id") || "";
+    const isOrgUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(callerOrgId);
+
     const leagueAveragesPromise = getLeagueAverages(db);
 
-    // 1. Player Demographics
     const playerPromise = db
       .from("players")
       .select(`
@@ -121,35 +121,48 @@ export async function GET(
         fm_team_badge_url,
         current_league_name,
         current_league_logo_url,
+        updated_at,
         teams ( id, name, badge_url, league_name, league_logo_url )
       `)
       .eq("id", playerId)
       .single();
 
-    // 2. Player Season Stats with raw metric breakdown
     const statsPromise = db
       .from("player_season_stats")
       .select(`
         *,
         seasons ( name, start_date, end_date, is_active ),
         competitions ( name, logo_url, country ),
-        teams ( name, badge_url, league_name, league_logo_url )
+        teams ( id, name, badge_url, league_name, league_logo_url )
       `)
       .eq("player_id", playerId)
       .order("updated_at", { ascending: false });
 
-    // 3. Match log: every match played with its 0-9.9 rating, and the Soccerdonna career data
-    // All the player's queries go out at once (they used to wait for each other)
-    const [playerRes, statsRes, matchStats, matchScores, marketValues, transfers, nationalTeams, injuries, physical, eaRatings] = await Promise.all([
+    const [
+      playerRes,
+      statsRes,
+      matchStats,
+      matchScores,
+      marketValues,
+      transfers,
+      nationalTeams,
+      injuries,
+      physical,
+      eaRatings,
+      reportsRes,
+      watchlistRes,
+      assignmentsRes,
+    ] = await Promise.all([
       playerPromise,
       statsPromise,
       db.from("player_match_stats")
         .select(`
-          match_id, team_id, competition_id, season_id, match_date, minutes_played, is_starter, goals, assists, demarcacion,
+          match_id, team_id, competition_id, season_id, match_date, minutes_played, is_starter,
+          goals, assists, xg, yellow_cards, passes_completed, passes_total, demarcacion,
           matches ( home_score, away_score, home_team_id, away_team_id, has_events, has_stats,
             home_team:teams!home_team_id ( id, name, badge_url ),
             away_team:teams!away_team_id ( id, name, badge_url ),
-            competitions ( name ) )
+            competitions ( name, logo_url ) )
         `)
         .eq("player_id", playerId)
         .order("match_date", { ascending: false })
@@ -163,17 +176,25 @@ export async function GET(
         .eq("player_id", playerId).order("date", { ascending: false }),
       db.from("player_national_teams").select("team_name, debut_date, caps, goals")
         .eq("player_id", playerId).order("caps", { ascending: false }),
-      db.from("player_injuries").select("season, from_date, until_date, days, injury")
+      db.from("player_injuries").select("season, from_date, until_date, days, games_missed, injury")
         .eq("player_id", playerId).order("from_date", { ascending: false }),
-      // Football Manager physical attributes (1-20), imported with pipeline/fm_fisico.py
       db.from("player_physical")
         .select("acceleration, agility, balance, jumping_reach, natural_fitness, pace, stamina, strength, fm_name, fm_club, updated_at")
         .eq("player_id", playerId).maybeSingle(),
-      // EA SPORTS FC ratings (1-99), imported with pipeline/ea_fc.py
       db.from("player_ea_ratings")
         .select("pace, acceleration, sprint_speed, physicality, jumping, stamina, strength, aggression, edition, ea_club")
         .eq("player_id", playerId).maybeSingle(),
+      (isOrgUuid
+        ? db.from("scouting_reports").select("*").eq("player_id", playerId).eq("organization_id", callerOrgId).order("created_at", { ascending: false })
+        : db.from("scouting_reports").select("*").eq("player_id", playerId).order("created_at", { ascending: false })
+      ),
+      (isOrgUuid
+        ? db.from("watchlist_players").select("id, priority_tier").eq("player_id", playerId).eq("organization_id", callerOrgId).limit(1)
+        : db.from("watchlist_players").select("id, priority_tier").eq("player_id", playerId).limit(1)
+      ),
+      db.from("scout_assignments").select("id, match_id, scout_name, mode, status, match_report_id").eq("player_id", playerId),
     ]);
+
     if (playerRes.error || !playerRes.data) {
       return NextResponse.json({ error: "Player not found" }, { status: 404 });
     }
@@ -195,6 +216,7 @@ export async function GET(
         hasStats: m.has_stats !== false,
         date: r.match_date,
         competition: m.competitions?.name,
+        competitionLogoUrl: m.competitions?.logo_url || null,
         isHome,
         opponent: { id: opponent?.id, name: opponent?.name, badgeUrl: opponent?.badge_url },
         goalsFor: isHome ? m.home_score : m.away_score,
@@ -203,6 +225,10 @@ export async function GET(
         starter: r.is_starter,
         goals: r.goals,
         assists: r.assists,
+        xg: r.xg != null ? Number(r.xg) : 0,
+        yellowCards: r.yellow_cards ?? 0,
+        passesCompleted: r.passes_completed ?? 0,
+        passesTotal: r.passes_total ?? 0,
         position: r.demarcacion,
         rating: sc?.score_general ?? null,
         ratings: sc
@@ -211,32 +237,97 @@ export async function GET(
       };
     });
 
-    // Opta data available per (competition, season): matches played, how many with eventing / matchstats, goals and assists
     const coverageKey = (comp: string, season: string) => `${comp}|${season}`;
-    const coverage = new Map<string, { matches: number; minutes: number; withEvents: number; withStats: number; goals: number; assists: number }>();
+    const coverage = new Map<
+      string,
+      {
+        matches: number;
+        starts: number;
+        minutes: number;
+        withEvents: number;
+        withStats: number;
+        goals: number;
+        assists: number;
+        xg: number;
+        yellowCards: number;
+        passesCompleted: number;
+        passesTotal: number;
+        ratingSum: number;
+        ratingCount: number;
+      }
+    >();
     for (const r of matchStats.data || []) {
       const k = coverageKey(r.competition_id, r.season_id);
-      const c = coverage.get(k) || { matches: 0, minutes: 0, withEvents: 0, withStats: 0, goals: 0, assists: 0 };
+      const c = coverage.get(k) || {
+        matches: 0,
+        starts: 0,
+        minutes: 0,
+        withEvents: 0,
+        withStats: 0,
+        goals: 0,
+        assists: 0,
+        xg: 0,
+        yellowCards: 0,
+        passesCompleted: 0,
+        passesTotal: 0,
+        ratingSum: 0,
+        ratingCount: 0,
+      };
       c.matches += 1;
+      if (r.is_starter) c.starts += 1;
       c.minutes += Number(r.minutes_played) || 0;
       c.goals += Number(r.goals) || 0;
       c.assists += Number(r.assists) || 0;
+      c.xg += Number(r.xg) || 0;
+      c.yellowCards += Number(r.yellow_cards) || 0;
+      c.passesCompleted += Number(r.passes_completed) || 0;
+      c.passesTotal += Number(r.passes_total) || 0;
+      const sc = scoreByMatch.get(r.match_id);
+      if (sc?.score_general != null && Number.isFinite(Number(sc.score_general))) {
+        c.ratingSum += Number(sc.score_general);
+        c.ratingCount += 1;
+      }
       if (r.matches?.has_events) c.withEvents += 1;
       if (r.matches?.has_stats !== false) c.withStats += 1;
       coverage.set(k, c);
     }
 
-    // One entry per season with Opta data, latest first. Seasons where she played too few minutes for a
-    // season rating (pipeline MIN_MINUTOS_TEMPORADA) still appear, without ratings.
     const seasonStats: any[] = (statsRes.data || []).map((s: any) => {
       const cov = coverage.get(coverageKey(s.competition_id, s.season_id)) || null;
+      const mins = Number(s.minutes_played) || cov?.minutes || 0;
+      const passPct =
+        cov && cov.passesTotal > 0
+          ? Math.round((cov.passesCompleted / cov.passesTotal) * 100)
+          : s.passes_pct != null
+          ? Math.round(Number(s.passes_pct))
+          : null;
+      const xgTotal =
+        cov && cov.xg > 0
+          ? Math.round(cov.xg * 10) / 10
+          : s.xg_p90 != null && mins > 0
+          ? Math.round(((Number(s.xg_p90) * mins) / 90) * 10) / 10
+          : 0;
+      const avgMatchRating =
+        cov && cov.ratingCount > 0
+          ? Math.round((cov.ratingSum / cov.ratingCount) * 100) / 100
+          : s.nota_global != null
+          ? Math.round((Number(s.nota_global) / 10) * 100) / 100
+          : s.score_general != null
+          ? Math.round(Number(s.score_general) * 100) / 100
+          : null;
       return {
         ...s,
-        goals: cov?.goals ?? 0,
-        assists: cov?.assists ?? 0,
+        goals: cov?.goals ?? (s.goals_p90 != null && mins > 0 ? Math.round((Number(s.goals_p90) * mins) / 90) : 0),
+        assists: cov?.assists ?? (s.assists_p90 != null && mins > 0 ? Math.round((Number(s.assists_p90) * mins) / 90) : 0),
+        starts: cov?.starts ?? s.starts ?? 0,
+        xg: xgTotal,
+        yellowCards: cov?.yellowCards ?? 0,
+        passPct,
+        avgMatchRating,
         coverage: cov,
       };
     });
+
     const conFila = new Set(seasonStats.map((s) => coverageKey(s.competition_id, s.season_id)));
     const sinFila = Array.from(coverage.entries()).filter(([k]) => !conFila.has(k));
     if (sinFila.length) {
@@ -256,9 +347,14 @@ export async function GET(
           seasons: si ? { name: si.name, start_date: si.start_date, end_date: si.end_date, is_active: si.is_active } : null,
           competitions: si?.competitions || null,
           matches_played: c.matches,
+          starts: c.starts,
           minutes_played: c.minutes,
           goals: c.goals,
           assists: c.assists,
+          xg: Math.round(c.xg * 10) / 10,
+          yellowCards: c.yellowCards,
+          passPct: c.passesTotal > 0 ? Math.round((c.passesCompleted / c.passesTotal) * 100) : null,
+          avgMatchRating: c.ratingCount > 0 ? Math.round((c.ratingSum / c.ratingCount) * 100) / 100 : null,
           coverage: c,
           sinNotas: true,
         });
@@ -270,14 +366,9 @@ export async function GET(
     );
 
     const seasonRow = seasonStats.find((s) => !s.sinNotas) || null;
-    // Only real metrics computed by the pipeline (no invented notes when radar_data is missing)
     const metricasMap: Record<string, [number, number]> = seasonRow?.radar_data?.metricas || {};
 
-    // All seasons together (default view): matches, minutes and Opta coverage are summed; ratings, metric
-    // values and metric notes are averaged weighted by the minutes of each season that has them.
     const allSeasons = seasonStats.length > 1 ? agregarTemporadas(seasonStats) : null;
-    // Current season (default view): every competition she plays this season (domestic league, cups, international
-    // club cups, national teams) together; the general rating is their average weighted by minutes
     const actuales = seasonStats.filter((s) => isCurrentSeason(s.seasons));
     const currentSeason = actuales.length
       ? agregarTemporadas(actuales, {
@@ -287,7 +378,7 @@ export async function GET(
         })
       : null;
 
-    // Calculate played positions from matchLog to know all positions she actually plays
+    // Calculate played positions from matchLog
     const posCounts: Record<string, { min: number; pj: number }> = {};
     (matchStats.data || []).forEach((m: any) => {
       const pos = m.demarcacion || p.primary_position;
@@ -298,30 +389,37 @@ export async function GET(
       }
     });
 
-    // Total minutes across all positions played
     const totalMinutesPlayed = Object.values(posCounts).reduce((acc, curr) => acc + (curr.min || 0), 0);
-
-    // Positions sorted by most minutes played
     const sortedPlayedPositions = Object.entries(posCounts)
       .sort((a, b) => b[1].min - a[1].min)
       .map(([pos]) => pos);
 
-    // Only positions with >= 20% of total minutes played (excluding the primary most used position)
     const qualifyingSecondaryPositions = Object.entries(posCounts)
       .filter(([pos, data]) => {
         if (pos === sortedPlayedPositions[0]) return false;
         if (totalMinutesPlayed <= 0) return false;
-        return (data.min / totalMinutesPlayed) >= 0.20;
+        return data.min / totalMinutesPlayed >= 0.2;
       })
       .sort((a, b) => b[1].min - a[1].min)
       .map(([pos]) => pos);
 
-    // Separate query so the profile still loads if the manual_overrides migration is not applied yet
     const { data: manual } = await db.from("players").select("manual_overrides").eq("id", playerId).maybeSingle();
     const o: Record<string, any> = manual?.manual_overrides || {};
     const scrapedPrimary = sortedPlayedPositions[0] || p.primary_position || "Midfielder";
-    // No current club (no Soccerdonna match and no current_team_id): club of her latest Opta match,
-    // only if it was played in the last 3 months (an older one may be a former club)
+
+    // Pick `perfiles` from the season_stats row that matches her most-used position (with most minutes),
+    // instead of blindly taking the first row (which could be a cup/national-team cameo in another position).
+    const primaryLower = scrapedPrimary.toLowerCase();
+    const perfilesRow =
+      seasonStats
+        .filter((s) => !s.sinNotas && s.radar_data?.perfiles && Object.keys(s.radar_data.perfiles).length > 0)
+        .sort((a, b) => {
+          const aMatch = (a.demarcacion || "").toLowerCase() === primaryLower ? 1 : 0;
+          const bMatch = (b.demarcacion || "").toLowerCase() === primaryLower ? 1 : 0;
+          if (aMatch !== bMatch) return bMatch - aMatch;
+          return (Number(b.minutes_played) || 0) - (Number(a.minutes_played) || 0);
+        })[0] || seasonRow;
+
     const recentLimit = new Date();
     recentLimit.setMonth(recentLimit.getMonth() - 3);
     const lastMatch = (matchStats.data || []).find((m: any) => m.match_date && new Date(m.match_date) >= recentLimit);
@@ -330,6 +428,88 @@ export async function GET(
       : null;
     const fallbackTeam = !p.fm_team_name && !p.teams ? lastTeam : null;
     const hasClub = !!(p.fm_team_name || p.teams || fallbackTeam);
+
+    const effectiveTeamId = p.teams?.id || fallbackTeam?.id || null;
+    const effectiveTeamName = p.fm_team_name || p.teams?.name || fallbackTeam?.name || "Unattached";
+
+    // Upcoming matches for player's current club (Block 12)
+    let upcomingMatches: any[] = [];
+    try {
+      const nowIso = new Date().toISOString();
+      let teamIdsToCheck: string[] = effectiveTeamId ? [effectiveTeamId] : [];
+      if (!teamIdsToCheck.length && effectiveTeamName !== "Unattached") {
+        const clean = effectiveTeamName.replace(/\b(FC|CF|WFC|CD|UD|SD|Women|Femenino|Femení)\b/gi, "").trim();
+        if (clean.length >= 3) {
+          const { data: tMatches } = await db
+            .from("teams")
+            .select("id")
+            .ilike("name", `%${clean}%`)
+            .limit(4);
+          teamIdsToCheck = (tMatches || []).map((t: any) => t.id);
+        }
+      }
+      if (teamIdsToCheck.length > 0) {
+        const orFilter = teamIdsToCheck.map((id) => `home_team_id.eq.${id},away_team_id.eq.${id}`).join(",");
+        const { data: upData } = await db
+          .from("matches")
+          .select(`
+            id, match_date, status, week, venue_name, time_confirmed,
+            home_team_id, away_team_id,
+            home_team:teams!home_team_id ( id, name, badge_url ),
+            away_team:teams!away_team_id ( id, name, badge_url ),
+            competitions ( id, name, logo_url )
+          `)
+          .or(orFilter)
+          .neq("status", "Played")
+          .gte("match_date", nowIso)
+          .order("match_date", { ascending: true })
+          .limit(3);
+
+        const assignByMatch = new Map<string, any>(
+          (!assignmentsRes.error ? assignmentsRes.data || [] : []).map((a: any) => [a.match_id, a])
+        );
+        upcomingMatches = (upData || []).map((m: any) => {
+          const isHome = teamIdsToCheck.includes(m.home_team_id);
+          const opp = isHome ? m.away_team : m.home_team;
+          const asg = assignByMatch.get(m.id) || null;
+          return {
+            id: m.id,
+            date: m.match_date,
+            week: m.week,
+            timeConfirmed: m.time_confirmed !== false,
+            venue: m.venue_name || null,
+            isHome,
+            competition: m.competitions?.name || "Match",
+            competitionLogoUrl: m.competitions?.logo_url || null,
+            opponent: { id: opp?.id, name: opp?.name || "Opponent", badgeUrl: opp?.badge_url || null },
+            assignment: asg
+              ? { id: asg.id, scoutName: asg.scout_name, mode: asg.mode, status: asg.status }
+              : null,
+          };
+        });
+      }
+    } catch {
+      upcomingMatches = [];
+    }
+
+    const scoutingReports = !reportsRes.error && Array.isArray(reportsRes.data)
+      ? reportsRes.data.map((r: any) => ({
+          id: r.id,
+          createdAt: r.created_at,
+          updatedAt: r.updated_at,
+          status: r.status || "draft",
+          scoutName: r.scout_name || "Scout",
+          rating: r.rating != null ? Number(r.rating) : null,
+          recommendation: r.recommendation || "monitor_tier_b",
+          tacticalNotes: r.tactical_notes || "",
+          strengths: Array.isArray(r.strengths) ? r.strengths : [],
+          weaknesses: Array.isArray(r.weaknesses) ? r.weaknesses : [],
+          matchFixture: r.match_fixture || "",
+          competition: r.competition || "",
+          observationDate: r.observation_date || r.created_at?.slice(0, 10),
+          spondaData: r.sponda_data || {},
+        }))
+      : [];
 
     const scraped = {
       id: p.id,
@@ -342,8 +522,8 @@ export async function GET(
       playedPositions: sortedPlayedPositions,
       positionsMap: posCounts,
       grupoDemarcacion: p.grupo_demarcacion,
-      perfil: seasonRow?.radar_data?.perfil || null,
-      perfiles: seasonRow?.radar_data?.perfiles || null,
+      perfil: perfilesRow?.radar_data?.perfil || seasonRow?.radar_data?.perfil || null,
+      perfiles: perfilesRow?.radar_data?.perfiles || seasonRow?.radar_data?.perfiles || null,
       shirtNumber: p.shirt_number,
       height: p.height,
       weight: p.weight,
@@ -356,17 +536,14 @@ export async function GET(
       otherPositions: qualifyingSecondaryPositions,
       sdPosition: p.tm_position_main,
       citizenship: p.citizenship || [],
-      teamId: p.teams?.id || fallbackTeam?.id,
-      // Club actual y su liga según Soccerdonna; si no, el equipo Opta
-      teamName: p.fm_team_name || p.teams?.name || fallbackTeam?.name || "Unattached",
+      teamId: effectiveTeamId,
+      teamName: effectiveTeamName,
       badgeUrl: (p.fm_team_name ? p.fm_team_badge_url : null) || p.teams?.badge_url || fallbackTeam?.badge_url,
-      // Without a current club (and no match in the last 3 months) the league of an old season is not shown either
       leagueName: p.current_league_name || p.teams?.league_name || (hasClub ? seasonRow?.competitions?.name || seasonRow?.teams?.league_name : null),
       leagueLogoUrl: p.current_league_logo_url || p.teams?.league_logo_url || (hasClub ? seasonRow?.competitions?.logo_url || seasonRow?.teams?.league_logo_url : null),
     };
 
     return NextResponse.json({
-      // Manual edits win over scraped data; `scraped` lets the edit form show the original values
       player: { ...scraped, ...o, manualOverrides: o },
       scraped,
       seasonStats,
@@ -376,19 +553,30 @@ export async function GET(
       marketValues: marketValues.data || [],
       transfers: transfers.data || [],
       nationalTeams: nationalTeams.data || [],
-      injuries: injuries.data || [],
+      injuries: !injuries.error ? injuries.data || [] : [],
       physical: physical.error ? null : physical.data || null,
       eaRatings: eaRatings.error ? null : eaRatings.data || null,
       metricas: metricasMap,
       leagueAverages,
+      scoutingReports,
+      upcomingMatches,
+      isInWatchlist: !watchlistRes.error && (watchlistRes.data?.length || 0) > 0,
+      latestUpdatedAt: seasonRow?.updated_at || p.updated_at || null,
     });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
 
-const NOTAS = ["nota_global", "nota_ataque", "nota_construccion", "nota_defensa", "nota_balon_parado",
-  "nota_disponibilidad", "percentile_general"];
+const NOTAS = [
+  "nota_global",
+  "nota_ataque",
+  "nota_construccion",
+  "nota_defensa",
+  "nota_balon_parado",
+  "nota_disponibilidad",
+  "percentile_general",
+];
 
 function agregarTemporadas(
   seasons: any[],
@@ -396,29 +584,34 @@ function agregarTemporadas(
 ) {
   const conNotas = seasons.filter((s) => !s.sinNotas);
   const mins = (s: any) => Number(s.minutes_played) || 0;
-  const media = (vals: [number, number][]) => {
-    const peso = vals.reduce((n, [, w]) => n + w, 0);
-    return peso > 0 ? vals.reduce((n, [v, w]) => n + v * w, 0) / peso : null;
+  const media = (vals: [number, number][], damped = false) => {
+    const peso = vals.reduce((n, [, w]) => n + (damped ? Math.sqrt(w) : w), 0);
+    return peso > 0 ? vals.reduce((n, [v, w]) => n + v * (damped ? Math.sqrt(w) : w), 0) / peso : null;
   };
 
   const notas: Record<string, number | null> = {};
   for (const k of NOTAS) {
-    notas[k] = media(conNotas.filter((s) => s[k] != null).map((s) => [Number(s[k]), mins(s)]));
+    notas[k] = competitionWeighted(conNotas, k);
   }
+
+  const hasAnchor = conNotas.some((s) => mins(s) >= 450);
+  const notasPool = hasAnchor ? conNotas.filter((s) => mins(s) >= 180) : conNotas;
+  const noteWeightPool = notasPool.length ? notasPool : conNotas;
 
   const porMetrica: Record<string, { v: [number, number][]; n: [number, number][] }> = {};
   for (const s of conNotas) {
+    const inNotePool = noteWeightPool.includes(s);
     for (const [k, par] of Object.entries<any>(s.radar_data?.metricas || {})) {
       if (!Array.isArray(par)) continue;
       const e = (porMetrica[k] ||= { v: [], n: [] });
       if (par[0] != null) e.v.push([Number(par[0]), mins(s)]);
-      if (par[1] != null) e.n.push([Number(par[1]), mins(s)]);
+      if (par[1] != null && inNotePool) e.n.push([Number(par[1]), mins(s)]);
     }
   }
   const metricas: Record<string, [number, number]> = {};
   for (const [k, e] of Object.entries(porMetrica)) {
-    const v = media(e.v);
-    const n = media(e.n);
+    const v = media(e.v, false);
+    const n = media(e.n, true) ?? media(e.v, true);
     if (v != null && n != null) metricas[k] = [Math.round(v * 1000) / 1000, Math.round(n * 100) / 100];
   }
 
@@ -456,7 +649,6 @@ function agregarTemporadas(
 
 let cachedLeagueAverages: Record<string, number> | null = null;
 let lastCacheTime = 0;
-// Los datos cambian con la descarga diaria del pipeline
 const LEAGUE_AVERAGES_TTL_MS = 60 * 60 * 1000;
 
 async function getLeagueAverages(db: any): Promise<Record<string, number>> {
@@ -466,7 +658,6 @@ async function getLeagueAverages(db: any): Promise<Record<string, number>> {
   }
 
   try {
-    // Calculadas en Postgres (migración 20261126120000_query_performance.sql): radar_data no sale de la base de datos
     const rpc = await db.rpc("league_metric_averages");
     if (!rpc.error) {
       const averages: Record<string, number> = {};
@@ -476,7 +667,6 @@ async function getLeagueAverages(db: any): Promise<Record<string, number>> {
       return averages;
     }
 
-    // Sin la migración: cálculo antiguo en Node
     const { data } = await db
       .from("player_season_stats")
       .select("minutes_played, radar_data")
@@ -519,4 +709,3 @@ async function getLeagueAverages(db: any): Promise<Record<string, number>> {
     return cachedLeagueAverages || {};
   }
 }
-

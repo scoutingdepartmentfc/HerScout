@@ -37,42 +37,34 @@ MIN_MINUTOS_TEMPORADA = 90
 MIN_MINUTOS_REFERENCIA = 450
 MIN_REFERENCIA_GRUPO = 8
 # Recorte de cada métrica a ±Z_RECORTE desviaciones: un gol en 30' no dispara la nota.
-Z_RECORTE = 2.5
+Z_RECORTE = 3.0
 # Nota global = PESO_CLAVE * métricas clave de su posición (categorias.PLANTILLAS_POSICION) + resto categorías.
-PESO_CLAVE = 0.65
-# Cada métrica se compara con tres medias de su demarcación (scoring._z_combinada): la de su liga-temporada, la de
-# sus compañeras de equipo en la misma demarcación y la general de todas las ligas descargadas (pipeline-cache
-# referencias/global.json). Si falta alguna (pocas jugadoras), se reparte su peso entre las demás.
-PESOS_REFERENCIA = {'liga': 0.5, 'equipo': 0.2, 'general': 0.3}
+PESO_CLAVE = 0.80
+# Cada métrica se compara con dos medias de su demarcación (scoring._z_combinada): la de su liga-temporada
+# y la general de todas las ligas descargadas (pipeline-cache referencias/global.json). Sin comparación
+# intra-equipo ('equipo': 0.0) para no penalizar a jugadoras top que comparten plantilla con otras estrellas.
+PESOS_REFERENCIA = {'liga': 0.70, 'equipo': 0.0, 'general': 0.30}
 MIN_REFERENCIA_GLOBAL = 20  # filas mínimas de una demarcación entre todas las ligas para usar la media general
+# Suavizado bayesiano de la nota global cuando una jugadora lleva menos de 600':
+# evita que cameos de 90'-200' lideren la liga; a partir de 600' el factor es 1.0 (sin castigo).
+K_MINUTOS_TEMPORADA_SHRINK = 480.0
+MIN_MINUTOS_SHRINK_FULL = 600.0
 # Nota por partido: mezcla del modelo calibrado con FotMob y la escala propia (métricas clave de la posición +
 # categorías). 1.0 = solo el modelo; 0.0 = solo la escala propia.
 PESO_MODELO_PARTIDO = 0.5
 # Muestra baja: con menos minutos o partidos la nota se muestra con aviso y no entra en rankings ni top 10.
 MIN_MINUTOS_NOTA = 270
 MIN_PARTIDOS_NOTA = 3
-# Escala de las notas 0-100 (métrica, subcategoría, categoría y global), comparable entre ligas:
-# nota = nivel de la liga + NOTA_DESVIACION * desviaciones típicas frente a su grupo de demarcación en la liga.
-# Por encima de NOTA_TECHO_INICIO la escala se comprime hacia NOTA_TECHO: un 90+ es excepcional.
-NOTA_MEDIA_LIGA = 62.0
-NOTA_DESVIACION = 11.0
-NOTA_TECHO_INICIO = 80.0
+# Escala de las notas 0-100 (métrica, subcategoría, categoría y global), puramente intra-liga (Opción 1):
+# todas las competiciones usan NOTA_MEDIA_LIGA como media para que la nota cuadre con el radar y no dependa
+# de desplazamientos manuales por liga. Por encima de NOTA_TECHO_INICIO se comprime suavemente hacia NOTA_TECHO.
+NOTA_MEDIA_LIGA = 64.0
+NOTA_DESVIACION = 13.0
+NOTA_TECHO_INICIO = 84.0
 NOTA_TECHO = 99.0
-# Nivel de cada liga = nota de su jugadora media. La fuerza no sale de las métricas brutas (en ligas flojas
-# también son más altas): se calibra con la nota de las mismas jugadoras al cambiar de liga y el valor de mercado.
-NIVEL_LIGA = {
-    '6vq8j5p3av14nr3iuyi4okhjt': 66.0,  # Women's Super League
-    '5k620c7y6dlbmcm88dt3eb7t': 62.0,   # Liga F
-    '2z7257m7hj58zuxcjrsg4erzc': 61.0,  # Frauen Bundesliga
-    '2aso72utuctat2ecs6nahjss6': 60.0,  # Première Ligue
-    '81txfenlgw75nq3u2nfdkj92o': 57.0,  # Serie A Women
-    '1dvti26ywxhu6eafhupc3f2pe': 57.0,  # Coppa Italia Women
-    '7ut48s80k421xixh6ev5i6h62': 54.0,  # Liga MX Femenil
-    '9q5tcfz0w9ku2xq49c0df48b8': 52.0,  # Northern Super League
-    '9p3nnxhdjahfn8qswpzy8oyc3': 52.0,  # A-League Women
-    'cydr5rltozch9qnzjurt1r7d9': 52.0,  # SWPL 1
-    '2fhhxvyhwkxd6gpgg9nbb2p2i': 42.0,  # Segunda Federación Femenina
-}
+# Opción 1: sin desplazamiento manual por liga (todas las competiciones se puntúan respecto a su propio grupo
+# con base NOTA_MEDIA_LIGA). Se mantiene el símbolo vacío por compatibilidad de importación.
+NIVEL_LIGA = {}
 # Competiciones internacionales de CLUBES (Opta): se descargan desde /admin → "Competiciones internacionales".
 # Sus partidos suman a la jugadora, pero NO cambian la liga del club ni el equipo actual de la jugadora.
 COMPETICIONES_INTERNACIONALES = {
@@ -100,24 +92,6 @@ COMPETICIONES_SELECCIONES = {
 COMPETICIONES_INTERNACIONALES.update(COMPETICIONES_SELECCIONES)
 # Regiones de opta_catalog.country que no son un país (competición internacional)
 REGIONES_INTERNACIONALES = {'Europe', 'World', 'Asia', 'Africa', 'N/C America', 'South America', 'Oceania'}
-NIVEL_LIGA.update({
-    '65oi3upjiu4lcukayuq66fhuc': 70.0,  # FIFA Women's Champions Cup (campeonas continentales)
-    '55hcphd1ccc6eai1ms77460on': 67.0,  # UWCL
-    '3tybapqetnmdiam9exg1q4yl0': 60.0,  # Concacaf W Champions Cup
-    '135j6qi3ap8i3vc9hwdo4fjtg': 60.0,  # NWSL x Liga MX Summer Cup
-    '1nwgd1b2d903fvnwgnsdadkb8': 58.0,  # UWEC
-    'avrpx5lanaaxagr4h4duxj3vc': 54.0,  # Libertadores
-    'ep4po13e04rjg268pgete0fvu': 50.0,  # AFC WCL
-    'xu2nd3dkwdun0j71tnqabfo4': 46.0,   # CAF WCL
-    '2irmeeywhndovbhbgkz37v9qs': 44.0,  # All-Island Cup
-    '43029a6fvhou87zehkd5u8fyt': 68.0,  # UEFA Women's Championship (Eurocopa)
-    '9mr92dlx7ryaxhi07sgt90ish': 50.0,  # Europeo Sub-19
-    '4x9xyyv419q82evpbl37j77gt': 48.0,  # Mundial Sub-17
-    'dcgbs1vkp9y3y31li7s95i51f': 54.0,  # Mundial Sub-20
-    '14bdhdgyjd4pqapxjhfq267ge': 50.0,  # Copa Africana de Naciones (WAFCON)
-    '1tn3f9q6oy40vivvsq3ik5awa': 42.0,  # Baltic Women's League
-    '8dxigebf8ankjp0ncupwte0b8': 40.0,  # OFC WCL
-})
 
 
 def es_selecciones(comp) -> bool:
@@ -129,7 +103,7 @@ def es_internacional(comp) -> bool:
     return comp.get('id') in COMPETICIONES_INTERNACIONALES or comp.get('country') in REGIONES_INTERNACIONALES
 
 
-NIVEL_LIGA_DEFECTO = 52.0  # Ligas nuevas de /admin hasta darles nivel aquí
+NIVEL_LIGA_DEFECTO = NOTA_MEDIA_LIGA  # Opción 1: todas las ligas comparten NOTA_MEDIA_LIGA
 # Grupos de demarcación con menos jugadoras que esto se comparan con toda la liga
 MIN_JUGADORAS_GRUPO = 5
 

@@ -29,11 +29,11 @@ import pandas as pd
 from .categorias import (CATEGORIAS, DIFERENCIAS, JERARQUIA, JERARQUIA_PORTEROS, MALUS, METRICA_SUB, PESOS_GRUPO,
                          PLANTILLAS_POSICION, plantilla_de)
 from .perfiles import calcular_perfiles_v4
-from .config import (K_MINUTOS_PARTIDO, MIN_ACTUACIONES_GRUPO, MIN_JUGADORAS_GRUPO, MIN_MINUTOS_NOTA,
-                     MIN_MINUTOS_REFERENCIA, MIN_MINUTOS_TEMPORADA, MIN_PARTIDOS_NOTA, MIN_REFERENCIA_GLOBAL,
-                     MIN_REFERENCIA_GRUPO, NOTA_DESVIACION, NOTA_MEDIA_LIGA, NOTA_PARTIDO_DESVIACION,
-                     NOTA_PARTIDO_MEDIA, NOTA_PARTIDO_MIN, NOTA_TECHO, NOTA_TECHO_INICIO, PESO_CLAVE,
-                     PESO_MODELO_PARTIDO, PESOS_REFERENCIA, Z_RECORTE)
+from .config import (K_MINUTOS_PARTIDO, K_MINUTOS_TEMPORADA_SHRINK, MIN_ACTUACIONES_GRUPO, MIN_JUGADORAS_GRUPO,
+                     MIN_MINUTOS_NOTA, MIN_MINUTOS_REFERENCIA, MIN_MINUTOS_SHRINK_FULL, MIN_MINUTOS_TEMPORADA,
+                     MIN_PARTIDOS_NOTA, MIN_REFERENCIA_GLOBAL, MIN_REFERENCIA_GRUPO, NOTA_DESVIACION, NOTA_MEDIA_LIGA,
+                     NOTA_PARTIDO_DESVIACION, NOTA_PARTIDO_MEDIA, NOTA_PARTIDO_MIN, NOTA_TECHO, NOTA_TECHO_INICIO,
+                     PESO_CLAVE, PESO_MODELO_PARTIDO, PESOS_REFERENCIA, Z_RECORTE)
 
 # Acumulados por demarcación para la media general entre ligas: {grupo: {métrica: [n, suma, suma_cuadrados]}}
 Acumulado = Dict[str, Dict[str, List[float]]]
@@ -511,13 +511,37 @@ def _z_metricas(df: pd.DataFrame, cols: List[str], grupos: pd.Series, ref: pd.Se
 
 
 def _nota_clave(z: pd.DataFrame, df: pd.DataFrame) -> pd.Series:
-    """Media ponderada de las métricas clave de su posición (PLANTILLAS_POSICION, demarcación principal)."""
-    plantilla = [plantilla_de(d, g) for d, g in zip(df['demarcacion'], df['grupo_demarcacion'])]
+    """Media ponderada de las métricas clave de su posición (PLANTILLAS_POSICION).
+    En jugadoras polivalentes (`_demarcaciones` con >=20% de minutos en varias posiciones), combina las
+    plantillas de sus posiciones ponderadas por los minutos jugados en cada una."""
+    from .positions import get_grupo_demarcacion
+
     clave = pd.Series(np.nan, index=df.index)
-    for i, t in zip(df.index, plantilla):
-        w = {k: p for k, p in PLANTILLAS_POSICION[t].items() if k in z.columns and pd.notna(z.at[i, k])}
-        if w:
-            clave[i] = sum(z.at[i, k] * p for k, p in w.items()) / sum(w.values())
+    has_dems = '_demarcaciones' in df.columns
+    for i in df.index:
+        g = df.at[i, 'grupo_demarcacion']
+        d = df.at[i, 'demarcacion']
+        dems_raw = df.at[i, '_demarcaciones'] if has_dems else None
+        pesos_pos: Dict[str, float] = {}
+        if isinstance(dems_raw, dict) and dems_raw:
+            tot_m = sum(float(v.get('min', 0) or 0) for v in dems_raw.values())
+            if tot_m > 0:
+                for dem_k, info in dems_raw.items():
+                    m_dem = float(info.get('min', 0) or 0)
+                    if m_dem / tot_m >= 0.20:
+                        tpl_k = plantilla_de(dem_k, get_grupo_demarcacion(dem_k))
+                        pesos_pos[tpl_k] = pesos_pos.get(tpl_k, 0.0) + m_dem
+        if not pesos_pos:
+            pesos_pos = {plantilla_de(d, g): 1.0}
+
+        val_tot, w_tot = 0.0, 0.0
+        for t, w_pos in pesos_pos.items():
+            w = {k: p for k, p in PLANTILLAS_POSICION[t].items() if k in z.columns and pd.notna(z.at[i, k])}
+            if w:
+                val_tot += (sum(z.at[i, k] * p for k, p in w.items()) / sum(w.values())) * w_pos
+                w_tot += w_pos
+        if w_tot > 0:
+            clave[i] = val_tot / w_tot
     return clave
 
 
@@ -554,7 +578,11 @@ def puntuar_categorias(df_temp: pd.DataFrame, nivel: float = NOTA_MEDIA_LIGA, ge
 
     por_cats = pd.Series([nota_cats(i) for i in df.index], index=df.index, dtype=float)
     glob = (PESO_CLAVE * clave.fillna(por_cats) + (1 - PESO_CLAVE) * por_cats.fillna(clave))
-    df['nota_global'] = _relativa_liga(glob, grupos, ref, nivel)
+    # Suavizado bayesiano en muestras cortas (< MIN_MINUTOS_SHRINK_FULL) para que 1-2 partidos no disparen la nota
+    confianza = ((mins / (mins + K_MINUTOS_TEMPORADA_SHRINK)) /
+                 (MIN_MINUTOS_SHRINK_FULL / (MIN_MINUTOS_SHRINK_FULL + K_MINUTOS_TEMPORADA_SHRINK))).clip(upper=1.0)
+    z_glob = _z_grupo(glob, grupos, ref).clip(-3.5, 3.5) * confianza
+    df['nota_global'] = _nota_desde_z(z_glob, nivel)
     cats = cats.apply(lambda col: _relativa_liga(col, grupos, ref, nivel))
     subs = subs.apply(lambda col: _relativa_liga(col, grupos, ref, nivel))
     for cat in CATEGORIAS:

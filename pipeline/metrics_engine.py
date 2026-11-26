@@ -269,6 +269,8 @@ def calc_metricas_jugador(grp, df_events, pid, t_id, mins_played, titular_pct, v
     grp_of = grp[ev_name.isin(EVENTOS_OF)]
 
     goles = (ev_name == 'Goal').sum()
+    no_pen = (grp['Penalty'] == 'No') if 'Penalty' in grp.columns else pd.Series(True, index=grp.index)
+    goles_sin_penalti = ((ev_name == 'Goal') & no_pen).sum()
     assist_col = to_num(grp, 'Assist')
     asistencias = assist_col.isin([13, 14, 15]).sum()
     asist_gol = (assist_col == 16).sum()
@@ -293,11 +295,13 @@ def calc_metricas_jugador(grp, df_events, pid, t_id, mins_played, titular_pct, v
     ambidiestro_pct = (min(left_foot, right_foot) / tot_feet * 100) * 2 if tot_feet > 0 else 0.0
 
     xg_sum = float(grp['Expected Goals'].sum()) if 'Expected Goals' in grp.columns else 0.0
+    xg_sin_penalti = float(grp.loc[no_pen, 'Expected Goals'].sum()) if 'Expected Goals' in grp.columns else 0.0
     xa_sum = float(grp['Expected Assist'].sum()) if 'Expected Assist' in grp.columns else 0.0
 
     m_of_gen = {
         'of_polivalencia': calcular_polivalencia(grp_of),
         'of_goles_p90': p90(goles, mins_played),
+        'of_goles_sin_penalti_p90': p90(goles_sin_penalti, mins_played),
         'of_asistencias_p90': p90(asistencias, mins_played),
         'of_asistencia_gol_p90': p90(asist_gol, mins_played),
         'of_pases_buenos_p90': p90(pases_ok, mins_played),
@@ -316,6 +320,7 @@ def calc_metricas_jugador(grp, df_events, pid, t_id, mins_played, titular_pct, v
         'of_xCA_p90': p90(calc_xca(grp), mins_played),
         'of_ambidiestro_pct': ambidiestro_pct,
         'of_xG_p90': p90(xg_sum, mins_played),
+        'of_xg_sin_penalti_p90': p90(xg_sin_penalti, mins_played),
         'of_xA_p90': p90(xa_sum, mins_played),
     }
 
@@ -565,6 +570,7 @@ def metricas_matchstats(st: Dict[str, float], mins_played, titular_pct, veces_ca
         'comp_polivalencia_demarcacion': num_dems_jugadas,
         # Ofensivo
         'of_goles_p90': p90(g('goals'), mins_played),
+        'of_goles_sin_penalti_p90': p90(max(g('goals') - g('attPenGoal'), 0.0), mins_played),
         'of_asistencia_gol_p90': p90(g('goalAssist'), mins_played),
         'of_asistencias_p90': p90(max(g('totalAttAssist') - g('goalAssist'), 0), mins_played),
         'of_pases_buenos_p90': p90(g('accuratePass'), mins_played),
@@ -677,11 +683,12 @@ def metricas_matchstats(st: Dict[str, float], mins_played, titular_pct, veces_ca
 
 
 def metricas_xg_contra(df: pd.DataFrame, team_id: Any, mins_played: float, st: Dict[str, float]) -> Dict[str, float]:
-    """Portera: xG de los tiros del rival (modelo xG del eventing) y goles encajados − xG en contra (menos es
-    mejor: negativo = encaja menos de lo esperado). Con < 90' se reparte el xG rival por los minutos jugados."""
+    """Portera: xG de los tiros a puerta del rival (Attempt Saved / Goal, evitando inflar con tiros fuera o
+    bloqueados) y goles encajados − xG en contra (negativo = evita goles). Con < 90' se escala por minutos."""
     if 'Expected Goals' not in df.columns or not mins_played:
         return {}
-    xgc = float(df.loc[df['Team ID'].astype(str) != str(team_id), 'Expected Goals'].fillna(0).sum())
+    rival_on_target = (df['Team ID'].astype(str) != str(team_id)) & df['Event Name'].isin(['Attempt Saved', 'Goal'])
+    xgc = float(df.loc[rival_on_target, 'Expected Goals'].fillna(0).sum())
     xgc *= min(mins_played / 90.0, 1.0)
     return {'def_xg_contra_p90': p90(xgc, mins_played),
             'def_goles_menos_xgc_p90': p90(float(st.get('goalsConceded', 0.0)) - xgc, mins_played)}

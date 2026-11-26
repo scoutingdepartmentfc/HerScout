@@ -6,7 +6,8 @@ import { computeRatingTrend, PlayerTrend } from "@/lib/ratingTrend";
 import { NO_CLUB_DATA, preferOptaClub } from "@/lib/playerClub";
 import { isLowSample, lowSampleLast } from "@/lib/sampleSize";
 import { leagueId, playerInLeagues } from "@/lib/leagueId";
-import { isCurrentSeason, minutesWeighted } from "@/lib/currentSeason";
+import { isCurrentSeason, competitionWeighted } from "@/lib/currentSeason";
+import { getLeagueSubPriority } from "@/lib/leagueCountry";
 import { fetchSeasonStatsRows, perfilSelect } from "@/lib/seasonStatsRows";
 
 /** Country shown for international competitions in the league filter (grouped apart from countries) */
@@ -26,6 +27,7 @@ type BaseData = {
   rows: any[];
   leagueCountryByCode: Map<string, string>;
   leagueCountryByName: Map<string, string>;
+  leagueLevelByCode: Map<string, string>;
   trendByPlayer: Map<string, "up" | "neutral" | "down">;
   last5ByPlayer: Map<string, number[]>;
   // Every player (stats or not): the ones without season stats are listed without ratings
@@ -224,7 +226,7 @@ async function loadBaseData(db: any): Promise<BaseData> {
 
     const [rows, sdLRes, trendsRes, allPlayers, teamsRes] = await Promise.all([
       fetchSeasonStatsRows(db, STATS_SELECT, onlyWithFicha),
-      db.from("sd_leagues").select("code, name, country"),
+      db.from("sd_leagues").select("code, name, country, level"),
       fetchTrends(db).catch(() => ({ trendByPlayer: new Map(), last5ByPlayer: new Map() })),
       fetchAllPlayers(),
       db.from("teams").select("id, name, badge_url, league_name").not("league_name", "is", null),
@@ -233,11 +235,13 @@ async function loadBaseData(db: any): Promise<BaseData> {
 
     const leagueCountryByCode = new Map<string, string>();
     const leagueCountryByName = new Map<string, string>();
+    const leagueLevelByCode = new Map<string, string>();
     // A name can belong to several countries ("Women's Super League" = England and Switzerland):
     // those names are left out of the by-name map so the league code decides.
     const ambiguousNames = new Set<string>();
     for (const item of sdLRes?.data || []) {
       if (item.code && item.country) leagueCountryByCode.set(item.code, item.country);
+      if (item.code && item.level) leagueLevelByCode.set(item.code, item.level);
       if (!item.name || !item.country) continue;
       const k = item.name.toLowerCase();
       const prev = leagueCountryByName.get(k);
@@ -258,7 +262,7 @@ async function loadBaseData(db: any): Promise<BaseData> {
       leagueName: t.league_name || null,
     }));
 
-    const data: BaseData = { rows, leagueCountryByCode, leagueCountryByName, trendByPlayer, last5ByPlayer, allPlayers, recentTeamByPlayer, teamsMaster };
+    const data: BaseData = { rows, leagueCountryByCode, leagueCountryByName, leagueLevelByCode, trendByPlayer, last5ByPlayer, allPlayers, recentTeamByPlayer, teamsMaster };
     baseCache = { timestamp: Date.now(), data };
     processedCache.clear();
     return data;
@@ -323,7 +327,7 @@ export async function GET(req: NextRequest) {
     if (cachedProcessed && cachedProcessed.timestamp === baseCache?.timestamp) {
       processed = cachedProcessed.value;
     } else {
-      const { rows, leagueCountryByCode, leagueCountryByName, trendByPlayer, last5ByPlayer, allPlayers, recentTeamByPlayer, teamsMaster } = base;
+      const { rows, leagueCountryByCode, leagueCountryByName, leagueLevelByCode, trendByPlayer, last5ByPlayer, allPlayers, recentTeamByPlayer, teamsMaster } = base;
 
       // Extract available season names from all rows for the filter dropdown
       const availableSeasons = Array.from(
@@ -375,28 +379,13 @@ export async function GET(req: NextRequest) {
             return ea?.pace != null ? Number(ea.pace) : ea?.physicality != null ? Number(ea.physicality) : null;
           })();
 
-          // Calculate weighted averages across all seasons with stats
+          // Calculate totals over all rows in scope, and keep ratings consistent on the evaluated scope
+          // (current season across competitions when season="all", or the selected season).
           let totalMins = 0;
           let totalMatches = 0;
-          const sumWeighted: Record<string, { sum: number; mins: number }> = {
-            nota_global: { sum: 0, mins: 0 },
-            nota_ataque: { sum: 0, mins: 0 },
-            nota_construccion: { sum: 0, mins: 0 },
-            nota_defensa: { sum: 0, mins: 0 },
-            nota_balon_parado: { sum: 0, mins: 0 },
-            nota_disponibilidad: { sum: 0, mins: 0 },
-          };
-
           for (const r of playerRows) {
-            const m = Number(r.minutes_played) || 0;
-            totalMins += m;
+            totalMins += Number(r.minutes_played) || 0;
             totalMatches += Number(r.matches_played) || 0;
-            for (const k of Object.keys(sumWeighted)) {
-              if (r[k] != null) {
-                sumWeighted[k].sum += Number(r[k]) * m;
-                sumWeighted[k].mins += m;
-              }
-            }
           }
 
           // Most recent season in scope (all its competitions added up): matches, minutes and goals
@@ -409,21 +398,25 @@ export async function GET(req: NextRequest) {
             : playerRows.filter((r: any) => (r.seasons?.name || null) === recentSeason);
           const recentSum = (k: string) => recentRows.reduce((n: number, r: any) => n + (Number(r[k]) || 0), 0);
 
-          const getWeightedVal = (k: string) => {
-            const item = sumWeighted[k];
-            return item.mins > 0 ? item.sum / item.mins : null;
-          };
-
-          // General rating: all competitions of that season, weighted by minutes
-          const latestNotaGlobal =
-            minutesWeighted(recentRows.filter((r: any) => Number(r.nota_global) > 0), "nota_global") ??
-            getWeightedVal("nota_global");
+          const ratedRecent = recentRows.filter((r: any) => Number(r.nota_global) > 0);
+          const ratingRows = ratedRecent.length ? ratedRecent : playerRows.filter((r: any) => Number(r.nota_global) > 0);
+          const getScopeRating = (k: string) => competitionWeighted(ratingRows, k);
+          const latestNotaGlobal = getScopeRating("nota_global");
 
           // No current club (Soccerdonna / current_team_id): club of her latest match, only if within the last 3 months
           const fallbackTeam = !p.teams && !p.fm_team_name ? recentTeamByPlayer.get(p.id) || null : null;
           const teamName = p.fm_team_name || p.teams?.name || NO_CLUB_DATA;
           const hasClub = !!(p.fm_team_name || p.teams);
           const leagueName = p.current_league_name || latestRow.competitions?.name || null;
+          const sdLevel = p.sd_league_code ? leagueLevelByCode.get(p.sd_league_code) || null : null;
+          const subPrio = leagueName ? getLeagueSubPriority(leagueName) : 4;
+          const leagueTier = (() => {
+            const lvl = (sdLevel || "").toLowerCase();
+            if (lvl.includes("1st") || lvl.includes("first") || subPrio === 1) return "1st";
+            if (lvl.includes("2nd") || lvl.includes("second") || subPrio === 3) return "2nd";
+            if (competitions.length > 0 && !leagueName) return "intl";
+            return "other";
+          })();
           const leagueCountry =
             (p.sd_league_code ? leagueCountryByCode.get(p.sd_league_code) : null) ||
             (leagueName ? leagueCountryByName.get(leagueName.toLowerCase()) : null) ||
@@ -463,17 +456,18 @@ export async function GET(req: NextRequest) {
             leagueName,
             leagueLogoUrl: p.current_league_logo_url || p.teams?.league_logo_url || (leagueName === latestRow.competitions?.name ? latestRow.competitions?.logo_url : null),
             leagueCountry,
+            leagueTier,
             seasonName: season !== "all" ? season : playerRows.length > 1 ? `All seasons (${playerRows.length})` : playerRows[0]?.seasons?.name || null,
             competitions,
             isAccumulated: playerRows.length > 1,
             minutesPlayed: totalMins,
             matchesPlayed: totalMatches,
             notaGlobal: latestNotaGlobal,
-            notaAtaque: getWeightedVal("nota_ataque"),
-            notaConstruccion: getWeightedVal("nota_construccion"),
-            notaDefensa: getWeightedVal("nota_defensa"),
-            notaBalonParado: getWeightedVal("nota_balon_parado"),
-            notaDisponibilidad: getWeightedVal("nota_disponibilidad"),
+            notaAtaque: getScopeRating("nota_ataque"),
+            notaConstruccion: getScopeRating("nota_construccion"),
+            notaDefensa: getScopeRating("nota_defensa"),
+            notaBalonParado: getScopeRating("nota_balon_parado"),
+            notaDisponibilidad: getScopeRating("nota_disponibilidad"),
             notaFisico,
             hasRatings: true,
             lowSample: isLowSample(totalMins, totalMatches),
@@ -527,6 +521,13 @@ export async function GET(req: NextRequest) {
           leagueName,
           leagueLogoUrl: p.current_league_logo_url || p.teams?.league_logo_url,
           leagueCountry,
+          leagueTier: (() => {
+            const lvl = (p.sd_league_code ? leagueLevelByCode.get(p.sd_league_code) || "" : "").toLowerCase();
+            const subPrio = leagueName ? getLeagueSubPriority(leagueName) : 4;
+            if (lvl.includes("1st") || lvl.includes("first") || subPrio === 1) return "1st";
+            if (lvl.includes("2nd") || lvl.includes("second") || subPrio === 3) return "2nd";
+            return "other";
+          })(),
           seasonName: null,
           competitions: [],
           isAccumulated: false,

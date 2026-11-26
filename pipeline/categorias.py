@@ -24,11 +24,12 @@ DISPONIBILIDAD = ('disponibilidad', 'Disponibilidad', [
 JERARQUIA: Jerarquia = [
     ('ataque', 'Ataque', [
         ('finalizacion', 'Finalización', [
-            'of_goles_p90', 'of_goles_dentro_area_p90', 'of_goles_fuera_area_p90', 'of_xG_p90', 'of_tiros_p90',
-            'of_tiros_dentro_pct', 'of_disparos_fuera_area_p90', 'of_grandes_ocasiones_p90', 'of_1vs1_portero_p90',
-            'of_remates_primeras_p90', 'of_remates_primeras_1er_palo_p90', 'of_remates_primeras_2o_palo_p90',
-            'of_remates_centro_p90', 'of_goles_remate_centro_p90', 'of_toques_area_rival_p90',
-            'of_remates_cabeza_p90', 'of_goles_cabeza_p90', 'of_goles_menos_xg_p90', 'of_tiros_puerta_area_p90']),
+            'of_goles_p90', 'of_goles_sin_penalti_p90', 'of_goles_dentro_area_p90', 'of_goles_fuera_area_p90',
+            'of_xG_p90', 'of_xg_sin_penalti_p90', 'of_tiros_p90', 'of_tiros_dentro_pct', 'of_disparos_fuera_area_p90',
+            'of_grandes_ocasiones_p90', 'of_1vs1_portero_p90', 'of_remates_primeras_p90',
+            'of_remates_primeras_1er_palo_p90', 'of_remates_primeras_2o_palo_p90', 'of_remates_centro_p90',
+            'of_goles_remate_centro_p90', 'of_toques_area_rival_p90', 'of_remates_cabeza_p90', 'of_goles_cabeza_p90',
+            'of_goles_menos_xg_p90', 'of_tiros_puerta_area_p90']),
         ('creacion', 'Creación', [
             'of_asistencias_p90', 'of_asistencia_gol_p90', 'of_xA_p90', 'of_xCA_p90', 'of_pases_con_ventaja_p90',
             'of_pases_filtrados_p90', 'of_pases_filtrados_pct', 'of_pase_largo_finalizacion_p90',
@@ -86,7 +87,7 @@ JERARQUIA_PORTEROS: Jerarquia = [
     ('defensa', 'Portería', [
         ('paradas', 'Paradas', [
             'def_paradas_p90', 'def_paradas_pct', 'def_paradas_area_p90', 'def_paradas_fuera_area_p90',
-            'def_paradas_ocasiones_claras_p90', 'def_goles_encajados_p90', 'def_xg_contra_p90', 'def_porteria_cero_pct',
+            'def_paradas_ocasiones_claras_p90', 'def_goles_encajados_p90', 'def_porteria_cero_pct',
             'def_penaltis_parados_pct', 'def_errores_p90', 'def_goles_menos_xgc_p90']),
         ('dominio_area', 'Dominio del área', [
             'def_blocajes_p90', 'def_blocajes_pct', 'def_centros_no_blocados_p90', 'def_despejes_punos_p90',
@@ -108,20 +109,19 @@ def jerarquia_de(grupo: str) -> Jerarquia:
 
 
 # Peso de cada categoría en la parte "categorías" de la nota global, según lo que se le pide a cada grupo de
-# demarcación. Disponibilidad (minutos, partidos, titularidad) NO entra en la nota: se valora el rendimiento
-# p90, no cuánto juega. nota_disponibilidad se sigue calculando como dato informativo.
+# demarcación. Disponibilidad y Balón Parado (solo puntúa a lanzadoras) NO penalizan en la nota global.
 PESOS_GRUPO: Dict[str, Dict[str, float]] = {
-    'Delanteros':  {'ataque': 0.50, 'construccion': 0.20, 'defensa': 0.15, 'balon_parado': 0.15},
-    'Extremos':    {'ataque': 0.40, 'construccion': 0.35, 'defensa': 0.15, 'balon_parado': 0.10},
-    'Mediapuntas': {'ataque': 0.40, 'construccion': 0.40, 'defensa': 0.10, 'balon_parado': 0.10},
-    'Medios':      {'ataque': 0.15, 'construccion': 0.45, 'defensa': 0.30, 'balon_parado': 0.10},
-    'Laterales':   {'ataque': 0.20, 'construccion': 0.30, 'defensa': 0.40, 'balon_parado': 0.10},
-    'Centrales':   {'ataque': 0.05, 'construccion': 0.30, 'defensa': 0.55, 'balon_parado': 0.10},
-    'Porteros':    {'ataque': 0.00, 'construccion': 0.30, 'defensa': 0.70, 'balon_parado': 0.00},
+    'Delanteros':  {'ataque': 0.55, 'construccion': 0.25, 'defensa': 0.20, 'balon_parado': 0.00},
+    'Extremos':    {'ataque': 0.45, 'construccion': 0.40, 'defensa': 0.15, 'balon_parado': 0.00},
+    'Mediapuntas': {'ataque': 0.45, 'construccion': 0.45, 'defensa': 0.10, 'balon_parado': 0.00},
+    'Medios':      {'ataque': 0.20, 'construccion': 0.50, 'defensa': 0.30, 'balon_parado': 0.00},
+    'Laterales':   {'ataque': 0.25, 'construccion': 0.35, 'defensa': 0.40, 'balon_parado': 0.00},
+    'Centrales':   {'ataque': 0.10, 'construccion': 0.30, 'defensa': 0.60, 'balon_parado': 0.00},
+    'Porteros':    {'ataque': 0.00, 'construccion': 0.20, 'defensa': 0.80, 'balon_parado': 0.00},
 }
 
-# Métricas en las que menos es mejor
-MALUS = {'comp_disciplina_malus', 'def_goles_encajados_p90', 'def_xg_contra_p90', 'def_errores_p90', 'def_centros_no_blocados_p90',
+# Métricas en las que menos es mejor (def_xg_contra_p90 se excluye: mide volumen defensivo del equipo, no error de GK)
+MALUS = {'comp_disciplina_malus', 'def_goles_encajados_p90', 'def_errores_p90', 'def_centros_no_blocados_p90',
          'of_perdidas_p90', 'def_goles_menos_xgc_p90'}
 # Diferencias (pueden ser negativas): un 0 sí informa, no se descarta como "sin acciones" (scoring._z_metricas)
 DIFERENCIAS = {'of_goles_menos_xg_p90', 'def_goles_menos_xgc_p90'}
@@ -149,9 +149,18 @@ def _plantilla(metricas: List[str], extras: Tuple[str, ...] = ()) -> Dict[str, f
 
 
 PLANTILLAS_POSICION: Dict[str, Dict[str, float]] = {
-    'GK': _plantilla(['def_paradas_p90', 'def_goles_encajados_p90', 'def_xg_contra_p90', 'of_pases_buenos_p90',
-                      'of_envios_largos_p90', 'of_toques_p90', 'def_salidas_libero_p90', 'def_paradas_area_p90'],
-                     ('def_goles_menos_xgc_p90',)),
+    'GK': {
+        'def_goles_menos_xgc_p90': 0.22,
+        'def_paradas_pct': 0.16,
+        'def_paradas_p90': 0.14,
+        'def_paradas_ocasiones_claras_p90': 0.10,
+        'def_paradas_area_p90': 0.08,
+        'def_salidas_libero_p90': 0.08,
+        'def_goles_encajados_p90': 0.05,
+        'of_pases_buenos_p90': 0.07,
+        'of_envios_largos_p90': 0.05,
+        'of_saques_puerta_pct': 0.05,
+    },
     'CB': _plantilla(['def_duelos_ganados_p90', 'def_aereos_ganados_p90', 'def_intercepciones_p90', 'def_despejes_p90',
                       'of_pases_buenos_p90', 'of_pases_rival_buenos_p90', 'of_pases_largos_p90', 'of_toques_p90']),
     'FB': _plantilla(['of_xA_p90', 'of_centros_buenos_p90', 'of_toques_area_rival_p90', 'of_entradas_ultimo_tercio_p90',
@@ -161,15 +170,32 @@ PLANTILLAS_POSICION: Dict[str, Dict[str, float]] = {
                        'def_recuperaciones_p90', 'of_toques_p90', 'of_pases_buenos_p90', 'of_pases_rival_buenos_p90',
                        'of_toques_area_rival_p90'],
                       ('of_xCA_p90',)),
-    'CMF': _plantilla(['of_grandes_ocasiones_creadas_p90', 'of_xA_p90', 'of_goles_p90', 'of_xG_p90',
-                       'of_toques_area_rival_p90', 'def_recuperaciones_p90', 'of_toques_p90', 'of_pases_buenos_p90'],
-                      ('of_xCA_p90',)),
+    'CMF': {
+        'of_xCA_p90': 0.14,
+        'of_pases_buenos_p90': 0.13,
+        'of_progresivos_p90': 0.12,
+        'def_recuperaciones_p90': 0.12,
+        'of_xA_p90': 0.11,
+        'of_toques_p90': 0.10,
+        'of_grandes_ocasiones_creadas_p90': 0.10,
+        'of_toques_area_rival_p90': 0.09,
+        'of_xG_p90': 0.05,
+        'of_goles_p90': 0.04,
+    },
     'AMF': _plantilla(['of_toques_area_rival_p90', 'of_toques_p90', 'of_goles_p90', 'of_asistencia_gol_p90', 'of_xG_p90',
                        'of_grandes_ocasiones_creadas_p90', 'of_regates_p90', 'of_xA_p90'],
                       ('of_xCA_p90', 'of_goles_p90', 'of_xG_p90', 'of_goles_menos_xg_p90')),
-    'W': _plantilla(['of_regates_p90', 'of_centros_buenos_p90', 'of_goles_p90', 'of_asistencia_gol_p90', 'of_xA_p90',
-                     'of_grandes_ocasiones_creadas_p90', 'of_entradas_area_p90', 'of_xG_p90'],
-                    ('of_goles_p90', 'of_xG_p90', 'of_goles_menos_xg_p90')),
+    'W': {
+        'of_goles_p90': 0.16,
+        'of_xG_p90': 0.14,
+        'of_asistencia_gol_p90': 0.14,
+        'of_regates_p90': 0.13,
+        'of_xA_p90': 0.12,
+        'of_grandes_ocasiones_creadas_p90': 0.10,
+        'of_centros_buenos_p90': 0.08,
+        'of_entradas_area_p90': 0.07,
+        'of_goles_menos_xg_p90': 0.06,
+    },
     'CF': _plantilla(['of_goles_p90', 'of_xG_p90', 'of_asistencia_gol_p90', 'of_xA_p90', 'of_tiros_puerta_area_p90',
                       'of_toques_area_rival_p90', 'of_toques_p90', 'def_aereos_ganados_p90'],
                      ('of_goles_menos_xg_p90',)),

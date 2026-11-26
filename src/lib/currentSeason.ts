@@ -32,3 +32,32 @@ export function minutesWeighted(rows: any[], key: string): number | null {
   }
   return mins > 0 ? sum / mins : null;
 }
+
+const MIN_COMP_RELIABLE = 180;
+const MIN_COMP_ANCHOR = 450;
+
+/**
+ * Multi-competition rating average: weights each competition by damped minutes (`sqrt(minutes)`) so a
+ * Champions League run keeps fair weight alongside a longer league, while ignoring <180' cup cameos when
+ * the player already has a >=450' competition in the same scope. Always satisfies min <= avg <= max.
+ */
+export function competitionWeighted(rows: any[], key: string): number | null {
+  const valid = rows.filter((r) => {
+    const v = r?.[key];
+    const m = Number(r?.minutes_played) || 0;
+    return v != null && Number.isFinite(Number(v)) && m > 0;
+  });
+  if (!valid.length) return null;
+  const hasAnchor = valid.some((r) => Number(r.minutes_played) >= MIN_COMP_ANCHOR);
+  const filtered = hasAnchor ? valid.filter((r) => Number(r.minutes_played) >= MIN_COMP_RELIABLE) : valid;
+  const pool = filtered.length ? filtered : valid;
+
+  let sum = 0;
+  let wSum = 0;
+  for (const r of pool) {
+    const w = Math.sqrt(Number(r.minutes_played));
+    sum += Number(r[key]) * w;
+    wSum += w;
+  }
+  return wSum > 0 ? sum / wSum : null;
+}

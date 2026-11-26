@@ -149,45 +149,49 @@ export default function PlayerComparisonPage() {
           const list = json.data || json.players || [];
           setAllPlayers(list);
 
+          const urlIds = typeof window !== "undefined"
+            ? (new URLSearchParams(window.location.search).get("players") || "")
+                .split(",")
+                .map((s) => s.trim())
+                .filter(Boolean)
+            : [];
+
+          const toCompareItem = (raw: any, color: string): ComparePlayerItem => ({
+            id: raw.id,
+            name: raw.name,
+            matchName: raw.matchName,
+            photoUrl: raw.photoUrl,
+            position: raw.position,
+            teamName: raw.teamName,
+            badgeUrl: raw.badgeUrl,
+            leagueName: raw.leagueName,
+            leagueLogoUrl: raw.leagueLogoUrl,
+            color,
+            rating: raw.notaGlobal,
+            age: raw.birthDate
+              ? Math.floor((Date.now() - new Date(raw.birthDate).getTime()) / (365.25 * 24 * 3600 * 1000))
+              : null,
+            minutesPlayed: raw.minutesPlayed,
+          });
+
+          if (urlIds.length > 0 && selectedPlayers.length === 0) {
+            const matched = urlIds
+              .map((id, idx) => {
+                const found = list.find((p: any) => p.id === id);
+                return found ? toCompareItem(found, PLAYER_COLORS[idx % PLAYER_COLORS.length]) : null;
+              })
+              .filter((x): x is ComparePlayerItem => x !== null);
+            if (matched.length > 0) {
+              setSelectedPlayers(matched);
+              return;
+            }
+          }
+
           // Auto-select first two top players if none selected
           if (list.length >= 2 && selectedPlayers.length === 0) {
-            const p1 = list[0];
-            const p2 = list[1];
             setSelectedPlayers([
-              {
-                id: p1.id,
-                name: p1.name,
-                matchName: p1.matchName,
-                photoUrl: p1.photoUrl,
-                position: p1.position,
-                teamName: p1.teamName,
-                badgeUrl: p1.badgeUrl,
-                leagueName: p1.leagueName,
-                leagueLogoUrl: p1.leagueLogoUrl,
-                color: PLAYER_COLORS[0],
-                rating: p1.notaGlobal,
-                age: p1.birthDate
-                  ? Math.floor((Date.now() - new Date(p1.birthDate).getTime()) / (365.25 * 24 * 3600 * 1000))
-                  : null,
-                minutesPlayed: p1.minutesPlayed,
-              },
-              {
-                id: p2.id,
-                name: p2.name,
-                matchName: p2.matchName,
-                photoUrl: p2.photoUrl,
-                position: p2.position,
-                teamName: p2.teamName,
-                badgeUrl: p2.badgeUrl,
-                leagueName: p2.leagueName,
-                leagueLogoUrl: p2.leagueLogoUrl,
-                color: PLAYER_COLORS[1],
-                rating: p2.notaGlobal,
-                age: p2.birthDate
-                  ? Math.floor((Date.now() - new Date(p2.birthDate).getTime()) / (365.25 * 24 * 3600 * 1000))
-                  : null,
-                minutesPlayed: p2.minutesPlayed,
-              },
+              toCompareItem(list[0], PLAYER_COLORS[0]),
+              toCompareItem(list[1], PLAYER_COLORS[1]),
             ]);
           }
         }

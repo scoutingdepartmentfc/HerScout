@@ -379,15 +379,96 @@ class TestScoring(unittest.TestCase):
 
     def test_techo_suave_de_la_escala(self):
         """Cada punto cuesta más arriba, sin llegar a 99; por debajo del umbral la escala es lineal."""
-        from pipeline.config import NOTA_TECHO, NOTA_TECHO_INICIO
+        from pipeline.config import NOTA_DESVIACION, NOTA_TECHO, NOTA_TECHO_INICIO
         from pipeline.scoring import _nota_desde_z
         n = _nota_desde_z(pd.Series([0.0, 1.0, 2.0, 3.0, 4.0, 10.0]), 62.0)
         self.assertEqual(n[0], 62.0)
-        self.assertEqual(n[1], 73.0)
+        self.assertEqual(n[1], 62.0 + NOTA_DESVIACION)
         self.assertLessEqual(n[1], NOTA_TECHO_INICIO)
         self.assertTrue(n.is_monotonic_increasing)
         self.assertLess(n[4] - n[3], n[3] - n[2])
         self.assertLess(n[5], NOTA_TECHO)
+
+    def test_portera_no_penalizada_por_xg_contra_equipo(self):
+        """Una portera con muchas paradas y goles prevenidos positivos supera ampliamente a otra con peor
+        rendimiento aunque su defensa conceda más xG en contra."""
+        filas = []
+        for m in range(10):
+            # 6 porteras base con métricas medias
+            for k in range(6):
+                filas.append({
+                    'match_id': f'm{m}', 'player_id': f'gk{k}', 'team_id': f't{k}', 'player_name': f'GK{k}',
+                    'match_date': f'2026-10-{m + 10:02d}T16:00:00Z', 'demarcacion': 'Portero',
+                    'grupo_demarcacion': 'Porteros', 'minutes_played': 90, 'is_starter': True,
+                    **{c: 0 for c in ['goals', 'assists', 'xg', 'xa', 'xca', 'passes_completed', 'passes_total',
+                                      'progressive_passes', 'takeons_successful', 'takeons_total', 'tackles_won',
+                                      'tackles_total', 'interceptions', 'recoveries', 'aerials_won', 'aerials_total']},
+                    'def_paradas_p90': 3.0, 'def_paradas_pct': 70.0, 'def_goles_encajados_p90': 1.2,
+                    'def_xg_contra_p90': 1.2, 'def_goles_menos_xgc_p90': 0.0, 'def_paradas_area_p90': 2.0,
+                    'def_salidas_libero_p90': 0.4, 'of_pases_buenos_p90': 25.0, 'of_envios_largos_p90': 1.5,
+                    'of_saques_puerta_pct': 75.0, 'comp_minutos': 90.0,
+                })
+            # Katie-type: defensa débil (2.5 xGC/90) pero #1 en paradas (5.0) y goles prevenidos (-0.7)
+            filas.append({
+                'match_id': f'm{m}', 'player_id': 'atkinson', 'team_id': 't_weak', 'player_name': 'Atkinson',
+                'match_date': f'2026-10-{m + 10:02d}T16:00:00Z', 'demarcacion': 'Portero',
+                'grupo_demarcacion': 'Porteros', 'minutes_played': 90, 'is_starter': True,
+                **{c: 0 for c in ['goals', 'assists', 'xg', 'xa', 'xca', 'passes_completed', 'passes_total',
+                                  'progressive_passes', 'takeons_successful', 'takeons_total', 'tackles_won',
+                                  'tackles_total', 'interceptions', 'recoveries', 'aerials_won', 'aerials_total']},
+                'def_paradas_p90': 5.0, 'def_paradas_pct': 82.0, 'def_goles_encajados_p90': 1.8,
+                'def_xg_contra_p90': 2.5, 'def_goles_menos_xgc_p90': -0.7, 'def_paradas_area_p90': 3.5,
+                'def_salidas_libero_p90': 0.5, 'of_pases_buenos_p90': 22.0, 'of_envios_largos_p90': 1.6,
+                'of_saques_puerta_pct': 75.0, 'comp_minutos': 90.0,
+            })
+        _, t = calcular_temporada(pd.DataFrame(filas))
+        t = t.set_index('player_id')
+        self.assertGreater(t.at['atkinson', 'nota_global'], 78.0)
+
+    def test_shrinkage_muestra_corta(self):
+        """Un cameo de 90' con stats infladas no debe superar a una titular élite de 1800'."""
+        filas = []
+        for m in range(20):
+            filas.append({
+                'match_id': f'm{m}', 'player_id': 'estrella', 'team_id': 't1', 'player_name': 'Estrella',
+                'match_date': f'2026-10-{m + 10:02d}T16:00:00Z', 'demarcacion': 'Delantero',
+                'grupo_demarcacion': 'Delanteros', 'minutes_played': 90, 'is_starter': True,
+                **{c: 0 for c in ['goals', 'assists', 'xg', 'xa', 'xca', 'passes_completed', 'passes_total',
+                                  'progressive_passes', 'takeons_successful', 'takeons_total', 'tackles_won',
+                                  'tackles_total', 'interceptions', 'recoveries', 'aerials_won', 'aerials_total']},
+                'of_goles_p90': 0.85, 'of_xG_p90': 0.75, 'comp_minutos': 90.0,
+            })
+            for k in range(5):
+                filas.append({
+                    'match_id': f'm{m}', 'player_id': f'base{k}', 'team_id': f'tb{k}', 'player_name': f'B{k}',
+                    'match_date': f'2026-10-{m + 10:02d}T16:00:00Z', 'demarcacion': 'Delantero',
+                    'grupo_demarcacion': 'Delanteros', 'minutes_played': 90, 'is_starter': True,
+                    **{c: 0 for c in ['goals', 'assists', 'xg', 'xa', 'xca', 'passes_completed', 'passes_total',
+                                      'progressive_passes', 'takeons_successful', 'takeons_total', 'tackles_won',
+                                      'tackles_total', 'interceptions', 'recoveries', 'aerials_won', 'aerials_total']},
+                    'of_goles_p90': 0.2 + k * 0.05, 'of_xG_p90': 0.2 + k * 0.05, 'comp_minutos': 90.0,
+                })
+        filas.append({
+            'match_id': 'm0', 'player_id': 'cameo', 'team_id': 't2', 'player_name': 'Cameo',
+            'match_date': '2026-10-10T16:00:00Z', 'demarcacion': 'Delantero',
+            'grupo_demarcacion': 'Delanteros', 'minutes_played': 90, 'is_starter': True,
+            **{c: 0 for c in ['goals', 'assists', 'xg', 'xa', 'xca', 'passes_completed', 'passes_total',
+                              'progressive_passes', 'takeons_successful', 'takeons_total', 'tackles_won',
+                              'tackles_total', 'interceptions', 'recoveries', 'aerials_won', 'aerials_total']},
+            'of_goles_p90': 1.0, 'of_xG_p90': 0.9, 'comp_minutos': 90.0,
+        })
+        _, t = calcular_temporada(pd.DataFrame(filas))
+        t = t.set_index('player_id')
+        self.assertGreater(t.at['estrella', 'nota_global'], t.at['cameo', 'nota_global'])
+
+    def test_wyscout_prevented_goals_signo(self):
+        from pipeline.wyscout_excel import build_metric_row
+        row = build_metric_row({
+            'Player': 'GK Test', 'Position': 'GK', 'Minutes played': 900, 'Matches played': 10,
+            'Conceded goals per 90': 1.0, 'xG against per 90': 1.5, 'Save rate, %': 80.0,
+            'Prevented goals per 90': 0.5, 'Exits per 90': 1.0,
+        }, 'p1', 't1')
+        self.assertEqual(row['def_goles_menos_xgc_p90'], -0.5)
 
     def test_similares_ignoran_el_nivel_de_liga(self):
         """Dos perfiles iguales en ligas de distinto nivel se parecen más que uno distinto de su misma liga."""

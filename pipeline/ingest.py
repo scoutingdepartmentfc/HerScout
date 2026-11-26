@@ -596,6 +596,7 @@ class IngestionPipeline:
                 continue
             f['radar_data'] = {**(f.get('radar_data') or {}), 'similares': nuevas}
             f.pop('id', None)
+            f.pop('perfil', None)  # columna generada a partir de radar_data: Postgres no deja escribirla
             cambiadas.append(f)
         self.store.upsert('player_season_stats', cambiadas, on_conflict='player_id,season_id,demarcacion', batch=50)
         logger.info(f"Similares: {len(cambiadas)} de {len(filas)} filas actualizadas")

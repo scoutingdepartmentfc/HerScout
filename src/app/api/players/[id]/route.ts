@@ -453,14 +453,27 @@ function agregarTemporadas(
 
 let cachedLeagueAverages: Record<string, number> | null = null;
 let lastCacheTime = 0;
+// Los datos cambian con la descarga diaria del pipeline
+const LEAGUE_AVERAGES_TTL_MS = 60 * 60 * 1000;
 
 async function getLeagueAverages(db: any): Promise<Record<string, number>> {
   const now = Date.now();
-  if (cachedLeagueAverages && now - lastCacheTime < 5 * 60 * 1000) {
+  if (cachedLeagueAverages && now - lastCacheTime < LEAGUE_AVERAGES_TTL_MS) {
     return cachedLeagueAverages;
   }
 
   try {
+    // Calculadas en Postgres (migración 20261126120000_query_performance.sql): radar_data no sale de la base de datos
+    const rpc = await db.rpc("league_metric_averages");
+    if (!rpc.error) {
+      const averages: Record<string, number> = {};
+      for (const r of rpc.data || []) if (r.avg_value != null) averages[r.metric] = Number(r.avg_value);
+      cachedLeagueAverages = averages;
+      lastCacheTime = now;
+      return averages;
+    }
+
+    // Sin la migración: cálculo antiguo en Node
     const { data } = await db
       .from("player_season_stats")
       .select("minutes_played, radar_data")

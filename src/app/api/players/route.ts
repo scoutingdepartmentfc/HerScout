@@ -7,6 +7,7 @@ import { NO_CLUB_DATA, preferOptaClub } from "@/lib/playerClub";
 import { isLowSample, lowSampleLast } from "@/lib/sampleSize";
 import { leagueId, playerInLeagues } from "@/lib/leagueId";
 import { isCurrentSeason, minutesWeighted } from "@/lib/currentSeason";
+import { fetchSeasonStatsRows, perfilSelect } from "@/lib/seasonStatsRows";
 
 /** Country shown for international competitions in the league filter (grouped apart from countries) */
 const INTERNATIONAL_COUNTRY = "Internacional";
@@ -101,6 +102,7 @@ async function fetchTrends(db: any): Promise<{
           .from("player_match_scores")
           .select("player_id, score_general, match_date")
           .order("match_date", { ascending: false })
+          .order("id") // desempate estable entre páginas (índice idx_pm_scores_date)
           .range(off, off + CHUNK_SIZE - 1)
       )
     );
@@ -145,8 +147,8 @@ async function loadBaseData(db: any): Promise<BaseData> {
   if (baseInflight) return baseInflight;
 
   baseInflight = (async () => {
-    const selectStats = () =>
-      db.from("player_season_stats").select(`
+    const STATS_SELECT = `
+        id,
         player_id,
         season_id,
         competition_id,
@@ -165,7 +167,7 @@ async function loadBaseData(db: any): Promise<BaseData> {
         nota_balon_parado,
         nota_disponibilidad,
         score_general,
-        perfil:radar_data->perfil,
+        ${await perfilSelect(db)},
         players:player_id (
           id,
           name,
@@ -189,13 +191,10 @@ async function loadBaseData(db: any): Promise<BaseData> {
           teams:current_team_id ( id, name, badge_url, league_name, league_logo_url ),
           player_ea_ratings ( pace, physicality )
         )
-      `).or(CON_FICHA, { referencedTable: "players" });
+      `;
+    const onlyWithFicha = (q: any) => q.or(CON_FICHA, { referencedTable: "players" });
 
-    const statsCountPromise = db
-      .from("player_season_stats")
-      .select("player_id", { count: "exact", head: true });
-
-    // Stats count, sd_leagues and trends all run in parallel
+    // Season stats, sd_leagues, trends, players and teams all run in parallel
     const PLAYER_FIELDS = `id, name, match_name, country, birth_date, photo_url, fotmob_photo_url, primary_position, grupo_demarcacion,
       shirt_number, height, weight, preferred_foot, market_value, contract_expires,
       fm_team_name, fm_team_badge_url, current_league_name, current_league_logo_url, sd_league_code,
@@ -223,33 +222,14 @@ async function loadBaseData(db: any): Promise<BaseData> {
       }
     };
 
-    const [statsCountRes, sdLRes, trendsRes, allPlayers, teamsRes] = await Promise.all([
-      statsCountPromise,
+    const [rows, sdLRes, trendsRes, allPlayers, teamsRes] = await Promise.all([
+      fetchSeasonStatsRows(db, STATS_SELECT, onlyWithFicha),
       db.from("sd_leagues").select("code, name, country"),
       fetchTrends(db).catch(() => ({ trendByPlayer: new Map(), last5ByPlayer: new Map() })),
       fetchAllPlayers(),
       db.from("teams").select("id, name, badge_url, league_name").not("league_name", "is", null),
     ]);
     const { trendByPlayer, last5ByPlayer } = trendsRes;
-
-    const totalStats = Math.max(statsCountRes?.count || 0, PAGE);
-    const offsets: number[] = [];
-    for (let from = 0; from < totalStats; from += PAGE) offsets.push(from);
-
-    const rows: any[] = [];
-    try {
-      const batchResults = await Promise.all(
-        offsets.map((from) => selectStats().order("player_id").order("season_id").range(from, from + PAGE - 1))
-      );
-      for (const res of batchResults as any[]) {
-        if (res.error) throw res.error;
-        if (res.data) rows.push(...res.data);
-      }
-    } catch (statsErr) {
-      console.warn("[SELECT_STATS] Fallback limited due to timeout:", statsErr);
-      const { data } = await selectStats().order("updated_at", { ascending: false }).limit(5000);
-      if (data) rows.push(...data);
-    }
 
     const leagueCountryByCode = new Map<string, string>();
     const leagueCountryByName = new Map<string, string>();

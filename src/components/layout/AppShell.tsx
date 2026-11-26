@@ -9,7 +9,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // Full-screen / wide-canvas tools: no restrictive max width
   const fullBleed = pathname?.startsWith("/builder") || pathname?.startsWith("/matches") || pathname?.startsWith("/compare");
   // Full-width pages that keep normal padding/scroll
-  const fullWidth = pathname === "/players";
+  const fullWidth = pathname?.startsWith("/players");
 
   // Login screen: no navigation until signed in
   if (pathname === "/login") {

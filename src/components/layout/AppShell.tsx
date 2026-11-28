@@ -27,7 +27,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <img src="/logo-brand.png" alt="" className="w-72 sm:w-96 max-h-48 object-contain" />
           </div>
         )}
-        <div className={fullBleed ? "relative z-10 min-h-full lg:h-full" : isPlayerProfile ? "relative z-10 min-h-full xl:h-full flex flex-col" : `relative z-10 ${fullWidth ? "max-w-none" : "max-w-7xl"} mx-auto space-y-5`}>{children}</div>
+        <div className={fullBleed ? "relative z-10 min-h-full lg:h-full" : isPlayerProfile ? "relative z-10 min-h-full md:h-full flex flex-col" : `relative z-10 ${fullWidth ? "max-w-none" : "max-w-7xl"} mx-auto space-y-5`}>{children}</div>
       </main>
     </div>
   );

@@ -73,6 +73,13 @@ module.exports = {
       },
     },
   },
-  plugins: [],
+  plugins: [
+    // Player profile "fit to screen" canvas (tablet/desktop): the page is laid out on a fixed design
+    // canvas and scaled with CSS zoom, so viewport breakpoints don't apply inside it — use fit:/land: instead.
+    function ({ addVariant }) {
+      addVariant("fit", ".profile-fit &");
+      addVariant("land", ".profile-fit-land &");
+    },
+  ],
 };
 

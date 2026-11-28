@@ -11,7 +11,7 @@ import { LogoLiga } from "@/components/scouting/LogoLiga";
 import { Bandera } from "@/components/scouting/Bandera";
 import { OptaLogo } from "@/components/scouting/OptaLogo";
 import { MatchLineupModal } from "@/components/scouting/MatchLineupModal";
-import { PlayerQuickView } from "@/components/scouting/PlayerQuickView";
+import { MatchPlayerPopup } from "@/components/matchReport/MatchPlayerPopup";
 import { MatchCalendar, localDayKey } from "@/components/matches/MatchCalendar";
 import {
   Trophy, Clock, MapPin, Globe, Calendar as CalendarIcon,
@@ -1289,8 +1289,14 @@ export default function MatchesPage() {
         onClose={() => setLineupMatch(null)}
         onPlayerClick={setQuickPlayer}
       />
-      <PlayerQuickView
+      <MatchPlayerPopup
         playerId={quickPlayer}
+        matchId={lineupMatch?.id ?? null}
+        matchLabel={
+          lineupMatch
+            ? `${lineupMatch.home.name ?? "Home"} ${lineupMatch.home.score ?? "–"}–${lineupMatch.away.score ?? "–"} ${lineupMatch.away.name ?? "Away"}`
+            : undefined
+        }
         onClose={() => setQuickPlayer(null)}
         // The URL already holds ?match=…: Back on the profile reopens this lineup
         onOpenProfile={(id) => router.push(`/players/${encodeURIComponent(id)}?from=lineup`)}

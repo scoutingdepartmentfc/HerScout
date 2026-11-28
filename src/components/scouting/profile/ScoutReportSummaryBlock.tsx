@@ -2,9 +2,10 @@
 
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { ExpandableCard } from "./ExpandableCard";
-import { PILLAR_BLOCKS_TO_SCORE, scoreColor } from "@/lib/scorePalette";
+import { PILLAR_BLOCKS_TO_SCORE, scoreColor, SCORE_ON_TEXT } from "@/lib/scorePalette";
+import { Stars } from "@/components/matchReport/controls";
 
 export interface ScoutReportSummaryItem {
   id: string;
@@ -22,21 +23,129 @@ export interface ScoutReportSummaryItem {
   spondaData?: any;
 }
 
+export interface MatchReportSummaryItem {
+  id: string;
+  matchId: string;
+  date: string;
+  home: string;
+  away: string;
+  score: string | null;
+  scoutName: string;
+  mode: "live" | "video";
+  ownTier: string | null;
+  opponentTier: string | null;
+  tierDiff: number | null;
+  matchRating: number | null;
+}
+
+export interface StarsConsensusInfo {
+  now: number | null;
+  potential: number | null;
+  scouts: number;
+  ratings: number;
+}
+
 interface ScoutReportSummaryBlockProps {
   reports: ScoutReportSummaryItem[];
+  matchReports?: MatchReportSummaryItem[];
+  stars?: StarsConsensusInfo | null;
   onCreateReport: () => void;
 }
+
+const ctxArrow = (d: number | null) => (d == null ? "" : d > 0 ? " ▲" : d < 0 ? " ▼" : " =");
 
 const DEFAULT_PILLARS = ["Technique", "Game Vision", "Decision Making", "Pace", "Strength"];
 
 export const ScoutReportSummaryBlock: React.FC<ScoutReportSummaryBlockProps> = ({
-  reports,
+  reports: allReports,
+  matchReports = [],
+  stars = null,
   onCreateReport,
 }) => {
   const router = useRouter();
+  // Stars-only drafts (created from match reports) are not shown as full reports
+  const reports = allReports.filter((r) => !r.spondaData?.starsOnly);
   const [selectedIdx, setSelectedIdx] = useState(0);
+  const [tab, setTab] = useState<"full" | "match">(reports.length || !matchReports.length ? "full" : "match");
 
   const report = reports[selectedIdx] || reports[0] || null;
+
+  const tabs = (
+    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+      {(
+        [
+          ["full", `Full reports · ${reports.length}`],
+          ["match", `Match reports · ${matchReports.length}`],
+        ] as const
+      ).map(([k, label]) => (
+        <button
+          key={k}
+          type="button"
+          onClick={() => setTab(k)}
+          className={`rounded-[6px] border px-2 py-[2px] text-[10.5px] whitespace-nowrap ${
+            tab === k ? "border-[#5b8cff] text-white" : "border-[#1c2a45] text-[#8796b3] hover:text-white"
+          }`}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+
+  const cardStyle = { background: "linear-gradient(160deg, #16244a, #0d172a 60%)", borderColor: "#3b6ff566" };
+
+  if (tab === "match") {
+    return (
+      <ExpandableCard title="Scout Report" hideExpand className="flex-1" style={cardStyle} headerRight={tabs}>
+        {matchReports.length === 0 ? (
+          <p className="flex-1 flex items-center justify-center text-center text-xs text-[#8796b3] py-6">
+            No match reports yet — rate her from a match lineup (Matches → match → Match report).
+          </p>
+        ) : (
+          <div className="flex-1 min-h-0 overflow-y-auto s1-scroll-fade pr-1">
+            <table className="w-full text-[11px]">
+              <thead>
+                <tr className="text-[9px] uppercase tracking-[0.08em] text-[#5a6884] text-left">
+                  <th className="py-1 font-semibold">Date</th>
+                  <th className="py-1 font-semibold">Match</th>
+                  <th className="py-1 font-semibold">Context</th>
+                  <th className="py-1 font-semibold">Scout</th>
+                  <th className="py-1 font-semibold text-right">/10</th>
+                </tr>
+              </thead>
+              <tbody>
+                {matchReports.map((m) => (
+                  <tr
+                    key={m.id}
+                    onClick={() => router.push(`/matches/${encodeURIComponent(m.matchId)}/report`)}
+                    className="border-t border-[#1c2a45] cursor-pointer hover:bg-white/[0.03]"
+                  >
+                    <td className="py-1 text-[#8796b3] whitespace-nowrap">{new Date(m.date).toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit" })}</td>
+                    <td className="py-1 text-[#e6edf7] truncate max-w-[150px]" title={`${m.home} ${m.score ?? ""} ${m.away}`}>
+                      {m.home} – {m.away}
+                      <span className="text-[#5a6884]"> · {m.mode === "video" ? "Video" : "Live"}</span>
+                    </td>
+                    <td className="py-1 text-[#c8d3e6] whitespace-nowrap">
+                      {m.ownTier || "T?"} v {m.opponentTier || "T?"}
+                      {ctxArrow(m.tierDiff)}
+                    </td>
+                    <td className="py-1 text-[#c8d3e6] truncate max-w-[90px]">{m.scoutName}</td>
+                    <td className="py-1 text-right">
+                      {m.matchRating != null && (
+                        <span className="rounded-[4px] px-1 font-extrabold" style={{ backgroundColor: scoreColor(m.matchRating, 10), color: SCORE_ON_TEXT }}>
+                          {m.matchRating.toFixed(1)}
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </ExpandableCard>
+    );
+  }
 
   if (!report) {
     return (
@@ -49,12 +158,7 @@ export const ScoutReportSummaryBlock: React.FC<ScoutReportSummaryBlockProps> = (
       >
         <div className="flex items-center gap-2">
           <span className="s1-title text-[12px] text-[#e6edf7]">Scout Report</span>
-          <span
-            className="text-[9.5px] font-bold tracking-[0.06em] px-1.5 py-[2px] rounded border uppercase"
-            style={{ background: "#3b6ff522", color: "#5b8cff", borderColor: "#3b6ff566" }}
-          >
-            No Reports
-          </span>
+          <div className="ml-auto">{tabs}</div>
         </div>
 
         <div className="flex-1 flex flex-col items-center justify-center text-center py-6 px-4 gap-3">
@@ -89,8 +193,13 @@ export const ScoutReportSummaryBlock: React.FC<ScoutReportSummaryBlockProps> = (
     return 75;
   })();
 
-  const starsNow = sp.ratingStars ?? (report.rating != null ? Number((report.rating / 2).toFixed(1)) : 4.0);
-  const starsPot = sp.ratingPotentialStars ?? Math.min(5, Number((starsNow + 0.5).toFixed(1)));
+  // Stars shown = average of each scout's latest value (SPEC §6.9); fall back to this report's own stars
+  const ownNow = sp.ratingStars ?? (report.rating != null ? Math.round(report.rating) / 2 : null);
+  const ownPot = sp.potentialStars ?? sp.ratingPotentialStars ?? null;
+  const starsNow = stars?.now ?? ownNow;
+  const starsPot = stars?.potential ?? ownPot;
+  const starsHint = stars && stars.scouts > 0 ? `avg of ${stars.scouts} scout${stars.scouts === 1 ? "" : "s"} · ${stars.ratings} rating${stars.ratings === 1 ? "" : "s"}` : "this report";
+  const reportNo = reports.length - selectedIdx;
   const ringColor = scoreColor(scoutScore, 100);
 
   const decisionLabel =
@@ -145,38 +254,41 @@ export const ScoutReportSummaryBlock: React.FC<ScoutReportSummaryBlockProps> = (
   return (
     <ExpandableCard
       title="Scout Report"
-      tag={`Latest · ${dateFmt}`}
-      tagTone="blue"
       hideExpand
       onCardClick={() => router.push(`/reports/${report.id}`)}
       className="flex-1 cursor-pointer hover:border-[#5b8cff]/70 transition-colors"
-      style={{
-        background: "linear-gradient(160deg, #16244a, #0d172a 60%)",
-        borderColor: "#3b6ff566",
-      }}
-      headerRight={
-        reports.length > 1 ? (
-          <select
-            value={selectedIdx}
-            onClick={(e) => e.stopPropagation()}
-            onChange={(e) => {
-              e.stopPropagation();
-              setSelectedIdx(Number(e.target.value));
-            }}
-            className="bg-[#0b1426] border border-[#1c2a45] rounded px-1.5 py-0.5 text-[10.5px] text-[#8796b3] hover:text-white focus:outline-none"
-          >
-            {reports.map((r, idx) => (
-              <option key={r.id} value={idx}>
-                {idx === 0 ? `${reports.length} reports` : `Report #${reports.length - idx}`} (
-                {new Date(r.observationDate || r.createdAt).toLocaleDateString("en-GB")})
-              </option>
-            ))}
-          </select>
-        ) : (
-          <span className="text-[10.5px] text-[#8796b3]">1 report</span>
-        )
-      }
+      style={cardStyle}
+      headerRight={tabs}
     >
+      {/* Report navigation: Report x of y */}
+      <div className="flex items-center gap-1.5 mb-2 text-[10.5px] text-[#8796b3]" onClick={(e) => e.stopPropagation()}>
+        <button
+          type="button"
+          disabled={selectedIdx >= reports.length - 1}
+          onClick={() => setSelectedIdx((i) => Math.min(reports.length - 1, i + 1))}
+          className="w-5 h-5 rounded-[5px] border border-[#1c2a45] flex items-center justify-center hover:text-white disabled:opacity-30"
+          aria-label="Previous report"
+        >
+          <ChevronLeft className="w-3 h-3" />
+        </button>
+        <b className="text-[#e6edf7]">
+          Report {reportNo} of {reports.length}
+        </b>
+        <button
+          type="button"
+          disabled={selectedIdx <= 0}
+          onClick={() => setSelectedIdx((i) => Math.max(0, i - 1))}
+          className="w-5 h-5 rounded-[5px] border border-[#1c2a45] flex items-center justify-center hover:text-white disabled:opacity-30"
+          aria-label="Next report"
+        >
+          <ChevronRight className="w-3 h-3" />
+        </button>
+        <span className="truncate">
+          {dateFmt} · {report.scoutName}
+          {report.status === "draft" ? " · draft" : ""}
+        </span>
+      </div>
+
       {/* Top Score Ring + Verdict + Metadata */}
       <div className="flex gap-3.5 items-center">
         <div
@@ -186,9 +298,7 @@ export const ScoutReportSummaryBlock: React.FC<ScoutReportSummaryBlockProps> = (
           <span className="text-[23px] font-extrabold leading-none text-[#e6edf7] tabular-nums">
             {scoutScore}
           </span>
-          <span className="text-[9px] text-[#8796b3] mt-0.5 whitespace-nowrap">
-            {starsNow}★ · pot {starsPot}★
-          </span>
+
         </div>
 
         <div className="min-w-0 flex-1">
@@ -207,10 +317,15 @@ export const ScoutReportSummaryBlock: React.FC<ScoutReportSummaryBlockProps> = (
             Role: <strong>{sp.role || "—"}</strong> · Suitable for:{" "}
             <strong className="text-[#9d94ff]">{suitableTier}</strong>
           </div>
-          <div className="text-[10.5px] text-[#8796b3] mt-0.5 truncate">
-            Scout: {report.scoutName}
-            {report.matchFixture ? ` · Watched: ${report.matchFixture}` : ""}
+          <div className="mt-1 flex items-center gap-2 text-[10px] text-[#8796b3]" title={starsHint}>
+            <span className="flex items-center gap-1">
+              Now <Stars value={starsNow} tone="now" size={12} />
+            </span>
+            <span className="flex items-center gap-1">
+              Pot <Stars value={starsPot} tone="potential" size={12} />
+            </span>
           </div>
+          <div className="text-[9.5px] text-[#5a6884] mt-0.5 truncate">{starsHint}</div>
         </div>
       </div>
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { ModalPortal } from "./ModalPortal";
 import React, { useState } from "react";
 import { X } from "lucide-react";
 import { ExpandableCard } from "./ExpandableCard";
@@ -64,7 +65,7 @@ export const PositionalStatsBlock: React.FC<PositionalStatsBlockProps> = ({
   };
 
   const renderRows = (compact = true) => (
-    <div className="flex flex-col gap-[5px]">
+    <div className={`flex flex-col ${compact ? "gap-[4px]" : "gap-[5px]"}`}>
       {stats.map((st) => {
         const pct = st.leaguePercentile ?? 0;
         const col = st.leaguePercentile != null ? scoreColor(pct, 100) : "#5a6884";
@@ -78,11 +79,11 @@ export const PositionalStatsBlock: React.FC<PositionalStatsBlockProps> = ({
             type="button"
             onClick={() => setSelectedMetric(st)}
             title="Click to inspect league distribution"
-            className="grid grid-cols-[38px_1fr] gap-[9px] items-center text-left group rounded-md hover:bg-white/[0.03] transition-colors p-[1px]"
+            className={`grid ${compact ? "grid-cols-[36px_1fr] gap-[8px]" : "grid-cols-[38px_1fr] gap-[9px]"} items-center text-left group rounded-md hover:bg-white/[0.03] transition-colors p-[1px]`}
           >
             {/* 0-100 Score Box */}
             <div
-              className="h-[31px] rounded-[7px] flex items-center justify-center font-extrabold text-[15.5px] tabular-nums shrink-0 transition-transform group-hover:scale-[1.03]"
+              className={`${compact ? "h-[28px] rounded-[7px] text-[14.5px]" : "h-[31px] rounded-[7px] text-[15.5px]"} flex items-center justify-center font-extrabold tabular-nums shrink-0 transition-transform group-hover:scale-[1.03]`}
               style={{ backgroundColor: col, color: SCORE_ON_TEXT }}
             >
               {st.leaguePercentile != null ? pct : "—"}
@@ -90,7 +91,7 @@ export const PositionalStatsBlock: React.FC<PositionalStatsBlockProps> = ({
 
             {/* Label + Rank + Bar */}
             <div className="min-w-0">
-              <div className="flex justify-between items-baseline text-[11px] mb-[2px]">
+              <div className={`flex justify-between items-baseline ${compact ? "text-[11px] mb-[2px] leading-tight" : "text-[11px] mb-[2px]"}`}>
                 <span className="font-semibold text-[#e6edf7] truncate pr-2 group-hover:text-white">
                   {displayLabel(st.label, st.isPct)}
                 </span>
@@ -103,10 +104,10 @@ export const PositionalStatsBlock: React.FC<PositionalStatsBlockProps> = ({
                 </span>
               </div>
 
-              <div className="h-[17px] bg-[#1a2640] rounded-[4px] relative">
+              <div className={`${compact ? "h-[15px] rounded-[4px]" : "h-[17px] rounded-[4px]"} bg-[#1a2640] relative`}>
                 {st.leaguePercentile != null && (
                   <div
-                    className="absolute inset-y-0 left-0 rounded-[4px] flex items-center pl-[7px] font-bold text-[11px] tabular-nums transition-all duration-300"
+                    className={`absolute inset-y-0 left-0 rounded-[inherit] flex items-center pl-[6px] font-bold ${compact ? "text-[10.5px]" : "text-[11px]"} tabular-nums transition-all duration-300`}
                     style={{
                       width: `${Math.max(8, Math.min(100, pct))}%`,
                       backgroundColor: col,
@@ -166,7 +167,7 @@ export const PositionalStatsBlock: React.FC<PositionalStatsBlockProps> = ({
       <ExpandableCard
         title="Positional Stats"
         tag={`vs ${shortCode} · ${leagueName || "League"}`}
-        tagTone="amber"
+        tagTone="purple"
         className="flex-none"
         expandedContent={renderRows(false)}
       >
@@ -185,6 +186,7 @@ export const PositionalStatsBlock: React.FC<PositionalStatsBlockProps> = ({
 
       {/* Distribution Modal on Row Click (SPEC §2 Block 3) */}
       {selectedMetric && (
+        <ModalPortal>
         <div
           className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
           onClick={() => setSelectedMetric(null)}
@@ -259,6 +261,7 @@ export const PositionalStatsBlock: React.FC<PositionalStatsBlockProps> = ({
             </div>
           </div>
         </div>
+        </ModalPortal>
       )}
     </>
   );

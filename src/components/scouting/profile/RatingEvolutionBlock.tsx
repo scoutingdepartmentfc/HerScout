@@ -281,7 +281,7 @@ export const RatingEvolutionBlock: React.FC<RatingEvolutionBlockProps> = ({
       tag="Match-by-match"
       tagTone="green"
       headerRight={controls}
-      className="flex-none xl:h-[205px]"
+      className="flex-none fit:h-[205px] land:h-auto land:flex-1 land:min-h-[150px]"
       expandedContent={<div className="h-[360px] flex flex-col">{renderChart(900, 320)}</div>}
     >
       {renderChart(900, 148)}

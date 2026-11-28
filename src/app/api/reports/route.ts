@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ScoutingReport, calculateTransparentOverallRating } from "@/lib/reports";
 import { supabaseAdmin } from "@/lib/supabase";
+import { recordFullReportStars } from "@/lib/matchReportServer";
 
 // Map Supabase DB row to application ScoutingReport
 function rowToReport(r: any): ScoutingReport {
@@ -192,6 +193,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
+    await recordFullReportStars(db, data);
     const newReport = rowToReport(data);
 
     return NextResponse.json({

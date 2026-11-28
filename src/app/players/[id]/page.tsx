@@ -18,6 +18,9 @@ import { RatingEvolutionBlock } from "@/components/scouting/profile/RatingEvolut
 import { NationalTeamBlock } from "@/components/scouting/profile/NationalTeamBlock";
 import { InjuryMedicalBlock } from "@/components/scouting/profile/InjuryMedicalBlock";
 import { UpcomingMatchesBlock } from "@/components/scouting/profile/UpcomingMatchesBlock";
+import { StrengthsWeaknessesBlock } from "@/components/scouting/profile/StrengthsWeaknessesBlock";
+import { ScoutingHistoryBlock } from "@/components/scouting/profile/ScoutingHistoryBlock";
+import { FitToScreenCanvas, FitMode } from "@/components/scouting/profile/FitToScreenCanvas";
 import { competitionWeighted } from "@/lib/currentSeason";
 
 const translatePosition = (pos?: string | null) => {
@@ -71,6 +74,20 @@ export default function PlayerProfilePage() {
   const [posData, setPosData] = useState<PositionalApiResponse | null>(null);
   const [posLoading, setPosLoading] = useState(false);
   const [comparePlayerId, setComparePlayerId] = useState<string>("");
+
+  // Scouting history, match reports & stars consensus (Blocks 6 & 13)
+  const [scouting, setScouting] = useState<any>(null);
+  useEffect(() => {
+    if (!playerId) return;
+    let cancel = false;
+    fetch(`/api/players/${playerId}/scouting`, { headers: { "x-user-org-id": currentClub.id }, cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => !cancel && setScouting(j || { matchReports: [], stars: null, history: null }))
+      .catch(() => !cancel && setScouting({ matchReports: [], stars: null, history: null }));
+    return () => {
+      cancel = true;
+    };
+  }, [playerId, reloadKey, currentClub.id]);
 
   // Modals & Watchlist state
   const [editOpen, setEditOpen] = useState(false);
@@ -367,8 +384,187 @@ export default function PlayerProfilePage() {
   const seasonDisplayLabel =
     selectedSeasonName === "all" ? "All seasons" : selectedSeasonName || "Current";
 
+  const renderBody = (mode: FitMode) => {
+    const positionalBlock = (
+      <PositionalStatsBlock
+        playerId={playerId}
+        playerName={p.matchName || p.name}
+        shortCode={posData?.template?.shortCode || p.primaryPosition || "POS"}
+        leagueName={posData?.competition?.name || p.leagueName || null}
+        stats={posData?.stats || []}
+        metricMode={metricMode}
+        loading={posLoading}
+      />
+    );
+    const strengthsBlock = (
+      <StrengthsWeaknessesBlock stats={posData?.stats || []} metricMode={metricMode} loading={posLoading} />
+    );
+    const similarBlock = (
+      <SimilarPlayersBlock currentPlayerId={playerId} players={posData?.similarPlayers || []} loading={posLoading} />
+    );
+    const upcomingBlock = (
+      <UpcomingMatchesBlock
+        playerId={playerId}
+        matches={data.upcomingMatches || []}
+        defaultScoutName={user.name || "Scout"}
+        onUpdated={() => setReloadKey((k) => k + 1)}
+      />
+    );
+    const radarBlock = (
+      <PositionalRadarBlock
+        playerName={p.matchName || p.name}
+        shortCode={posData?.template?.shortCode || p.primaryPosition || "POS"}
+        leagueName={posData?.competition?.name || p.leagueName || null}
+        stats={posData?.stats || []}
+        comparePlayer={posData?.comparePlayer || null}
+        compareCandidates={posData?.compareCandidates || []}
+        selectedCompareId={comparePlayerId}
+        onSelectCompareId={setComparePlayerId}
+        loading={posLoading}
+      />
+    );
+    const reportBlock = (
+      <ScoutReportSummaryBlock
+        reports={data.scoutingReports || []}
+        matchReports={scouting?.matchReports || []}
+        stars={scouting?.stars || null}
+        onCreateReport={() => setReportOpen(true)}
+      />
+    );
+    const historyBlock = <ScoutingHistoryBlock data={scouting?.history || null} loading={!scouting} />;
+    const column1 = (
+      <div className="flex flex-col gap-2.5 min-h-0">
+        {positionalBlock}
+        {strengthsBlock}
+        {similarBlock}
+        {upcomingBlock}
+      </div>
+    );
+    const column2 = (
+      <div className="flex flex-col gap-2.5 min-h-0">
+        {radarBlock}
+        {reportBlock}
+        {historyBlock}
+      </div>
+    );
+
+    const seasonBlock = (
+      <SeasonStatsBlock
+        seasonLabel={seasonDisplayLabel}
+        rows={seasonTableRows}
+        selectedCompetition={selectedCompetition}
+        globalMetricMode={metricMode}
+      />
+    );
+    const careerBlock = <CareerStatsBlock rows={careerRows} />;
+    const ratingBlock = <RatingEvolutionBlock matches={data.matchLog || []} selectedCompetition={selectedCompetition} />;
+    const ntInjury = (
+      <div className={`grid grid-cols-1 sm:grid-cols-2 gap-2.5 flex-1 min-h-0 ${mode === "portrait" ? "min-h-[170px]" : ""} ${mode === "landscape" ? "min-h-[150px]" : ""}`}>
+        <NationalTeamBlock nationalTeams={nationalTeams} playerCountry={p.country} />
+        <InjuryMedicalBlock
+          injuries={data.injuries || []}
+          availabilityNote={headerAgg.availNote}
+          seasonLabel={seasonDisplayLabel}
+        />
+      </div>
+    );
+
+    return (
+      <>
+        {/* BLOCK 1: Header */}
+        <PlayerHeaderBlock
+          player={p}
+          overallScore={headerAgg.overallScore}
+          matchesCount={headerAgg.matches || null}
+          minutesCount={headerAgg.minutes || null}
+          goalsCount={headerAgg.goals}
+          assistsCount={headerAgg.assists}
+          avgRating={headerAgg.avgRating}
+          internationalCaps={intlCaps}
+          internationalGoals={intlGoals}
+          isInWatchlist={isInWatchlist}
+          watchlistBusy={watchlistBusy}
+          onEdit={() => setEditOpen(true)}
+          onToggleWatchlist={handleToggleWatchlist}
+          onCreateReport={() => setReportOpen(true)}
+        />
+
+        {/* BLOCK 2: Global Filters */}
+        <GlobalFiltersBar
+          competitions={availableCompetitions}
+          selectedCompetition={selectedCompetition}
+          onSelectCompetition={setSelectedCompetition}
+          seasons={availableSeasons}
+          selectedSeason={selectedSeasonName}
+          onSelectSeason={setSelectedSeasonName}
+          metricMode={metricMode}
+          onChangeMetricMode={setMetricMode}
+          updatedAt={data.latestUpdatedAt}
+          sdUrl={p.sdUrl}
+        />
+
+        {mode === "landscape" && (
+          /* 4-column bento: everything on one screen; the last block of each column stretches so all columns end level */
+          <div className="grid grid-cols-[350px_400px_minmax(0,1.1fr)_minmax(0,0.9fr)] gap-2.5 flex-1 min-h-0">
+            <div className="flex flex-col gap-2.5 min-h-0">
+              <div className="flex-1 min-h-0 overflow-y-auto rounded-[10px] [&>*]:min-h-full">{positionalBlock}</div>
+              {strengthsBlock}
+            </div>
+            <div className="flex flex-col gap-2.5 min-h-0">
+              {radarBlock}
+              {similarBlock}
+              {upcomingBlock}
+            </div>
+            <div className="flex flex-col gap-2.5 min-h-0">
+              {seasonBlock}
+              {careerBlock}
+              {ratingBlock}
+            </div>
+            <div className="flex flex-col gap-2.5 min-h-0">
+              {reportBlock}
+              {historyBlock}
+              {ntInjury}
+            </div>
+          </div>
+        )}
+
+        {mode === "portrait" && (
+          /* Portrait tablets: two columns on top, season/career/rating band below */
+          <div className="grid grid-cols-2 grid-rows-[minmax(0,1fr)_auto] gap-2.5 flex-1 min-h-0">
+            {column1}
+            {column2}
+            <div className="col-span-2 grid grid-cols-2 gap-2.5">
+              <div className="flex flex-col gap-2.5 min-w-0">
+                {seasonBlock}
+                {careerBlock}
+              </div>
+              <div className="flex flex-col gap-2.5 min-w-0">
+                {ratingBlock}
+                {ntInjury}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {mode === "mobile" && (
+          /* Phones: stacked blocks with normal page scroll */
+          <div className="grid grid-cols-1 gap-2.5">
+            {column1}
+            {column2}
+            <div className="flex flex-col gap-2.5">
+              {seasonBlock}
+              {careerBlock}
+              {ratingBlock}
+              {ntInjury}
+            </div>
+          </div>
+        )}
+      </>
+    );
+  };
+
   return (
-    <div className="flex flex-col gap-2 w-full xl:h-full xl:min-h-0">
+    <>
       {/* Modals */}
       <EditPlayerModal
         isOpen={editOpen}
@@ -412,112 +608,12 @@ export default function PlayerProfilePage() {
         }}
       />
 
-      {/* BLOCK 1: Header */}
-      <PlayerHeaderBlock
-        player={p}
-        overallScore={headerAgg.overallScore}
-        matchesCount={headerAgg.matches || null}
-        minutesCount={headerAgg.minutes || null}
-        goalsCount={headerAgg.goals}
-        assistsCount={headerAgg.assists}
-        avgRating={headerAgg.avgRating}
-        internationalCaps={intlCaps}
-        internationalGoals={intlGoals}
-        isInWatchlist={isInWatchlist}
-        watchlistBusy={watchlistBusy}
-        onEdit={() => setEditOpen(true)}
-        onToggleWatchlist={handleToggleWatchlist}
-        onCreateReport={() => setReportOpen(true)}
-      />
 
-      {/* BLOCK 2: Global Filters */}
-      <GlobalFiltersBar
-        competitions={availableCompetitions}
-        selectedCompetition={selectedCompetition}
-        onSelectCompetition={setSelectedCompetition}
-        seasons={availableSeasons}
-        selectedSeason={selectedSeasonName}
-        onSelectSeason={setSelectedSeasonName}
-        metricMode={metricMode}
-        onChangeMetricMode={setMetricMode}
-        updatedAt={data.latestUpdatedAt}
-        sdUrl={p.sdUrl}
-      />
-
-      {/* MAIN 3-COLUMN BENTO GRID (1920x1080 single-screen fit on xl+) */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-[400px_460px_1fr] 2xl:grid-cols-[430px_500px_1fr] gap-2.5 flex-1 min-h-0">
-        {/* COLUMN 1: Positional Stats (3), Similar Players (4), Upcoming Matches (12) */}
-        <div className="flex flex-col gap-2.5 min-h-0">
-          <PositionalStatsBlock
-            playerId={playerId}
-            playerName={p.matchName || p.name}
-            shortCode={posData?.template?.shortCode || p.primaryPosition || "POS"}
-            leagueName={posData?.competition?.name || p.leagueName || null}
-            stats={posData?.stats || []}
-            metricMode={metricMode}
-            loading={posLoading}
-          />
-
-          <SimilarPlayersBlock
-            currentPlayerId={playerId}
-            players={posData?.similarPlayers || []}
-            loading={posLoading}
-          />
-
-          <UpcomingMatchesBlock
-            playerId={playerId}
-            matches={data.upcomingMatches || []}
-            defaultScoutName={user.name || "Scout"}
-            onUpdated={() => setReloadKey((k) => k + 1)}
-          />
-        </div>
-
-        {/* COLUMN 2: Positional Radar (5), Scout Report Summary (6) */}
-        <div className="flex flex-col gap-2.5 min-h-0">
-          <PositionalRadarBlock
-            playerName={p.matchName || p.name}
-            shortCode={posData?.template?.shortCode || p.primaryPosition || "POS"}
-            leagueName={posData?.competition?.name || p.leagueName || null}
-            stats={posData?.stats || []}
-            comparePlayer={posData?.comparePlayer || null}
-            compareCandidates={posData?.compareCandidates || []}
-            selectedCompareId={comparePlayerId}
-            onSelectCompareId={setComparePlayerId}
-            loading={posLoading}
-          />
-
-          <ScoutReportSummaryBlock
-            reports={data.scoutingReports || []}
-            onCreateReport={() => setReportOpen(true)}
-          />
-        </div>
-
-        {/* COLUMN 3: Season Stats (7), Career Stats (8), Rating Evolution (9), National Team (10) & Injury (11) */}
-        <div className="flex flex-col gap-2.5 min-h-0 lg:col-span-2 xl:col-span-1">
-          <SeasonStatsBlock
-            seasonLabel={seasonDisplayLabel}
-            rows={seasonTableRows}
-            selectedCompetition={selectedCompetition}
-            globalMetricMode={metricMode}
-          />
-
-          <CareerStatsBlock rows={careerRows} />
-
-          <RatingEvolutionBlock
-            matches={data.matchLog || []}
-            selectedCompetition={selectedCompetition}
-          />
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 flex-1 min-h-0">
-            <NationalTeamBlock nationalTeams={nationalTeams} playerCountry={p.country} />
-            <InjuryMedicalBlock
-              injuries={data.injuries || []}
-              availabilityNote={headerAgg.availNote}
-              seasonLabel={seasonDisplayLabel}
-            />
-          </div>
-        </div>
-      </div>
-    </div>
+      <FitToScreenCanvas
+        className="flex flex-col gap-2"
+      >
+        {renderBody}
+      </FitToScreenCanvas>
+    </>
   );
 }

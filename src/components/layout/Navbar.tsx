@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import { ScoutSwitcher } from "./ScoutSwitcher";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useThemeContext, DEFAULT_THEME, UserRole } from "@/context/ThemeContext";
@@ -124,6 +125,9 @@ export const Navbar: React.FC = () => {
               </div>
             )}
           </div>
+
+          {/* Scout identity (match reports, attendance, stars) */}
+          <ScoutSwitcher pillClass={pill} />
 
           {/* Role simulator */}
           <div className="relative hidden sm:block">

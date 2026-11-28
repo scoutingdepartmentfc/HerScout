@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ScoutingReport, calculateTransparentOverallRating } from "@/lib/reports";
 import { supabaseAdmin } from "@/lib/supabase";
+import { recordFullReportStars } from "@/lib/matchReportServer";
 
 function rowToReport(r: any): ScoutingReport {
   const p = r.players || {};
@@ -218,6 +219,7 @@ export async function PUT(
       return NextResponse.json({ error: updateErr.message }, { status: 400 });
     }
 
+    await recordFullReportStars(db, updated);
     return NextResponse.json({ success: true, report: rowToReport(updated) });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 400 });
@@ -298,6 +300,7 @@ export async function POST(
       return NextResponse.json({ error: updateErr.message }, { status: 400 });
     }
 
+    await recordFullReportStars(db, updated);
     return NextResponse.json({ success: true, report: rowToReport(updated) });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 403 });

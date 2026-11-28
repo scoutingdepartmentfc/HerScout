@@ -77,7 +77,7 @@ export const CareerStatsBlock: React.FC<CareerStatsBlockProps> = ({ rows }) => {
     <ExpandableCard
       title="Career Stats / Teams"
       subtitle={`${uniqueSeasons} ${uniqueSeasons === 1 ? "season" : "seasons"} · ${uniqueClubs} ${uniqueClubs === 1 ? "club" : "clubs"} · inner scroll ↕`}
-      className="flex-none xl:h-[168px]"
+      className="flex-none fit:h-[168px]"
       expandedContent={renderTable()}
     >
       {rows.length === 0 ? (

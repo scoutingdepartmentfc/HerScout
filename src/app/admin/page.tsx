@@ -7,6 +7,7 @@ import { useThemeContext } from "@/context/ThemeContext";
 import { useRouter } from "next/navigation";
 import { ShieldAlert, LogOut } from "lucide-react";
 import { ClubsManager } from "@/components/admin/ClubsManager";
+import { ClubTiersManager } from "@/components/admin/ClubTiersManager";
 import { SoccerdonnaLeagues } from "@/components/admin/SoccerdonnaLeagues";
 import { WyscoutManualImport } from "@/components/admin/WyscoutManualImport";
 
@@ -44,6 +45,9 @@ export default function AdminPage() {
 
       {/* Clubs with a subscription and their contracted leagues */}
       <ClubsManager />
+
+      {/* Club Tiers T1–T7 (match context, SPEC §6.7) */}
+      <ClubTiersManager />
 
       {/* Players: Soccerdonna leagues to download (with FotMob photos) */}
       <SoccerdonnaLeagues />

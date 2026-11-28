@@ -1,5 +1,6 @@
 "use client";
 
+import { ModalPortal } from "./ModalPortal";
 import React, { useState } from "react";
 import Link from "next/link";
 import { X } from "lucide-react";
@@ -185,6 +186,7 @@ export const UpcomingMatchesBlock: React.FC<UpcomingMatchesBlockProps> = ({
       </div>
 
       {assignModalMatch && (
+        <ModalPortal>
         <div
           className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
           onClick={() => setAssignModalMatch(null)}
@@ -281,6 +283,7 @@ export const UpcomingMatchesBlock: React.FC<UpcomingMatchesBlockProps> = ({
             </div>
           </form>
         </div>
+        </ModalPortal>
       )}
     </>
   );

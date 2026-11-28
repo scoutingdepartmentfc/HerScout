@@ -5,7 +5,8 @@ import { Modal } from "@/components/ui/Modal";
 import { EscudoEquipo } from "@/components/scouting/EscudoEquipo";
 import { PlayerSilhouette } from "@/components/scouting/PlayerSilhouette";
 import { LoadingState } from "@/components/ui/StatusStates";
-import { ArrowLeftRight } from "lucide-react";
+import Link from "next/link";
+import { ArrowLeftRight, ClipboardList } from "lucide-react";
 
 // Lineups stored by the `match-live` Edge Function in matches.lineups
 interface LineupPlayer {
@@ -270,6 +271,16 @@ export function MatchLineupModal({
 
   return (
     <Modal isOpen onClose={onClose} title={title} description={match.competition} size="2xl">
+      {played && (
+        <div className="-mt-1 mb-3 flex justify-end">
+          <Link
+            href={`/matches/${encodeURIComponent(match.id)}/report`}
+            className="inline-flex items-center gap-1.5 rounded-[7px] bg-[#3B6FF5] px-3 py-1.5 text-[11.5px] font-bold uppercase tracking-[0.06em] text-white hover:bg-[#5B8CFF]"
+          >
+            <ClipboardList className="h-3.5 w-3.5" /> Match report
+          </Link>
+        </div>
+      )}
       {error ? (
         <p className="py-10 text-center text-sm text-muted-foreground">{error}</p>
       ) : !data ? (

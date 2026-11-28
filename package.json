@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "datos": "scripts/descargar_datos.sh",
-    "datos:cero": "scripts/descargar_datos.sh --desde-cero"
+    "datos:cero": "scripts/descargar_datos.sh --desde-cero",
+    "test:match": "node --test tests/matchReport/*.test.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.118.0",

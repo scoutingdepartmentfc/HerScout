@@ -1,5 +1,6 @@
 "use client";
 
+import { ModalPortal } from "./ModalPortal";
 import React, { useEffect, useState } from "react";
 import { Maximize2, X } from "lucide-react";
 
@@ -95,6 +96,7 @@ export const ExpandableCard: React.FC<ExpandableCardProps> = ({
       </div>
 
       {expanded && (
+        <ModalPortal>
         <div
           className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 sm:p-8"
           onClick={() => setExpanded(false)}
@@ -128,6 +130,7 @@ export const ExpandableCard: React.FC<ExpandableCardProps> = ({
             </div>
           </div>
         </div>
+        </ModalPortal>
       )}
     </>
   );
